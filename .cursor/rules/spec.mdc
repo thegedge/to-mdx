@@ -1,0 +1,8 @@
+---
+description: ODP specification
+globs:
+alwaysApply: true
+---
+
+If you're not sure how to interpret something from the ODP archive, you can read the specification from
+https://docs.oasis-open.org/office/OpenDocument/v1.3/cs01/part3-schema/OpenDocument-v1.3-cs01-part3-schema.html

@@ -1,0 +1,53 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "zip"
+require "fileutils"
+require "date"
+require "tmpdir"
+require "optparse"
+
+require_relative "../lib/to_mdx/parsers"
+
+
+def main(argv)
+  options = {}
+
+  OptionParser.new do |opts|
+    opts.banner = "Usage: #{$PROGRAM_NAME} [options] <presentation_file>"
+
+    opts.on("--use-heuristics", "Use heuristics to determine classnames and eliminate positioning divs") do
+      options[:use_heuristics] = true
+    end
+
+    opts.on("-h", "--help", "Show this help message") do
+      puts opts
+      exit(0)
+    end
+  end.parse!(argv)
+
+  if argv.length != 1
+    puts("Usage: #{$PROGRAM_NAME} [options] <presentation_file>")
+    puts("Use --help for more information")
+    exit(1)
+  end
+
+  presentation_file = argv[0]
+  unless File.exist?(presentation_file)
+    puts("Error: File '#{presentation_file}' does not exist.")
+    exit(1)
+  end
+
+  project_root = %x(git rev-parse --show-toplevel).strip
+  unless $CHILD_STATUS.success?
+    puts("Error: Not in a git repository.")
+    exit(1)
+  end
+
+  ToMdx::Parsers::OpenDocument.parse(project_root, presentation_file, options)
+# rescue => e
+#   puts("Error processing presentation: #{e.message}")
+#   exit(1)
+end
+
+main(ARGV)

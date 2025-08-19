@@ -1,0 +1,9 @@
+---
+description: Guidelines for how to write code
+globs:
+alwaysApply: true
+---
+
+- Never hardcode values that can be found in either the `styles.xml` or `content.xml` files in the ODP archive
+- Don't write code comments. Focus on code that's easy to read. If functions get large, extract smaller subfunctions and
+  give them a good name.
