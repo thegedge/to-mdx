@@ -1,0 +1,15 @@
+---
+description: Check output after running
+globs:
+alwaysApply: true
+---
+
+After making any changes to Ruby files, run the following command from the project root to verify the script still works
+and that the output wasn't broken (for example, if no slides were produced):
+
+```
+./scripts/to-mdx/bin/to-mdx --use-heuristics ~/Desktop/Building\ resilient\ systems.odp
+```
+
+If refactoring code, there should be no changes to `src/pages/presentations/2019-04-17_building_resilient_systems.mdx`.
+If any changes do occur, check in with the user to make sure they're correct.
