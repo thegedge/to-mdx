@@ -22,10 +22,10 @@ module ToMdx
           class_attr = @draw_style_name.empty? ? "" : " className=\"#{@draw_style_name}\""
 
           code_snippet = maybe_code_snippet_mdx
-          return "<div#{class_attr} style={#{generate_combined_style_object}}>#{code_snippet}</div>" if code_snippet
+          return "<div#{class_attr} style={#{generate_combined_style_object.to_json}}>#{code_snippet}</div>" if code_snippet
 
           <<-MDX
-            <div#{class_attr} style={#{generate_combined_style_object}}>
+            <div#{class_attr} style={#{generate_combined_style_object.to_json}}>
               #{contentful_children.map(&:to_mdx).compact.join}
             </div>
           MDX
