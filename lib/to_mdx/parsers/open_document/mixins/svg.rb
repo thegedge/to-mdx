@@ -8,7 +8,7 @@ module ToMdx
           attributes = []
           attributes << "className=\"#{classname}\"" unless classname&.empty?
           attributes << "xmlns=\"http://www.w3.org/2000/svg\""
-          attributes << "style={#{generate_combined_style_object}}"
+          attributes << "style={#{generate_combined_style_object.to_json}}"
 
           # I don't know why, but I needed to multiple by 1.2, otherwise I saw some cropping in some SVG.
           # Would be nice to figure out why this worked, and what's wrong with our computation.

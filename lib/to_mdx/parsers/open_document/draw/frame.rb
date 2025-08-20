@@ -24,7 +24,7 @@ module ToMdx
             class_attr = class_names.empty? ? "" : " className=\"#{class_names}\""
 
             <<~MDX
-              <div#{class_attr} style={#{style_object}}>
+              <div#{class_attr} style={#{style_object.to_json}}>
                 #{content}
               </div>
             MDX
