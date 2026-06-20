@@ -9,6 +9,7 @@ function showHelp(programName: string): void {
   console.log("Options:");
   console.log("  --use-heuristics    Use heuristics to determine classnames and eliminate positioning divs");
   console.log("  --dump-keynote <path>  Write the decoded Keynote (.key) structure as JSON for debugging");
+  console.log("  --dump-keynote-raw <path>  Write RAW decoded Keynote protobuf objects as JSON for debugging");
   console.log("  -h, --help         Show this help message");
 }
 
@@ -27,6 +28,13 @@ export async function main(argv: string[]): Promise<void> {
         process.exit(1);
       }
       options.dumpKeynote = value;
+    } else if (arg === "--dump-keynote-raw") {
+      const value = argv[++i];
+      if (!value) {
+        console.error("Error: --dump-keynote-raw requires a path argument");
+        process.exit(1);
+      }
+      options.dumpKeynoteRaw = value;
     } else if (arg === "-h" || arg === "--help") {
       showHelp(process.argv[1]);
       process.exit(0);

@@ -1,4 +1,4 @@
-import type { Paragraph, Presentation, Slide } from "./model.ts";
+import type { Paragraph, Presentation, Slide, TextBox } from "./model.ts";
 
 const INDENT = "  ";
 
@@ -23,6 +23,10 @@ function renderSlide(slide: Slide, basename: string): string {
     blocks.push(`![${image.altText}](/img/presentations/${basename}/${image.fileName})`);
   }
 
+  for (const video of slide.videos) {
+    blocks.push(`{/* video: /img/presentations/${basename}/${video} */}`);
+  }
+
   if (slide.tableCount > 0) {
     blocks.push(`{/* ${slide.tableCount} table(s) on this slide were not extracted */}`);
   }
@@ -38,6 +42,9 @@ function renderBullets(paragraphs: Paragraph[]): string {
   return paragraphs.map((paragraph) => `${INDENT.repeat(Math.max(0, paragraph.depth))}- ${paragraph.text}`).join("\n");
 }
 
-function renderTextBox(paragraphs: Paragraph[]): string {
-  return paragraphs.map((paragraph) => paragraph.text).join("\n\n");
+function renderTextBox(textBox: TextBox): string {
+  if (textBox.kind === "code") {
+    return `\`\`\`${textBox.language}\n${textBox.text}\n\`\`\``;
+  }
+  return textBox.paragraphs.map((paragraph) => paragraph.text).join("\n\n");
 }

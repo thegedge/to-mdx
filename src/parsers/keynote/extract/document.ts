@@ -1,6 +1,6 @@
 import type { Presentation, Slide } from "../model.ts";
 import type { Registry } from "../registry.ts";
-import { KeynoteType, slideArchiveTypes } from "../types.ts";
+import { isType, typeIds } from "../type_ids.ts";
 import type {
   DocumentArchive,
   Reference,
@@ -9,11 +9,15 @@ import type {
   SlideNodeArchive,
 } from "../types.ts";
 import { buildDataInfoMap } from "./images.ts";
-import { extractSlide } from "./slide.ts";
+import type { SlideDefaults } from "./slide.ts";
+import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
 
 export function buildPresentation(registry: Registry, fallbackTitle: string): Presentation {
   const dataInfo = buildDataInfoMap(registry);
-  const slides = orderedSlideArchives(registry).map((slide) => extractSlide(slide, registry, dataInfo));
+  const defaultsFor = makeDefaultsResolver(registry);
+  const slides = orderedSlideArchives(registry).map((slide) =>
+    extractSlide(slide, registry, dataInfo, defaultsFor(slide)),
+  );
 
   return { title: presentationTitle(slides, fallbackTitle), slides };
 }
@@ -23,11 +27,37 @@ function presentationTitle(slides: Slide[], fallbackTitle: string): string {
   return firstTitle?.trim() || fallbackTitle;
 }
 
+/**
+ * Resolves a slide's master ("template") and caches the title/body text it
+ * carries, so a slide placeholder still holding that inherited text is treated
+ * as empty rather than leaking the layout default (e.g. "Comparison Slide").
+ */
+function makeDefaultsResolver(registry: Registry): (slide: SlideArchive) => SlideDefaults {
+  const cache = new Map<bigint, SlideDefaults>();
+
+  return (slide) => {
+    const templateRef = slide.templateSlide;
+    if (!templateRef) return NO_DEFAULTS;
+
+    const cached = cache.get(templateRef.identifier);
+    if (cached) return cached;
+
+    const master = registry.resolve<SlideArchive>(templateRef);
+    const texts = master ? slidePlaceholderTexts(master, registry) : { titles: [], bodies: [] };
+    const defaults: SlideDefaults = { titles: new Set(texts.titles), bodies: new Set(texts.bodies) };
+    cache.set(templateRef.identifier, defaults);
+    return defaults;
+  };
+}
+
 function orderedSlideArchives(registry: Registry): SlideArchive[] {
   const show = findShow(registry);
   const slideRefs = show ? slideReferences(show, registry) : [];
 
-  const refs = slideRefs.length > 0 ? slideRefs : registry.entriesOfType(KeynoteType.slideNodeArchive).map((e) => e.id);
+  const refs =
+    slideRefs.length > 0
+      ? slideRefs
+      : registry.entriesOfTypes(typeIds("SlideNodeArchive")).map((entry) => entry.id);
 
   const slides: SlideArchive[] = [];
   for (const ref of refs) {
@@ -38,19 +68,16 @@ function orderedSlideArchives(registry: Registry): SlideArchive[] {
   if (slides.length > 0) return slides;
 
   // Last-ditch fallback: every SlideArchive in the document, unordered.
-  return registry
-    .entriesOfType(KeynoteType.slideArchive)
-    .concat(registry.entriesOfType(KeynoteType.slideArchiveAlt))
-    .map((entry) => entry.message as SlideArchive);
+  return registry.entriesOfTypes(typeIds("SlideArchive")).map((entry) => entry.message as SlideArchive);
 }
 
 function findShow(registry: Registry): ShowArchive | undefined {
-  const documentEntry = registry.firstOfType(KeynoteType.documentArchive);
+  const documentEntry = registry.firstOfTypes(typeIds("DocumentArchive"));
   if (documentEntry) {
     const show = registry.resolve<ShowArchive>((documentEntry.message as DocumentArchive).show);
     if (show) return show;
   }
-  return registry.firstOfType(KeynoteType.showArchive)?.message as ShowArchive | undefined;
+  return registry.firstOfTypes(typeIds("ShowArchive"))?.message as ShowArchive | undefined;
 }
 
 function slideReferences(show: ShowArchive, registry: Registry): Array<bigint> {
@@ -78,9 +105,9 @@ function slideForNode(id: bigint, registry: Registry): SlideArchive | undefined 
   const entry = registry.get(id);
   if (!entry) return undefined;
 
-  if (slideArchiveTypes.has(entry.type)) return entry.message as SlideArchive;
+  if (isType(entry.type, "SlideArchive")) return entry.message as SlideArchive;
 
-  if (entry.type === KeynoteType.slideNodeArchive) {
+  if (isType(entry.type, "SlideNodeArchive")) {
     return registry.resolve<SlideArchive>((entry.message as SlideNodeArchive).slide);
   }
 

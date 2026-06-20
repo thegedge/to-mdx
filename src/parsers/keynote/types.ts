@@ -31,10 +31,6 @@ export const KeynoteType = {
   packageMetadata: 11006,
 } as const;
 
-export const slideArchiveTypes = new Set<number>([KeynoteType.slideArchive, KeynoteType.slideArchiveAlt]);
-export const placeholderTypes = new Set<number>([KeynoteType.placeholderArchive, KeynoteType.placeholderArchiveAlt]);
-export const storageTypes = new Set<number>([KeynoteType.storageArchive, KeynoteType.storageArchiveAlt]);
-
 export type Reference = TSPMessages.Reference;
 export type DataReference = TSPMessages.DataReference;
 export type DocumentArchive = KNArchives.DocumentArchive;
@@ -46,6 +42,19 @@ export type NoteArchive = KNArchives.NoteArchive;
 export type ShapeInfoArchive = TSWPArchives.ShapeInfoArchive;
 export type StorageArchive = TSWPArchives.StorageArchive;
 export type ImageArchive = TSDArchives.ImageArchive;
+export type MovieArchive = TSDArchives.MovieArchive;
 export type GroupArchive = TSDArchives.GroupArchive;
 export type PackageMetadata = TSPArchiveMessages.PackageMetadata;
 export type DataInfo = TSPArchiveMessages.DataInfo;
+
+/**
+ * `KN.PlaceholderArchive.Kind` discriminator values (proto field 2). Mirrored as
+ * plain constants so the extractor can classify a placeholder without importing
+ * the library's runtime enum into type-only modules.
+ */
+export const PlaceholderKind = {
+  title: 2,
+  body: 3,
+  slideNumber: 1,
+  object: 4,
+} as const;

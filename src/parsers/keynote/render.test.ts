@@ -16,6 +16,7 @@ test("presentationToMdx renders title as H1 and body as a depth-nested bullet li
         ],
         textBoxes: [],
         images: [],
+        videos: [],
         tableCount: 0,
         notes: [],
       },
@@ -32,11 +33,12 @@ test("presentationToMdx joins slides with a thematic break and embeds images by 
   const presentation: Presentation = {
     title: "Deck",
     slides: [
-      { title: "One", body: [], textBoxes: [], images: [], tableCount: 0, notes: [] },
+      { title: "One", body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [] },
       {
         body: [],
         textBoxes: [],
         images: [{ fileName: "pic.png", altText: "alt" }],
+        videos: [],
         tableCount: 0,
         notes: [],
       },
@@ -49,7 +51,25 @@ test("presentationToMdx joins slides with a thematic break and embeds images by 
   );
 });
 
-test("presentationToMdx emits table and presenter-note comments", () => {
+test("presentationToMdx renders a code text box as a fenced block with its language", () => {
+  const presentation: Presentation = {
+    title: "Deck",
+    slides: [
+      {
+        body: [],
+        textBoxes: [{ kind: "code", language: "ruby", text: "def foo\n  bar\nend" }],
+        images: [],
+        videos: [],
+        tableCount: 0,
+        notes: [],
+      },
+    ],
+  };
+
+  assert.equal(presentationToMdx(presentation, "base"), "```ruby\ndef foo\n  bar\nend\n```");
+});
+
+test("presentationToMdx emits table, video and presenter-note comments", () => {
   const presentation: Presentation = {
     title: "Deck",
     slides: [
@@ -57,6 +77,7 @@ test("presentationToMdx emits table and presenter-note comments", () => {
         body: [],
         textBoxes: [],
         images: [],
+        videos: ["clip.mov"],
         tableCount: 2,
         notes: [{ depth: 0, text: "remember this" }],
       },
@@ -65,5 +86,6 @@ test("presentationToMdx emits table and presenter-note comments", () => {
 
   const mdx = presentationToMdx(presentation, "base");
   assert.match(mdx, /\{\/\* 2 table\(s\)/);
+  assert.match(mdx, /\{\/\* video: \/img\/presentations\/base\/clip\.mov \*\/\}/);
   assert.match(mdx, /Presenter notes:\nremember this/);
 });

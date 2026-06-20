@@ -36,13 +36,29 @@ export class Registry {
     return this.#byId.get(id);
   }
 
+  allEntries(): RegistryEntry[] {
+    return [...this.#byId.values()];
+  }
+
   entriesOfType(type: number): RegistryEntry[] {
     return [...this.#byId.values()].filter((entry) => entry.type === type);
+  }
+
+  /** Entries whose numeric type is any of the given ids (resolved by name elsewhere). */
+  entriesOfTypes(types: Set<number>): RegistryEntry[] {
+    return [...this.#byId.values()].filter((entry) => types.has(entry.type));
   }
 
   firstOfType(type: number): RegistryEntry | undefined {
     for (const entry of this.#byId.values()) {
       if (entry.type === type) return entry;
+    }
+    return undefined;
+  }
+
+  firstOfTypes(types: Set<number>): RegistryEntry | undefined {
+    for (const entry of this.#byId.values()) {
+      if (types.has(entry.type)) return entry;
     }
     return undefined;
   }

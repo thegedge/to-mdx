@@ -5,10 +5,11 @@ import dedent from "dedent-js";
 import { generateFrontmatter } from "../../generators/mdx.ts";
 import type { Options } from "../../parsers.ts";
 import { decodeKeynote } from "./decode.ts";
-import { writeDebugDump } from "./debug.ts";
+import { writeDebugDump, writeRawDump } from "./debug.ts";
 import { buildPresentation } from "./extract/document.ts";
 import type { Presentation } from "./model.ts";
 import { formatDate, generateFilename, sanitizeFilename, titleFromPath } from "./metadata.ts";
+import { typeIds } from "./type_ids.ts";
 import { presentationToMdx } from "./render.ts";
 
 export async function parse(outputRoot: string, presentationFile: string, options: Options = {}): Promise<void> {
@@ -25,9 +26,22 @@ export async function parse(outputRoot: string, presentationFile: string, option
 
   const allWarnings = [...warnings, ...registry.warnings];
 
+  const imageArchives = registry.entriesOfTypes(typeIds("ImageArchive")).length;
+  const extractedImages = presentation.slides.reduce((total, slide) => total + slide.images.length, 0);
+  if (imageArchives > 0 && extractedImages < imageArchives) {
+    allWarnings.push(
+      `Resolved ${extractedImages} of ${imageArchives} images; the rest had no data→filename mapping (run with --dump-keynote-raw to inspect)`,
+    );
+  }
+
   const dumpPath = options.dumpKeynote ?? process.env.KEYNOTE_DEBUG_DUMP;
   if (dumpPath) {
     await writeDebugDump(dumpPath, registry, presentation, allWarnings);
+  }
+
+  const rawDumpPath = options.dumpKeynoteRaw ?? process.env.KEYNOTE_DEBUG_RAW;
+  if (rawDumpPath) {
+    await writeRawDump(rawDumpPath, registry);
   }
 
   await copyImages(presentation, dataFiles, basename, outputRoot);
@@ -75,6 +89,7 @@ async function copyImages(
   const fileNames = new Set<string>();
   for (const slide of presentation.slides) {
     for (const image of slide.images) fileNames.add(image.fileName);
+    for (const video of slide.videos) fileNames.add(video);
   }
   if (fileNames.size === 0) return;
 

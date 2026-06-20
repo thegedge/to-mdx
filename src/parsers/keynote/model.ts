@@ -12,12 +12,18 @@ export interface SlideImage {
   altText: string;
 }
 
+/** A free-standing text box: either prose paragraphs or a detected code snippet. */
+export type TextBox =
+  | { kind: "text"; paragraphs: Paragraph[] }
+  | { kind: "code"; language: string; text: string };
+
 export interface Slide {
   title?: string;
   body: Paragraph[];
-  /** Free-standing text boxes, each a run of paragraphs. */
-  textBoxes: Paragraph[][];
+  textBoxes: TextBox[];
   images: SlideImage[];
+  /** Resolved `Data/`-relative file names of movies/videos placed on the slide. */
+  videos: string[];
   /** Best-effort count of tables we detected but did not fully extract. */
   tableCount: number;
   notes: Paragraph[];

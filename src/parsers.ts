@@ -5,6 +5,8 @@ export interface Options {
   useHeuristics?: boolean;
   /** When set, write the decoded Keynote structure as JSON to this path. */
   dumpKeynote?: string;
+  /** When set, write RAW decoded Keynote protobuf objects as JSON to this path. */
+  dumpKeynoteRaw?: string;
 }
 
 export async function parse(outputRoot: string, filePath: string, options: Options): Promise<void> {

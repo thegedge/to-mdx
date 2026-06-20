@@ -101,7 +101,7 @@ test("buildPresentation counts tables and groups recurse into children", () => {
 
   const slide = buildPresentation(registry, "x").slides[0];
   assert.equal(slide.tableCount, 1);
-  assert.deepEqual(slide.textBoxes, [[{ depth: 0, text: "Boxed text" }]]);
+  assert.deepEqual(slide.textBoxes, [{ kind: "text", paragraphs: [{ depth: 0, text: "Boxed text" }] }]);
 });
 
 function slideWithTitle(slideId: bigint, storageId: bigint, title: string) {
