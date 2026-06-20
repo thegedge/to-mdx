@@ -70,7 +70,7 @@ export class Styles {
     return property ?? "";
   }
 
-  getOptimizedStyles = memoize((): OptimizedStyles => {
+  getOptimizedStyles: () => OptimizedStyles = memoize((): OptimizedStyles => {
     const optimizedStyles: OptimizedStyles = {};
 
     for (const key of this.usedStyles.keys()) {
