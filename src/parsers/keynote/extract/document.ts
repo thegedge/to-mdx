@@ -1,5 +1,5 @@
 import type { Presentation, Slide } from "../model.ts";
-import type { Registry } from "../registry.ts";
+import type { Registry, RegistryEntry } from "../registry.ts";
 import { isType, typeIds } from "../type_ids.ts";
 import type {
   DocumentArchive,
@@ -15,9 +15,10 @@ import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
 export function buildPresentation(registry: Registry, fallbackTitle: string): Presentation {
   const dataInfo = buildDataInfoMap(registry);
   const defaultsFor = makeDefaultsResolver(registry);
-  const slides = orderedSlideArchives(registry).map((slide) =>
-    extractSlide(slide, registry, dataInfo, defaultsFor(slide)),
-  );
+  const slides = orderedSlideArchives(registry).map((entry) => {
+    const slide = entry.message as SlideArchive;
+    return extractSlide(slide, registry, dataInfo, defaultsFor(slide));
+  });
 
   return { title: presentationTitle(slides, fallbackTitle), slides };
 }
@@ -50,7 +51,12 @@ function makeDefaultsResolver(registry: Registry): (slide: SlideArchive) => Slid
   };
 }
 
-function orderedSlideArchives(registry: Registry): SlideArchive[] {
+/**
+ * The deck's SlideArchive entries in presentation (slide-tree) order. Exported so
+ * debug tooling can sample real content slides via the same traversal rather than
+ * registry order (which surfaces master/layout templates first).
+ */
+export function orderedSlideArchives(registry: Registry): RegistryEntry[] {
   const show = findShow(registry);
   const slideRefs = show ? slideReferences(show, registry) : [];
 
@@ -59,16 +65,16 @@ function orderedSlideArchives(registry: Registry): SlideArchive[] {
       ? slideRefs
       : registry.entriesOfTypes(typeIds("SlideNodeArchive")).map((entry) => entry.id);
 
-  const slides: SlideArchive[] = [];
+  const slides: RegistryEntry[] = [];
   for (const ref of refs) {
-    const slide = slideForNode(ref, registry);
+    const slide = slideEntryForNode(ref, registry);
     if (slide) slides.push(slide);
   }
 
   if (slides.length > 0) return slides;
 
   // Last-ditch fallback: every SlideArchive in the document, unordered.
-  return registry.entriesOfTypes(typeIds("SlideArchive")).map((entry) => entry.message as SlideArchive);
+  return registry.entriesOfTypes(typeIds("SlideArchive"));
 }
 
 function findShow(registry: Registry): ShowArchive | undefined {
@@ -101,14 +107,15 @@ function slideReferences(show: ShowArchive, registry: Registry): Array<bigint> {
   return ordered;
 }
 
-function slideForNode(id: bigint, registry: Registry): SlideArchive | undefined {
+function slideEntryForNode(id: bigint, registry: Registry): RegistryEntry | undefined {
   const entry = registry.get(id);
   if (!entry) return undefined;
 
-  if (isType(entry.type, "SlideArchive")) return entry.message as SlideArchive;
+  if (isType(entry.type, "SlideArchive")) return entry;
 
   if (isType(entry.type, "SlideNodeArchive")) {
-    return registry.resolve<SlideArchive>((entry.message as SlideNodeArchive).slide);
+    const slideRef = (entry.message as SlideNodeArchive).slide;
+    return slideRef ? registry.get(slideRef.identifier) : undefined;
   }
 
   return undefined;

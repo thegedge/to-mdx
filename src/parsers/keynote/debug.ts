@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { orderedSlideArchives } from "./extract/document.ts";
 import type { Presentation } from "./model.ts";
 import type { Registry, RegistryEntry } from "./registry.ts";
 import { typeIds, typeName } from "./type_ids.ts";
@@ -27,7 +28,7 @@ export async function writeDebugDump(
     presentation,
   };
 
-  await writeFile(dumpPath, JSON.stringify(dump, replaceBigInt, 2));
+  await writeFile(dumpPath, JSON.stringify(dump, replaceBigInt));
   console.log(`🐛 Wrote Keynote debug dump to ${dumpPath}`);
 }
 
@@ -54,7 +55,9 @@ const RAW_DUMP_CAP = 1000;
 export async function writeRawDump(dumpPath: string, registry: Registry): Promise<void> {
   const wanted = new Set<bigint>();
 
-  const slides = registry.entriesOfTypes(typeIds("SlideArchive")).slice(0, 3);
+  // First three slides in PRESENTATION order (real content), not registry order
+  // (which surfaces master/layout templates holding placeholder default text).
+  const slides = orderedSlideArchives(registry).slice(0, 3);
   for (const slide of slides) collectTransitive(slide.id, registry, wanted);
 
   const metadataTypes = new Set<number>([...typeIds("PackageMetadata"), ...typeIds("PasteboardMetadata")]);
@@ -67,7 +70,7 @@ export async function writeRawDump(dumpPath: string, registry: Registry): Promis
     if (entry) objects.push(toRawObject(entry));
   }
 
-  await writeFile(dumpPath, JSON.stringify(objects, replaceBigInt, 2));
+  await writeFile(dumpPath, JSON.stringify(objects, replaceBigInt));
   console.log(`🐛 Wrote ${objects.length} raw Keynote objects to ${dumpPath}`);
 }
 

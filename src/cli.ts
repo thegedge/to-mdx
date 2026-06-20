@@ -3,6 +3,26 @@ import * as fs from "fs";
 import type { Options } from "./parsers.ts";
 import { parse } from "./parsers.ts";
 
+function gitToplevel(): string {
+  return execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
+}
+
+/**
+ * Output root: the git repo top-level when available, else the current working
+ * directory. Outside a repo we warn and degrade rather than exiting. The git
+ * runner is injectable so tests can exercise the fallback without spawning git.
+ */
+export function resolveProjectRoot(runGit: () => string = gitToplevel): string {
+  try {
+    const root = runGit().trim();
+    if (root) return root;
+  } catch {
+    // git missing or not a repo — fall through to cwd.
+  }
+  console.warn("⚠️  Not in a git repository; writing output relative to the current directory");
+  return process.cwd();
+}
+
 function showHelp(programName: string): void {
   console.log(`Usage: ${programName} [options] <presentation_file>`);
   console.log("");
@@ -58,13 +78,7 @@ export async function main(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  let projectRoot: string;
-  try {
-    projectRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
-  } catch {
-    console.error("Error: Not in a git repository.");
-    process.exit(1);
-  }
+  const projectRoot = resolveProjectRoot();
 
   await parse(projectRoot, presentationFile, options);
 }
