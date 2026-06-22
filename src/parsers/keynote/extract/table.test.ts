@@ -190,6 +190,85 @@ test("tableData derives a rowspan from a vertical 0xFFFF run", () => {
   });
 });
 
+test("tableData does not over-span a dense row sitting above sparse wide-anchor rows", () => {
+  // Row 0: a dense "bit" row, every column an anchor. Rows 1..2: sparse rows whose
+  // first anchor is at column 0 (no leading gap) with wide colspans covering the
+  // rest. The dense row must NOT inherit rowspans from the 0xFFFF cells below it.
+  const model: TableModelArchive = {
+    numberOfRows: 3,
+    numberOfColumns: 4,
+    baseDataStore: {
+      stringTable: ref(200n),
+      tiles: { tileSize: 256, tiles: [{ tileid: 0, tile: ref(300n) }] },
+    },
+  } as unknown as TableModelArchive;
+
+  const registry = buildRegistry([
+    mockObject(200n, 6005, {
+      listType: 1,
+      entries: [
+        { key: 1, string: "a" },
+        { key: 2, string: "b" },
+      ],
+    }),
+    mockObject(300n, 6002, {
+      rowInfos: [
+        {
+          tileRowIndex: 0,
+          cellStorageBuffer: concat(textCell(1), textCell(1), textCell(1), textCell(1)),
+          cellOffsets: offsets([0, 16, 32, 48]),
+        },
+        {
+          tileRowIndex: 1,
+          cellStorageBuffer: concat(textCell(2), textCell(2)),
+          cellOffsets: offsets([0, 0xffff, 16, 0xffff]),
+        },
+        {
+          tileRowIndex: 2,
+          cellStorageBuffer: concat(textCell(2), textCell(2)),
+          cellOffsets: offsets([0, 0xffff, 16, 0xffff]),
+        },
+      ],
+    }),
+  ]);
+
+  const rows = tableData(model, registry)?.rows;
+  assert.deepEqual(rows?.[0].map((c) => c.rowSpan), [1, 1, 1, 1]); // no bogus over-span
+});
+
+test("tableData spans a leading-gap anchor across rows whose first anchor is right of it", () => {
+  // Anchor at (0,0). Rows 1 and 2 have column 0 == 0xFFFF (a leading gap, since each
+  // row's first anchor is at column 1) → the top-left anchor spans all three rows.
+  const model: TableModelArchive = {
+    numberOfRows: 3,
+    numberOfColumns: 2,
+    baseDataStore: {
+      stringTable: ref(200n),
+      tiles: { tileSize: 256, tiles: [{ tileid: 0, tile: ref(300n) }] },
+    },
+  } as unknown as TableModelArchive;
+
+  const registry = buildRegistry([
+    mockObject(200n, 6005, {
+      listType: 1,
+      entries: [
+        { key: 1, string: "merged" },
+        { key: 2, string: "x" },
+      ],
+    }),
+    mockObject(300n, 6002, {
+      rowInfos: [
+        { tileRowIndex: 0, cellStorageBuffer: concat(textCell(1), textCell(2)), cellOffsets: offsets([0, 16]) },
+        { tileRowIndex: 1, cellStorageBuffer: textCell(2), cellOffsets: offsets([0xffff, 0]) },
+        { tileRowIndex: 2, cellStorageBuffer: textCell(2), cellOffsets: offsets([0xffff, 0]) },
+      ],
+    }),
+  ]);
+
+  const rows = tableData(model, registry)?.rows;
+  assert.equal(rows?.[0][0].rowSpan, 3); // leading 0xFFFF in rows 1,2 → vertical merge
+});
+
 test("tableData returns undefined when the data store or dimensions are missing", () => {
   const registry = buildRegistry([]);
   assert.equal(tableData({ numberOfRows: 2, numberOfColumns: 2 } as TableModelArchive, registry), undefined);

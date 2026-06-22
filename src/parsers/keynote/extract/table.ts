@@ -159,17 +159,29 @@ function colSpanAt(offsets: number[], c: number, columns: number): number {
 }
 
 /**
- * Rows an anchor covers: itself plus following rows whose column `c` is `NO_CELL`,
- * stopping at the first row that has an anchor there or that was never stored.
+ * Rows an anchor at `(r, c)` covers. In iWork sparse storage a `NO_CELL` column is
+ * covered horizontally by an anchor to its left in the same row, EXCEPT for the
+ * "leading" gap before a row's first anchor — that gap must be covered vertically
+ * by an anchor above. So extend downward only while the row below has `NO_CELL` at
+ * `c` AND `c` sits before that row's first anchor (a genuine leading gap). Stop at
+ * the first row where that fails (anchor present, gap is horizontal, or row absent).
  */
 function rowSpanAt(offsetsByRow: (number[] | undefined)[], r: number, c: number, rowCount: number): number {
   let span = 1;
   for (let rr = r + 1; rr < rowCount; rr++) {
     const below = offsetsByRow[rr];
-    if (!below || below[c] !== NO_CELL) break;
+    if (!below || below[c] !== NO_CELL || c >= firstAnchorColumn(below)) break;
     span++;
   }
   return span;
+}
+
+/** Smallest column with an anchor in `offsets`, or the column count if the row has none. */
+function firstAnchorColumn(offsets: number[]): number {
+  for (let col = 0; col < offsets.length; col++) {
+    if (offsets[col] !== NO_CELL) return col;
+  }
+  return offsets.length;
 }
 
 /**
