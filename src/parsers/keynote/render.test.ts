@@ -201,6 +201,63 @@ test("presentationToMdx separates consecutive slides with a blank line", () => {
   );
 });
 
+test("presentationToMdx emits a scoped <style> block and wraps the positioned box in a kn-box div", () => {
+  const mdx = presentationToMdx(
+    deck(
+      [
+        slide({ title: "Flow" }),
+        slide({
+          textBoxes: [
+            {
+              kind: "text",
+              paragraphs: [{ depth: 0, text: "99.9%" }],
+              box: { left: 10, top: 20, width: 30, height: 40 },
+              style: { fontSizeToken: "var(--text-4xl)", color: "#ff0000", fontWeight: 700, textAlign: "center" },
+            },
+          ],
+        }),
+      ],
+      [],
+      "Network Monitor",
+    ),
+  );
+
+  // The style block precedes the deck wrapper and is scoped to the slug.
+  assert.match(mdx, /^<style>\{`/);
+  assert.match(mdx, /\.slides\.network-monitor \.slide\[data-slide-number="2"\] \.kn-box-0 \{/);
+  assert.match(mdx, /position: absolute;/);
+  assert.match(mdx, /left: 10%;/);
+  assert.match(mdx, /top: 20%;/);
+  assert.match(mdx, /width: 30%;/);
+  assert.match(mdx, /height: 40%;/);
+  assert.match(mdx, /font-size: var\(--text-4xl\);/);
+  assert.match(mdx, /color: #ff0000;/);
+  assert.match(mdx, /font-weight: 700;/);
+  assert.match(mdx, /text-align: center;/);
+  // The box itself is wrapped for the selector to target.
+  assert.match(mdx, /<div className="kn-box-0">\n\s*99\.9%\n\s*<\/div>/);
+});
+
+test("presentationToMdx omits the <style> block when no text box is positioned or styled", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        title: "Title",
+        body: [{ depth: 0, text: "A bullet" }],
+        textBoxes: [{ kind: "text", paragraphs: [{ depth: 0, text: "loose caption" }] }],
+        images: [{ fileName: "pic.png", altText: "alt" }],
+      }),
+    ]),
+  );
+
+  assert.doesNotMatch(mdx, /<style>/);
+  // Title, body, and image stay in normal flow (unpositioned, no kn-box selector).
+  assert.match(mdx, /^<Slides /);
+  assert.match(mdx, /# Title/);
+  assert.match(mdx, /- A bullet/);
+  assert.match(mdx, /<Image src=/);
+});
+
 test("assembleMdxDocument puts a blank line between the exports and the body, and ends with a newline", () => {
   const doc = assembleMdxDocument("export const title = 'Deck';", "<Slides>\n<Slide />\n</Slides>");
 

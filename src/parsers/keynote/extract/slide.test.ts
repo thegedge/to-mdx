@@ -145,6 +145,72 @@ test("extractSlide falls back to the title placeholder when no Sage Title tag ex
   assert.equal(buildPresentation(registry, "x").slides[0].title, "Plain Title");
 });
 
+test("extractSlide captures a free text box's geometry and dominant paragraph style", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    mockObject(50n, T.shapeInfoArchive, {
+      ownedStorage: ref(51n),
+      super: { super: { geometry: { position: { x: 192, y: 108 }, size: { width: 960, height: 540 } } } },
+    }),
+    mockObject(51n, T.storageArchive, {
+      text: ["99.9% uptime"],
+      tableParaStyle: { entries: [{ characterIndex: 0, object: ref(52n) }] },
+    }),
+    // Paragraph style (type id irrelevant; the registry resolves by reference).
+    mockObject(52n, 9000, {
+      charProperties: { fontSize: 36, bold: true, fontColor: { r: 1, g: 0, b: 0 } },
+      paraProperties: { alignment: 2 },
+    }),
+  ]);
+
+  assert.deepEqual(buildPresentation(registry, "x").slides[0].textBoxes[0], {
+    kind: "text",
+    paragraphs: [{ depth: 0, text: "99.9% uptime" }],
+    box: { left: 10, top: 10, width: 50, height: 50 },
+    style: { fontSizeToken: "var(--text-4xl)", color: "#ff0000", fontWeight: 700, textAlign: "center" },
+  });
+});
+
+test("extractSlide applies the character-style fontColor as an override over the paragraph style", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    mockObject(50n, T.shapeInfoArchive, { ownedStorage: ref(51n) }),
+    mockObject(51n, T.storageArchive, {
+      text: ["Label"],
+      tableParaStyle: { entries: [{ characterIndex: 0, object: ref(52n) }] },
+      tableCharStyle: { entries: [{ characterIndex: 0, object: ref(53n) }] },
+    }),
+    mockObject(52n, 9000, { charProperties: { fontColor: { r: 1, g: 0, b: 0 } } }),
+    mockObject(53n, 9001, { charProperties: { fontColor: { r: 0, g: 0, b: 1 } } }),
+  ]);
+
+  assert.deepEqual(buildPresentation(registry, "x").slides[0].textBoxes[0], {
+    kind: "text",
+    paragraphs: [{ depth: 0, text: "Label" }],
+    style: { color: "#0000ff" },
+  });
+});
+
+test("extractSlide yields geometry but no style when a free text box has no resolvable style", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    mockObject(50n, T.shapeInfoArchive, {
+      ownedStorage: ref(51n),
+      super: { super: { geometry: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } } } },
+    }),
+    mockObject(51n, T.storageArchive, { text: ["A loose caption"] }),
+  ]);
+
+  assert.deepEqual(buildPresentation(registry, "x").slides[0].textBoxes[0], {
+    kind: "text",
+    paragraphs: [{ depth: 0, text: "A loose caption" }],
+    box: { left: 0, top: 0, width: 100, height: 100 },
+  });
+});
+
 test("extractSlide emits a fenced code block for a code-like text box", () => {
   const registry = buildRegistry([
     ...show(10n),

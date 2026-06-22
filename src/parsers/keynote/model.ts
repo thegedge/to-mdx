@@ -12,9 +12,32 @@ export interface SlideImage {
   altText: string;
 }
 
-/** A free-standing text box: either prose paragraphs or a detected code snippet. */
+/** A free text box's bounding box, expressed as percentages of the slide size. */
+export interface TextBoxGeometry {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Dominant visual styling extracted from a free text box's first paragraph/run. */
+export interface TextBoxStyle {
+  /** A `var(--text-*)` token nearest the box's point size. */
+  fontSizeToken?: string;
+  /** Text color as `#RRGGBB`. */
+  color?: string;
+  /** 700 when the dominant run is bold; otherwise omitted. */
+  fontWeight?: number;
+  textAlign?: "left" | "right" | "center" | "justify";
+}
+
+/**
+ * A free-standing text box: either prose paragraphs or a detected code snippet.
+ * Prose boxes may carry positioning (`box`) and visual styling (`style`) lifted
+ * from the slide so the renderer can place them absolutely; code boxes do not.
+ */
 export type TextBox =
-  | { kind: "text"; paragraphs: Paragraph[] }
+  | { kind: "text"; paragraphs: Paragraph[]; box?: TextBoxGeometry; style?: TextBoxStyle }
   | { kind: "code"; language: string; text: string };
 
 export interface Slide {

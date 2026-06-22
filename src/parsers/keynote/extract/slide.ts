@@ -13,6 +13,7 @@ import type {
 } from "../types.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, type RawBox, slideLayoutClass } from "./layout.ts";
+import { boxPercent, textBoxStyle } from "./style.ts";
 import { extractParagraphs, storageForShape } from "./text.ts";
 
 /** Title/body text inherited from a slide's master, treated as "empty" if unchanged. */
@@ -53,6 +54,8 @@ interface Collected {
   tableCount: number;
   /** Geometry of contentful drawables, in slide (point) coordinates, for layout heuristics. */
   geometries: RawBox[];
+  /** Slide size (points), used to express free text-box geometry as percentages. */
+  slideSize: { width: number; height: number };
 }
 
 export function extractSlide(
@@ -62,7 +65,7 @@ export function extractSlide(
   placements: SlidePlacements = NO_PLACEMENTS,
   layout: LayoutContext = NO_LAYOUT,
 ): Slide {
-  const collected = collectFromSlide(slide, registry);
+  const collected = collectFromSlide(slide, registry, layout.slideSize);
   const title = pickTitle(slide, collected, defaults.titles);
 
   return {
@@ -100,7 +103,7 @@ function masterName(slide: SlideArchive, registry: Registry): string | undefined
 
 /** Title/body placeholder texts of a (master) slide, used to detect inherited defaults. */
 export function slidePlaceholderTexts(slide: SlideArchive, registry: Registry): { titles: string[]; bodies: string[] } {
-  const collected = collectFromSlide(slide, registry);
+  const collected = collectFromSlide(slide, registry, NO_LAYOUT.slideSize);
   // Masters carry their default title in the Sage "Title" drawable too, so a
   // content slide inheriting that exact string must be treated as inherited.
   const titles = [...collected.titles.map(joinText), joinText(collected.sageTitle)];
@@ -110,8 +113,20 @@ export function slidePlaceholderTexts(slide: SlideArchive, registry: Registry): 
   };
 }
 
-function collectFromSlide(slide: SlideArchive, registry: Registry): Collected {
-  const collected: Collected = { titles: [], sageTitle: [], bodies: [], textBoxes: [], tableCount: 0, geometries: [] };
+function collectFromSlide(
+  slide: SlideArchive,
+  registry: Registry,
+  slideSize: { width: number; height: number },
+): Collected {
+  const collected: Collected = {
+    titles: [],
+    sageTitle: [],
+    bodies: [],
+    textBoxes: [],
+    tableCount: 0,
+    geometries: [],
+    slideSize,
+  };
   const handled = new Set<bigint>();
 
   // Modern decks keep a content slide's real title in the Sage-tagged "Title"
@@ -173,17 +188,53 @@ function processRef(
   if (isType(entry.type, "PlaceholderArchive")) {
     const placeholder = entry.message as PlaceholderArchive;
     const resolvedRole = role ?? roleFromKind(placeholder.kind);
-    const paragraphs = extractParagraphs(storageForShape(placeholder.super, registry), registry);
-    bucketParagraphs(resolvedRole, paragraphs, collected);
+    const storage = storageForShape(placeholder.super, registry);
+    const paragraphs = extractParagraphs(storage, registry);
+    collectText(resolvedRole, paragraphs, placeholder, storage, registry, collected);
     if (paragraphs.length > 0) pushGeometry(placeholder, collected);
     return;
   }
 
   if (isType(entry.type, "ShapeInfoArchive")) {
-    const paragraphs = extractParagraphs(storageForShape(entry.message as ShapeInfoArchive, registry), registry);
-    bucketParagraphs(role, paragraphs, collected);
-    if (paragraphs.length > 0) pushGeometry(entry.message, collected);
+    const shape = entry.message as ShapeInfoArchive;
+    const storage = storageForShape(shape, registry);
+    const paragraphs = extractParagraphs(storage, registry);
+    collectText(role, paragraphs, shape, storage, registry, collected);
+    if (paragraphs.length > 0) pushGeometry(shape, collected);
   }
+}
+
+/**
+ * Buckets a drawable's paragraphs as title/body, or — when it carries no
+ * placeholder role — as a free text box, lifting its positioning and visual
+ * style so the renderer can place it absolutely (code boxes stay unstyled).
+ */
+function collectText(
+  role: Role,
+  paragraphs: Paragraph[],
+  message: unknown,
+  storage: StorageArchive | undefined,
+  registry: Registry,
+  collected: Collected,
+): void {
+  if (bucketParagraphs(role, paragraphs, collected) || paragraphs.length === 0) return;
+  collected.textBoxes.push(freeTextBox(paragraphs, message, storage, registry, collected.slideSize));
+}
+
+/** Builds a free text box, attaching geometry/style only to prose (not code) boxes. */
+function freeTextBox(
+  paragraphs: Paragraph[],
+  message: unknown,
+  storage: StorageArchive | undefined,
+  registry: Registry,
+  slideSize: { width: number; height: number },
+): TextBox {
+  const textBox = asTextBox(paragraphs);
+  if (textBox.kind !== "text") return textBox;
+
+  const box = boxPercent(drawableGeometry(message), slideSize);
+  const style = textBoxStyle(storage, registry);
+  return { ...textBox, ...(box ? { box } : {}), ...(style ? { style } : {}) };
 }
 
 /** Records a drawable's geometry (walked through its `super` chain) for layout heuristics. */
@@ -220,16 +271,17 @@ interface GeometryLike {
   size?: { width?: number; height?: number };
 }
 
-function bucketParagraphs(role: Role, paragraphs: Paragraph[], collected: Collected): void {
+/** Files title/body paragraphs by role. Returns whether the role consumed them. */
+function bucketParagraphs(role: Role, paragraphs: Paragraph[], collected: Collected): boolean {
   if (role === "title") {
     collected.titles.push(paragraphs);
-    return;
+    return true;
   }
   if (role === "body") {
     collected.bodies.push(paragraphs);
-    return;
+    return true;
   }
-  if (paragraphs.length > 0) collected.textBoxes.push(asTextBox(paragraphs));
+  return false;
 }
 
 function roleFromKind(kind: number | undefined): Role {
