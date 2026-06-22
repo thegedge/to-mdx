@@ -63,10 +63,11 @@ export function extractSlide(
   layout: LayoutContext = NO_LAYOUT,
 ): Slide {
   const collected = collectFromSlide(slide, registry);
+  const title = pickTitle(slide, collected, defaults.titles);
 
   return {
-    className: layout.useHeuristics ? classifyLayout(slide, registry, collected, layout.slideSize) : undefined,
-    title: pickTitle(slide, collected, defaults.titles),
+    className: layout.useHeuristics ? classifyLayout(slide, registry, collected, layout.slideSize, title) : undefined,
+    title,
     body: pickBody(collected.bodies, defaults.bodies),
     textBoxes: collected.textBoxes,
     images: placements.images,
@@ -81,9 +82,11 @@ function classifyLayout(
   registry: Registry,
   collected: Collected,
   slideSize: { width: number; height: number },
+  title: string | undefined,
 ): string | undefined {
   return slideLayoutClass({
     masterName: masterName(slide, registry),
+    title,
     contentBox: contentBoxPercent(collected.geometries, slideSize),
   });
 }

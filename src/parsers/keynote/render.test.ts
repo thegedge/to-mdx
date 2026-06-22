@@ -7,8 +7,8 @@ function slide(overrides: Partial<Slide> = {}): Slide {
   return { body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [], ...overrides };
 }
 
-function deck(slides: Slide[], unplacedImages: string[] = []): Presentation {
-  return { title: "Deck", slides, unplacedImages };
+function deck(slides: Slide[], unplacedImages: string[] = [], title = "Deck"): Presentation {
+  return { title, slides, unplacedImages };
 }
 
 test("escapeMdxText escapes the MDX-significant < > { } characters", () => {
@@ -21,7 +21,7 @@ test("escapeMdxText escapes the MDX-significant < > { } characters", () => {
 });
 
 test("presentationToMdx fully escapes < > and { } in a speaker note instead of emitting raw JSX", () => {
-  const mdx = presentationToMdx(deck([slide({ notes: [{ depth: 0, text: "press <click> when a > b" }] })]), "base");
+  const mdx = presentationToMdx(deck([slide({ notes: [{ depth: 0, text: "press <click> when a > b" }] })]));
   assert.doesNotMatch(mdx, /<click>/);
   assert.doesNotMatch(mdx, / > /);
   assert.match(mdx, /press &lt;click&gt; when a &gt; b/);
@@ -36,7 +36,6 @@ test("presentationToMdx escapes < > { } in titles, bullets, and prose text boxes
         textBoxes: [{ kind: "text", paragraphs: [{ depth: 0, text: "a <b> {c}" }] }],
       }),
     ]),
-    "base",
   );
   assert.doesNotMatch(mdx, /<Heading>/);
   assert.match(mdx, /# &lt;Heading&gt;/);
@@ -47,7 +46,6 @@ test("presentationToMdx escapes < > { } in titles, bullets, and prose text boxes
 test("presentationToMdx emits a code text box verbatim, leaving < > { } unescaped inside the fence", () => {
   const mdx = presentationToMdx(
     deck([slide({ textBoxes: [{ kind: "code", language: "tsx", text: "const x = <T>{1}</T>" }] })]),
-    "base",
   );
   assert.match(mdx, /const x = <T>\{1\}<\/T>/);
   assert.doesNotMatch(mdx, /&lt;/);
@@ -56,22 +54,26 @@ test("presentationToMdx emits a code text box verbatim, leaving < > { } unescape
   assert.doesNotMatch(mdx, /&#125;/);
 });
 
-test("presentationToMdx wraps all slides in <Slides> and a slide in <Slide> with indented content", () => {
-  const presentation = deck([
-    slide({
-      title: "Intro",
-      body: [
-        { depth: 0, text: "Top" },
-        { depth: 1, text: "Nested" },
-        { depth: 2, text: "Deeper" },
-      ],
-    }),
-  ]);
+test("presentationToMdx wraps slides in <Slides> with a title slug and backgroundRoot={imageRoot}", () => {
+  const presentation = deck(
+    [
+      slide({
+        title: "Intro",
+        body: [
+          { depth: 0, text: "Top" },
+          { depth: 1, text: "Nested" },
+          { depth: 2, text: "Deeper" },
+        ],
+      }),
+    ],
+    [],
+    "Network Monitor",
+  );
 
   assert.equal(
-    presentationToMdx(presentation, "2026-01-01_deck"),
+    presentationToMdx(presentation),
     [
-      "<Slides>",
+      '<Slides className="network-monitor" backgroundRoot={imageRoot}>',
       "<Slide>",
       "  # Intro",
       "",
@@ -85,12 +87,15 @@ test("presentationToMdx wraps all slides in <Slides> and a slide in <Slide> with
 });
 
 test("presentationToMdx renders a className on the <Slide> tag when present", () => {
-  const mdx = presentationToMdx(deck([slide({ className: "title centered", title: "Hi" })]), "base");
+  const mdx = presentationToMdx(deck([slide({ className: "title centered", title: "Hi" })]));
   assert.match(mdx, /<Slide className="title centered">\n {2}# Hi\n<\/Slide>/);
 });
 
 test("presentationToMdx renders an empty slide as a self-closing <Slide />", () => {
-  assert.equal(presentationToMdx(deck([slide()]), "base"), "<Slides>\n<Slide />\n</Slides>");
+  assert.equal(
+    presentationToMdx(deck([slide()])),
+    '<Slides className="deck" backgroundRoot={imageRoot}>\n<Slide />\n</Slides>',
+  );
 });
 
 test("presentationToMdx renders speaker notes as a nested unordered list inside <SpeakerNotes>", () => {
@@ -105,9 +110,9 @@ test("presentationToMdx renders speaker notes as a nested unordered list inside 
   ]);
 
   assert.equal(
-    presentationToMdx(presentation, "base"),
+    presentationToMdx(presentation),
     [
-      "<Slides>",
+      '<Slides className="deck" backgroundRoot={imageRoot}>',
       "<Slide>",
       "  # Talk",
       "",
@@ -121,36 +126,42 @@ test("presentationToMdx renders speaker notes as a nested unordered list inside 
   );
 });
 
-test("presentationToMdx embeds images and emits table/video comments inside the slide", () => {
+test("presentationToMdx embeds images as <Image>, videos as <video>, and a table comment inside the slide", () => {
   const mdx = presentationToMdx(
     deck([slide({ images: [{ fileName: "pic.png", altText: "alt" }], videos: ["clip.mov"], tableCount: 2 })]),
-    "base",
   );
 
-  assert.match(mdx, /!\[alt\]\(\/img\/presentations\/base\/pic\.png\)/);
-  assert.match(mdx, /\{\/\* video: \/img\/presentations\/base\/clip\.mov \*\/\}/);
+  assert.match(mdx, /<Image src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
+  assert.match(mdx, /<video controls src=\{`\$\{imageRoot\}\/clip\.mov`\}><\/video>/);
   assert.match(mdx, /\{\/\* 2 table\(s\) on this slide were not extracted \*\/\}/);
 });
 
 test("presentationToMdx renders a code text box as a fenced block with its language", () => {
-  const mdx = presentationToMdx(
-    deck([slide({ textBoxes: [{ kind: "code", language: "ruby", text: "def foo\n  bar\nend" }] })]),
-    "base",
-  );
+  const mdx = presentationToMdx(deck([slide({ textBoxes: [{ kind: "code", language: "ruby", text: "def foo\n  bar\nend" }] })]));
 
   assert.equal(
     mdx,
-    ["<Slides>", "<Slide>", "  ```ruby", "  def foo", "    bar", "  end", "  ```", "</Slide>", "</Slides>"].join("\n"),
+    [
+      '<Slides className="deck" backgroundRoot={imageRoot}>',
+      "<Slide>",
+      "  ```ruby",
+      "  def foo",
+      "    bar",
+      "  end",
+      "  ```",
+      "</Slide>",
+      "</Slides>",
+    ].join("\n"),
   );
 });
 
-test("presentationToMdx appends the unplaced-images section after </Slides>", () => {
+test("presentationToMdx appends the unplaced-images section as <Image> after </Slides>", () => {
   const presentation = deck([slide({ title: "Only" })], ["lost-1.png", "lost-2.png"]);
 
   assert.equal(
-    presentationToMdx(presentation, "base"),
+    presentationToMdx(presentation),
     [
-      "<Slides>",
+      '<Slides className="deck" backgroundRoot={imageRoot}>',
       "<Slide>",
       "  # Only",
       "</Slide>",
@@ -158,25 +169,35 @@ test("presentationToMdx appends the unplaced-images section after </Slides>", ()
       "",
       "{/* Unplaced images: these could not be linked to a slide (container lost to a partially-decoded chunk) */}",
       "",
-      "![image](/img/presentations/base/lost-1.png)",
+      "<Image src={`${imageRoot}/lost-1.png`} role=\"presentation\" alt=\"\" />",
       "",
-      "![image](/img/presentations/base/lost-2.png)",
+      "<Image src={`${imageRoot}/lost-2.png`} role=\"presentation\" alt=\"\" />",
     ].join("\n"),
   );
 });
 
 test("presentationToMdx omits the unplaced-images section when the list is empty", () => {
-  const mdx = presentationToMdx(deck([slide({ title: "Only" })]), "base");
+  const mdx = presentationToMdx(deck([slide({ title: "Only" })]));
   assert.doesNotMatch(mdx, /Unplaced images/);
-  assert.match(mdx, /^<Slides>\n<Slide>\n {2}# Only\n<\/Slide>\n<\/Slides>$/);
+  assert.match(mdx, /^<Slides className="deck" backgroundRoot=\{imageRoot\}>\n<Slide>\n {2}# Only\n<\/Slide>\n<\/Slides>$/);
 });
 
 test("presentationToMdx separates consecutive slides with a blank line", () => {
-  const mdx = presentationToMdx(deck([slide({ title: "One" }), slide({ title: "Two" })]), "base");
+  const mdx = presentationToMdx(deck([slide({ title: "One" }), slide({ title: "Two" })]));
 
   assert.equal(
     mdx,
-    ["<Slides>", "<Slide>", "  # One", "</Slide>", "", "<Slide>", "  # Two", "</Slide>", "</Slides>"].join("\n"),
+    [
+      '<Slides className="deck" backgroundRoot={imageRoot}>',
+      "<Slide>",
+      "  # One",
+      "</Slide>",
+      "",
+      "<Slide>",
+      "  # Two",
+      "</Slide>",
+      "</Slides>",
+    ].join("\n"),
   );
 });
 

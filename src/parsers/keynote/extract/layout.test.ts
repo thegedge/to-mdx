@@ -10,7 +10,14 @@ const T = KeynoteType;
 test("slideLayoutClass maps a known master name to the ODP layout vocabulary", () => {
   assert.equal(slideLayoutClass({ masterName: "Title & Bullets" }), "title-with-points");
   assert.equal(slideLayoutClass({ masterName: "Comparison" }), "two-column");
-  assert.equal(slideLayoutClass({ masterName: "Title - Center" }), "title centered");
+  assert.equal(slideLayoutClass({ masterName: "Title - Center" }), "title");
+});
+
+test("slideLayoutClass maps a Thanks!/Thank you title to the thank-you layout", () => {
+  assert.equal(slideLayoutClass({ title: "Thanks!" }), "thank-you");
+  assert.equal(slideLayoutClass({ title: "Thank you" }), "thank-you");
+  assert.equal(slideLayoutClass({ title: "thank you" }), "thank-you");
+  assert.equal(slideLayoutClass({ title: "Questions?" }), undefined);
 });
 
 test("slideLayoutClass returns undefined for an unknown master and no geometry", () => {

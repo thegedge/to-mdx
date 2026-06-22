@@ -28,6 +28,11 @@ test("generateMetadataExports JSON-serializes objects, arrays, and newline strin
   assert.match(mdx, /export const description = "line one\\nline two";/);
 });
 
+test("generateMetadataExports emits an imageRoot export when provided", () => {
+  const mdx = generateMetadataExports({ title: "X", imageRoot: "/img/presentations/2026-01-01_x" });
+  assert.match(mdx, /export const imageRoot = "\/img\/presentations\/2026-01-01_x";/);
+});
+
 test("generateMetadataExports skips the date and metadata keys", () => {
   const mdx = generateMetadataExports({ title: "X", date: new Date(), metadata: { foo: 1 } });
   assert.doesNotMatch(mdx, /export const date/);

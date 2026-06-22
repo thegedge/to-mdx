@@ -15,7 +15,7 @@ export interface RawBox {
  * Keynote themes, and real decks rename or add masters freely.
  */
 const MASTER_NAME_CLASSES: Record<string, string> = {
-  "Title - Center": "title centered",
+  "Title - Center": "title",
   "Title & Speaker": "title",
   "Title & Bullets": "title-with-points",
   Comparison: "two-column",
@@ -23,23 +23,34 @@ const MASTER_NAME_CLASSES: Record<string, string> = {
   "Photo & Text": "blank",
 };
 
+/** Slide titles that map directly to the `thank-you` closing layout. */
+const THANK_YOU_TITLES = new Set(["thanks!", "thank you"]);
+
+/** The `thank-you` layout class for a closing slide whose title says thanks. */
+function thankYouClass(title: string | undefined): string | undefined {
+  return title && THANK_YOU_TITLES.has(title.trim().toLowerCase()) ? "thank-you" : undefined;
+}
+
 export interface SlideLayoutInput {
   /** The slide's master/template name, if resolvable. */
   masterName?: string;
+  /** The slide's resolved title, for title-based layout rules. */
+  title?: string;
   /** Bounding box of the slide's contentful drawables, in slide-size percentages. */
   contentBox?: LayoutBox | null;
 }
 
 /**
- * Derives a slide's layout CSS class from its master name and the geometry of its
- * content, reusing the shared centering kernel. Returns undefined when nothing
- * classifies. Callers gate this on `options.useHeuristics`.
+ * Derives a slide's layout CSS class from its master name, its title, and the
+ * geometry of its content, reusing the shared centering kernel. Returns undefined
+ * when nothing classifies. Callers gate this on `options.useHeuristics`.
  */
-export function slideLayoutClass({ masterName, contentBox }: SlideLayoutInput): string | undefined {
+export function slideLayoutClass({ masterName, title, contentBox }: SlideLayoutInput): string | undefined {
   const fromMaster = masterName ? MASTER_NAME_CLASSES[masterName] : undefined;
+  const fromTitle = thankYouClass(title);
   const fromCentering = contentBox ? centeringLayoutClass(contentBox) : null;
 
-  const className = cls(fromMaster, fromCentering);
+  const className = cls(fromMaster, fromTitle, fromCentering);
   return className.length > 0 ? className : undefined;
 }
 

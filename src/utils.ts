@@ -15,6 +15,19 @@ export const cls = (...classes: ClassValue[]): string => {
   return clsx(classes.map((c) => (c instanceof Style ? c.toString() : c)));
 };
 
+/**
+ * Lower-cases and hyphenates a string for use as a CSS/slug identifier, e.g.
+ * "Network Monitor" → "network-monitor". Collapses any run of non-alphanumeric
+ * characters to a single hyphen and trims leading/trailing hyphens.
+ */
+export const kebabCase = (text: string): string => {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+
 export const convertCmToPercent = (value: Maybe<string>, pageDimension?: number): string | null => {
   if (!value || !pageDimension) {
     return null;

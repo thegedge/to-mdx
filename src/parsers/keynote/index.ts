@@ -49,9 +49,9 @@ export async function parse(outputRoot: string, presentationFile: string, option
 
   await copyImages(presentation, dataFiles, basename, outputRoot);
 
-  const metadata: Record<string, unknown> = { title };
+  const metadata: Record<string, unknown> = { title, imageRoot: `/img/presentations/${basename}` };
   const metadataExports = generateMetadataExports(metadata);
-  const content = presentationToMdx(presentation, basename);
+  const content = presentationToMdx(presentation);
 
   const relativeOutputFile = path.join("src/pages/presentations", generateFilename(date, title));
   const outputFile = path.join(outputRoot, relativeOutputFile);
