@@ -1,15 +1,19 @@
 import { kebabCase } from "../../utils.ts";
-import type { Paragraph, Presentation, Slide, TextBox } from "./model.ts";
+import type { Paragraph, Presentation, Slide, SlideImage, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
 
 /**
- * A JSX `src` attribute value that resolves the file against the exported
- * `imageRoot` const, e.g. `src={`${imageRoot}/pic.png`}`. Built by string
- * concatenation so the literal backticks and `${…}` survive into the MDX output.
+ * A JSX attribute that resolves a file against the exported `imageRoot` const,
+ * e.g. `src={`${imageRoot}/pic.png`}`. Built by string concatenation so the
+ * literal backticks and `${…}` survive into the MDX output.
  */
+function rootedAttr(name: string, fileName: string): string {
+  return name + "={`${imageRoot}/" + fileName + "`}";
+}
+
 function imageSrc(fileName: string): string {
-  return "src={`${imageRoot}/" + fileName + "`}";
+  return rootedAttr("src", fileName);
 }
 
 /**
@@ -63,19 +67,43 @@ function renderStyleBlock(presentation: Presentation, slug: string): string {
   const rules: string[] = [];
 
   presentation.slides.forEach((slide, slideIndex) => {
+    const scope = `.slides.${slug} .slide[data-slide-number="${slideIndex + 1}"]`;
+
     slide.textBoxes.forEach((textBox, boxIndex) => {
       if (textBox.kind !== "text") return;
       const declarations = boxDeclarations(textBox);
       if (declarations.length === 0) return;
+      rules.push(formatRule(`${scope} .kn-box-${boxIndex}`, declarations));
+    });
 
-      const selector = `.slides.${slug} .slide[data-slide-number="${slideIndex + 1}"] .kn-box-${boxIndex}`;
-      const body = declarations.map((declaration) => `    ${declaration}`).join("\n");
-      rules.push(`  ${selector} {\n${body}\n  }`);
+    // Positioned images sit beneath text (z-index 1 vs 2) so attribution/label
+    // text boxes stay legible over diagrams and media.
+    slide.images.forEach((image, imageIndex) => {
+      if (!image.box) return;
+      rules.push(formatRule(`${scope} .kn-img-${imageIndex}`, imageDeclarations(image.box)));
     });
   });
 
   if (rules.length === 0) return "";
   return `<style>{\`\n${rules.join("\n\n")}\n\`}</style>`;
+}
+
+/** Formats one indented CSS rule from a selector and its declarations. */
+function formatRule(selector: string, declarations: string[]): string {
+  const body = declarations.map((declaration) => `    ${declaration}`).join("\n");
+  return `  ${selector} {\n${body}\n  }`;
+}
+
+/** Absolute-positioning declarations for a placed image, layered below text. */
+function imageDeclarations(box: TextBoxGeometry): string[] {
+  return [
+    "position: absolute;",
+    `left: ${percent(box.left)}%;`,
+    `top: ${percent(box.top)}%;`,
+    `width: ${percent(box.width)}%;`,
+    `height: ${percent(box.height)}%;`,
+    "z-index: 1;",
+  ];
 }
 
 /** The CSS declarations for one free text box, in source order, skipping absent properties. */
@@ -88,6 +116,8 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): string[] 
     declarations.push(`top: ${percent(textBox.box.top)}%;`);
     declarations.push(`width: ${percent(textBox.box.width)}%;`);
     declarations.push(`height: ${percent(textBox.box.height)}%;`);
+    // Above positioned images (z-index 1) so text labels stay on top of media.
+    declarations.push("z-index: 2;");
   }
 
   const style = textBox.style;
@@ -120,11 +150,28 @@ function renderUnplacedImages(fileNames: string[]): string {
 }
 
 function renderSlide(slide: Slide): string {
+  const attributes = slideAttributes(slide);
   const blocks = slideBlocks(slide);
-  if (blocks.length === 0) return "<Slide />";
+  if (blocks.length === 0) return attributes ? `<Slide ${attributes} />` : "<Slide />";
 
-  const open = slide.className ? `<Slide className="${slide.className}">` : "<Slide>";
+  const open = attributes ? `<Slide ${attributes}>` : "<Slide>";
   return `${open}\n${indent(blocks.join("\n\n"))}\n</Slide>`;
+}
+
+/**
+ * The `<Slide>` tag's attributes: the (inferred) layout class, plus a promoted
+ * full-bleed `background` rendered `cover` (`opaqueBackground`, no contain). The
+ * background attributes are emitted whenever one was promoted, independent of the
+ * heuristics gate that governs the class.
+ */
+function slideAttributes(slide: Slide): string {
+  const parts: string[] = [];
+  if (slide.className) parts.push(`className="${slide.className}"`);
+  if (slide.background) {
+    parts.push(rootedAttr("background", slide.background));
+    parts.push("opaqueBackground");
+  }
+  return parts.join(" ");
 }
 
 function slideBlocks(slide: Slide): string[] {
@@ -137,9 +184,9 @@ function slideBlocks(slide: Slide): string[] {
     blocks.push(renderTextBox(textBox, index));
   });
 
-  for (const image of slide.images) {
-    blocks.push(`<Image ${imageSrc(image.fileName)} role="presentation" alt="${escapeMdxText(image.altText)}" />`);
-  }
+  slide.images.forEach((image, index) => {
+    blocks.push(renderImage(image, index));
+  });
 
   for (const video of slide.videos) {
     blocks.push(`<video controls ${imageSrc(video)}></video>`);
@@ -153,6 +200,16 @@ function slideBlocks(slide: Slide): string[] {
   if (notes) blocks.push(notes);
 
   return blocks.filter((block) => block.length > 0);
+}
+
+/**
+ * An `<Image>` block. Images carrying geometry get a `.kn-img-N` class so the
+ * generated stylesheet can position them absolutely; un-positioned images stay
+ * in normal flow.
+ */
+function renderImage(image: SlideImage, index: number): string {
+  const className = image.box ? ` className="kn-img-${index}"` : "";
+  return `<Image${className} ${imageSrc(image.fileName)} role="presentation" alt="${escapeMdxText(image.altText)}" />`;
 }
 
 function renderSpeakerNotes(notes: Paragraph[]): string {

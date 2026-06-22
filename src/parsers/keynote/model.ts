@@ -10,6 +10,12 @@ export interface SlideImage {
   /** Resolved `Data/`-relative file name as stored in the zip. */
   fileName: string;
   altText: string;
+  /**
+   * The image's bounding box as slide-size percentages, lifted from the
+   * drawable's geometry. Present only when geometry resolved; drives absolute
+   * positioning (`.kn-img-*`) and full-bleed-background detection.
+   */
+  box?: TextBoxGeometry;
 }
 
 /** A free text box's bounding box, expressed as percentages of the slide size. */
@@ -43,6 +49,12 @@ export type TextBox =
 export interface Slide {
   /** Slide-layout CSS class derived from heuristics; absent when heuristics are off. */
   className?: string;
+  /**
+   * File name of a dominant full-bleed image promoted to the slide background
+   * (rendered `cover`, behind content). When set, that image is removed from
+   * `images` so it is not also rendered inline.
+   */
+  background?: string;
   title?: string;
   body: Paragraph[];
   textBoxes: TextBox[];

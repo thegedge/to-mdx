@@ -191,6 +191,46 @@ test("buildPresentation collects resolvable but unlinkable images into unplacedI
   assert.ok(!presentation.unplacedImages.includes("placed-100.png"));
 });
 
+test("buildPresentation promotes a full-bleed image to the slide background and keeps small ones inline", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] }, size: { width: 1920, height: 1080 } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n), ref(10n)], drawablesZOrder: [] }),
+    // Full-bleed: covers the entire slide → becomes the background.
+    mockObject(9n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "bg",
+        parent: ref(4n),
+        geometry: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } },
+      },
+      data: ref(100n),
+    }),
+    // Small diagram: stays inline, positioned via its box.
+    mockObject(10n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "diagram",
+        parent: ref(4n),
+        geometry: { position: { x: 192, y: 108 }, size: { width: 384, height: 216 } },
+      },
+      data: ref(200n),
+    }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/bg-100.png", new Uint8Array()],
+    ["Data/diagram-200.png", new Uint8Array()],
+  ]);
+
+  const presentation = buildPresentation(registry, "x", dataFiles);
+  const slide = presentation.slides[0];
+
+  assert.equal(slide.background, "bg-100.png");
+  assert.deepEqual(slide.images, [
+    { fileName: "diagram-200.png", altText: "diagram", box: { left: 10, top: 10, width: 20, height: 20 } },
+  ]);
+  // The promoted background must not leak into the unplaced-images appendix.
+  assert.ok(!presentation.unplacedImages.includes("bg-100.png"));
+});
+
 function slideWithTitle(slideId: bigint, storageId: bigint, title: string) {
   return [
     mockObject(slideId, T.slideArchive, { titlePlaceholder: ref(storageId + 1000n), ownedDrawables: [], drawablesZOrder: [] }),

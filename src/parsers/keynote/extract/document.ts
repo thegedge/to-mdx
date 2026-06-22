@@ -1,6 +1,7 @@
-import type { Presentation, Slide } from "../model.ts";
+import type { Presentation, Slide, SlideImage } from "../model.ts";
 import type { Registry, RegistryEntry } from "../registry.ts";
 import { isType, typeIds } from "../type_ids.ts";
+import { cls } from "../../../utils.ts";
 import type {
   DocumentArchive,
   ImageArchive,
@@ -17,8 +18,10 @@ import {
   imageFromArchive,
   videoFileFromArchive,
 } from "./images.ts";
+import { drawableGeometry, isFullBleed } from "./layout.ts";
 import type { LayoutContext } from "./slide.ts";
 import { owningSlideId } from "./ownership.ts";
+import { boxPercent } from "./style.ts";
 import type { SlideDefaults, SlidePlacements } from "./slide.ts";
 import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
 
@@ -37,16 +40,22 @@ export function buildPresentation(
 
   const orderedEntries = orderedSlideArchives(registry);
   const contentSlideIds = new Set(orderedEntries.map((entry) => entry.id));
-  const placements = placeDrawables(registry, contentSlideIds, dataFileNames, dataInfo);
+  const slideSize = resolveSlideSize(registry);
+  const placements = placeDrawables(registry, contentSlideIds, dataFileNames, dataInfo, slideSize);
 
-  const layout: LayoutContext = { useHeuristics, slideSize: resolveSlideSize(registry) };
+  const layout: LayoutContext = { useHeuristics, slideSize };
 
   const slides = orderedEntries.map((entry) => {
     const slide = entry.message as SlideArchive;
-    return extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id), layout);
+    const extracted = extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id), layout);
+    return promoteBackground(extracted, useHeuristics);
   });
 
-  const placed = new Set(slides.flatMap((slide) => slide.images.map((image) => image.fileName)));
+  // A promoted background image stays "placed" even though it left `slide.images`.
+  const placed = new Set([
+    ...slides.flatMap((slide) => slide.images.map((image) => image.fileName)),
+    ...slides.flatMap((slide) => (slide.background ? [slide.background] : [])),
+  ]);
   const unplacedImages = [...distinctImageFileNames(registry, dataFiles)]
     .filter((fileName) => !placed.has(fileName))
     .sort();
@@ -66,6 +75,7 @@ function placeDrawables(
   contentSlideIds: Set<bigint>,
   dataFileNames: Map<number, string>,
   dataInfo: Map<bigint, string>,
+  slideSize: { width: number; height: number },
 ): Map<bigint, SlidePlacements> {
   const placements = new Map<bigint, SlidePlacements>();
   const placed = new Set<bigint>();
@@ -85,6 +95,8 @@ function placeDrawables(
     const image = entry.message as ImageArchive;
     const resolved = imageFromArchive(image, dataFileNames, dataInfo, image.super?.accessibilityDescription ?? "");
     if (!resolved) continue;
+    const box = boxPercent(drawableGeometry(image), slideSize);
+    if (box) resolved.box = box;
     placed.add(entry.id);
     slotFor(slideId).images.push(resolved);
   }
@@ -100,6 +112,29 @@ function placeDrawables(
   }
 
   return placements;
+}
+
+/**
+ * Promotes a slide's dominant full-bleed image to its background: detects images
+ * whose box bleeds across the whole slide, picks the largest by area, sets it as
+ * `slide.background`, and drops it from the inline `images` list so it is not
+ * double-rendered. The remaining images stay inline (positioned). The inferred
+ * `blank` layout class is added only when heuristics are on; the background
+ * itself is always promoted.
+ */
+function promoteBackground(slide: Slide, useHeuristics: boolean): Slide {
+  const candidates = slide.images.filter((image): image is SlideImage & { box: NonNullable<SlideImage["box"]> } => {
+    return image.box !== undefined && isFullBleed(image.box);
+  });
+  if (candidates.length === 0) return slide;
+
+  const background = candidates.reduce((best, image) =>
+    image.box.width * image.box.height > best.box.width * best.box.height ? image : best,
+  );
+
+  const images = slide.images.filter((image) => image !== background);
+  const className = useHeuristics ? cls(slide.className, "blank") || undefined : slide.className;
+  return { ...slide, className, background: background.fileName, images };
 }
 
 function presentationTitle(slides: Slide[], fallbackTitle: string): string {

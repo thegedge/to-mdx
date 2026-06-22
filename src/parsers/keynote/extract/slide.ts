@@ -12,7 +12,7 @@ import type {
   StorageArchive,
 } from "../types.ts";
 import { asTextBox } from "./code.ts";
-import { contentBoxPercent, type RawBox, slideLayoutClass } from "./layout.ts";
+import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
 import { boxPercent, textBoxStyle } from "./style.ts";
 import { extractParagraphs, storageForShape } from "./text.ts";
 
@@ -241,34 +241,6 @@ function freeTextBox(
 function pushGeometry(message: unknown, collected: Collected): void {
   const box = drawableGeometry(message);
   if (box) collected.geometries.push(box);
-}
-
-/**
- * A drawable's bounding box lives on the `TSD.GeometryArchive` reached through the
- * `super` chain (shallow), mirroring how `parentReference` finds `parent`.
- */
-function drawableGeometry(message: unknown): RawBox | undefined {
-  let node: unknown = message;
-  for (let depth = 0; node && typeof node === "object" && depth < 8; depth += 1) {
-    const geometry = (node as { geometry?: GeometryLike }).geometry;
-    const position = geometry?.position;
-    const size = geometry?.size;
-    if (
-      position?.x !== undefined &&
-      position.y !== undefined &&
-      size?.width !== undefined &&
-      size.height !== undefined
-    ) {
-      return { x: position.x, y: position.y, width: size.width, height: size.height };
-    }
-    node = (node as { super?: unknown }).super;
-  }
-  return undefined;
-}
-
-interface GeometryLike {
-  position?: { x?: number; y?: number };
-  size?: { width?: number; height?: number };
 }
 
 /** Files title/body paragraphs by role. Returns whether the role consumed them. */

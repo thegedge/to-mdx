@@ -28,6 +28,9 @@ const FONT_SIZE_TOKENS: ReadonlyArray<{ token: string; px: number }> = [
   { token: "4xl", px: 36 },
   { token: "5xl", px: 48 },
   { token: "6xl", px: 64 },
+  { token: "7xl", px: 72 },
+  { token: "8xl", px: 96 },
+  { token: "9xl", px: 128 },
 ];
 
 /** Maps a point size to the `var(--text-*)` token nearest it (capped at the ends of the scale). */

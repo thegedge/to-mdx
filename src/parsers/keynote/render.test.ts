@@ -238,6 +238,31 @@ test("presentationToMdx emits a scoped <style> block and wraps the positioned bo
   assert.match(mdx, /<div className="kn-box-0">\n\s*99\.9%\n\s*<\/div>/);
 });
 
+test("presentationToMdx renders a promoted full-bleed image as the slide background (cover, no contain)", () => {
+  const mdx = presentationToMdx(deck([slide({ title: "Bg", background: "x.png", className: "blank" })]));
+
+  assert.match(mdx, /<Slide className="blank" background=\{`\$\{imageRoot\}\/x\.png`\} opaqueBackground>/);
+  assert.doesNotMatch(mdx, /backgroundContain/);
+});
+
+test("presentationToMdx layers positioned text (z-index 2) above positioned images (z-index 1)", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          { kind: "text", paragraphs: [{ depth: 0, text: "label" }], box: { left: 5, top: 5, width: 20, height: 10 } },
+        ],
+        images: [{ fileName: "diagram.png", altText: "d", box: { left: 10, top: 10, width: 50, height: 50 } }],
+      }),
+    ]),
+  );
+
+  assert.match(mdx, /\.kn-img-0 \{[^}]*z-index: 1;/);
+  assert.match(mdx, /\.kn-box-0 \{[^}]*z-index: 2;/);
+  // A positioned image carries the kn-img class so its rule targets it.
+  assert.match(mdx, /<Image className="kn-img-0" src=\{`\$\{imageRoot\}\/diagram\.png`\}/);
+});
+
 test("presentationToMdx omits the <style> block when no text box is positioned or styled", () => {
   const mdx = presentationToMdx(
     deck([

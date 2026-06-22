@@ -1,4 +1,5 @@
 import { centeringLayoutClass, type LayoutBox } from "../../../heuristics/slide-layout.ts";
+import type { TextBoxGeometry } from "../model.ts";
 import { cls } from "../../../utils.ts";
 
 /** A drawable's geometry in slide (point) coordinates, as decoded from the archive. */
@@ -7,6 +8,50 @@ export interface RawBox {
   y: number;
   width: number;
   height: number;
+}
+
+interface GeometryLike {
+  position?: { x?: number; y?: number };
+  size?: { width?: number; height?: number };
+}
+
+/**
+ * A drawable's bounding box lives on the `TSD.GeometryArchive` reached through the
+ * `super` chain (shallow), mirroring how `parentReference` finds `parent`. Shared
+ * by the text pass (free-box positioning) and the image-placement pass.
+ */
+export function drawableGeometry(message: unknown): RawBox | undefined {
+  let node: unknown = message;
+  for (let depth = 0; node && typeof node === "object" && depth < 8; depth += 1) {
+    const geometry = (node as { geometry?: GeometryLike }).geometry;
+    const position = geometry?.position;
+    const size = geometry?.size;
+    if (
+      position?.x !== undefined &&
+      position.y !== undefined &&
+      size?.width !== undefined &&
+      size.height !== undefined
+    ) {
+      return { x: position.x, y: position.y, width: size.width, height: size.height };
+    }
+    node = (node as { super?: unknown }).super;
+  }
+  return undefined;
+}
+
+/**
+ * Slide-size-percentage thresholds for treating an image as a full-bleed
+ * background: either it covers ≳95% of both axes, or it sits flush to the
+ * top-left (inset ≤2%) and spans ≳98% of both axes (i.e. bleeds off the edge).
+ */
+const FULL_BLEED = { minCoverage: 95, maxInset: 2, minExtent: 98 } as const;
+
+/** Whether an image box is large enough to serve as the slide's background. */
+export function isFullBleed(box: TextBoxGeometry): boolean {
+  const coversBoth = box.width >= FULL_BLEED.minCoverage && box.height >= FULL_BLEED.minCoverage;
+  const bleedsX = box.left <= FULL_BLEED.maxInset && box.left + box.width >= FULL_BLEED.minExtent;
+  const bleedsY = box.top <= FULL_BLEED.maxInset && box.top + box.height >= FULL_BLEED.minExtent;
+  return coversBoth || (bleedsX && bleedsY);
 }
 
 /**

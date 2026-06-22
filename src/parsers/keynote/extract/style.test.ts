@@ -9,8 +9,13 @@ test("fontSizeToken maps a point size to the nearest --text-* token", () => {
   assert.equal(fontSizeToken(19), "var(--text-lg)");
 });
 
+test("fontSizeToken maps the large display sizes onto the extended token scale", () => {
+  assert.equal(fontSizeToken(72), "var(--text-7xl)");
+  assert.equal(fontSizeToken(96), "var(--text-8xl)");
+});
+
 test("fontSizeToken caps at the ends of the scale", () => {
-  assert.equal(fontSizeToken(100), "var(--text-6xl)");
+  assert.equal(fontSizeToken(150), "var(--text-9xl)");
   assert.equal(fontSizeToken(1), "var(--text-4xs)");
 });
 
