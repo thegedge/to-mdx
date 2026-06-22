@@ -271,8 +271,8 @@ export function renderTable(table: TableData): string {
 /** A single `<td>` with span attributes (omitted when 1) and escaped text. */
 function renderCell(cell: TableCell): string {
   let attrs = "";
-  if (cell.colSpan > 1) attrs += ` colspan="${cell.colSpan}"`;
-  if (cell.rowSpan > 1) attrs += ` rowspan="${cell.rowSpan}"`;
+  if (cell.colSpan > 1) attrs += ` colSpan={${cell.colSpan}}`;
+  if (cell.rowSpan > 1) attrs += ` rowSpan={${cell.rowSpan}}`;
   return `<td${attrs}>${cellHtml(cell.text)}</td>`;
 }
 

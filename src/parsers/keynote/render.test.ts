@@ -161,15 +161,15 @@ test("presentationToMdx renders a table with a kn-table class, span attrs, escap
   );
 
   assert.match(mdx, /<table className="kn-table">/);
-  assert.equal(mdx.includes('<td colspan="8">Header</td>'), true);
+  assert.equal(mdx.includes("<td colSpan={8}>Header</td>"), true);
   assert.equal(mdx.includes("<td>a &lt;b&gt;</td>"), true);
   assert.equal(mdx.includes("<td>line1<br/>line2</td>"), true);
 });
 
 test("presentationToMdx renders a rowspan attribute and omits span attrs of 1", () => {
   const mdx = presentationToMdx(deck([slide({ tables: [{ rows: [[cell("merged", 1, 3)]] }] })]));
-  assert.equal(mdx.includes('<td rowspan="3">merged</td>'), true);
-  assert.doesNotMatch(mdx, /colspan/);
+  assert.equal(mdx.includes("<td rowSpan={3}>merged</td>"), true);
+  assert.doesNotMatch(mdx, /colSpan/);
 });
 
 test("presentationToMdx emits one shared scoped <style> rule for tables, scoped to the deck slug", () => {
