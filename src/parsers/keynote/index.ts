@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import dedent from "dedent-js";
 import { generateMetadataExports } from "../../generators/mdx.ts";
 import type { Options } from "../../parsers.ts";
 import { decodeKeynote, partialEntriesWarning } from "./decode.ts";
@@ -11,7 +10,7 @@ import { distinctImageFileNames, imageCoverageWarning } from "./extract/images.t
 import type { Presentation } from "./model.ts";
 import { formatDate, generateFilename, sanitizeFilename, titleFromPath } from "./metadata.ts";
 import { typeIds } from "./type_ids.ts";
-import { presentationToMdx } from "./render.ts";
+import { assembleMdxDocument, presentationToMdx } from "./render.ts";
 
 export async function parse(outputRoot: string, presentationFile: string, options: Options = {}): Promise<void> {
   const { registry, dataFiles, warnings, partialEntries } = await decodeKeynote(presentationFile);
@@ -57,13 +56,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
   const relativeOutputFile = path.join("src/pages/presentations", generateFilename(date, title));
   const outputFile = path.join(outputRoot, relativeOutputFile);
   await mkdir(path.dirname(outputFile), { recursive: true });
-  await writeFile(
-    outputFile,
-    dedent`
-      ${metadataExports}
-      ${content}
-    ` + "\n",
-  );
+  await writeFile(outputFile, assembleMdxDocument(metadataExports, content));
 
   if (allWarnings.length > 0) {
     console.warn(`⚠️  ${allWarnings.length} warning(s) while parsing Keynote file (first 10):`);

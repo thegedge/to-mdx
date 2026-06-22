@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Presentation, Slide } from "./model.ts";
-import { escapeMdxText, presentationToMdx } from "./render.ts";
+import { assembleMdxDocument, escapeMdxText, presentationToMdx } from "./render.ts";
 
 function slide(overrides: Partial<Slide> = {}): Slide {
   return { body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [], ...overrides };
@@ -11,19 +11,23 @@ function deck(slides: Slide[], unplacedImages: string[] = []): Presentation {
   return { title: "Deck", slides, unplacedImages };
 }
 
-test("escapeMdxText escapes MDX-significant < and { only", () => {
-  assert.equal(escapeMdxText("<click>"), "&lt;click>");
-  assert.equal(escapeMdxText("a {b} c"), "a &#123;b} c");
+test("escapeMdxText escapes the MDX-significant < > { } characters", () => {
+  assert.equal(escapeMdxText("<click>"), "&lt;click&gt;");
+  assert.equal(escapeMdxText("a {b} c"), "a &#123;b&#125; c");
+  assert.equal(escapeMdxText(">"), "&gt;");
+  assert.equal(escapeMdxText("}"), "&#125;");
+  assert.equal(escapeMdxText("a > b"), "a &gt; b");
   assert.equal(escapeMdxText("plain text 100% safe"), "plain text 100% safe");
 });
 
-test("presentationToMdx escapes a < in a speaker note instead of emitting raw JSX", () => {
-  const mdx = presentationToMdx(deck([slide({ notes: [{ depth: 0, text: "press <click> now" }] })]), "base");
+test("presentationToMdx fully escapes < > and { } in a speaker note instead of emitting raw JSX", () => {
+  const mdx = presentationToMdx(deck([slide({ notes: [{ depth: 0, text: "press <click> when a > b" }] })]), "base");
   assert.doesNotMatch(mdx, /<click>/);
-  assert.match(mdx, /&lt;click> now/);
+  assert.doesNotMatch(mdx, / > /);
+  assert.match(mdx, /press &lt;click&gt; when a &gt; b/);
 });
 
-test("presentationToMdx escapes < and { in titles, bullets, and prose text boxes", () => {
+test("presentationToMdx escapes < > { } in titles, bullets, and prose text boxes", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -35,19 +39,21 @@ test("presentationToMdx escapes < and { in titles, bullets, and prose text boxes
     "base",
   );
   assert.doesNotMatch(mdx, /<Heading>/);
-  assert.match(mdx, /# &lt;Heading>/);
-  assert.match(mdx, /- use &#123;value}/);
-  assert.match(mdx, /a &lt;b> &#123;c}/);
+  assert.match(mdx, /# &lt;Heading&gt;/);
+  assert.match(mdx, /- use &#123;value&#125;/);
+  assert.match(mdx, /a &lt;b&gt; &#123;c&#125;/);
 });
 
-test("presentationToMdx emits a code text box verbatim, leaving < and { unescaped inside the fence", () => {
+test("presentationToMdx emits a code text box verbatim, leaving < > { } unescaped inside the fence", () => {
   const mdx = presentationToMdx(
     deck([slide({ textBoxes: [{ kind: "code", language: "tsx", text: "const x = <T>{1}</T>" }] })]),
     "base",
   );
   assert.match(mdx, /const x = <T>\{1\}<\/T>/);
   assert.doesNotMatch(mdx, /&lt;/);
+  assert.doesNotMatch(mdx, /&gt;/);
   assert.doesNotMatch(mdx, /&#123;/);
+  assert.doesNotMatch(mdx, /&#125;/);
 });
 
 test("presentationToMdx wraps all slides in <Slides> and a slide in <Slide> with indented content", () => {
@@ -163,4 +169,20 @@ test("presentationToMdx omits the unplaced-images section when the list is empty
   const mdx = presentationToMdx(deck([slide({ title: "Only" })]), "base");
   assert.doesNotMatch(mdx, /Unplaced images/);
   assert.match(mdx, /^<Slides>\n<Slide>\n {2}# Only\n<\/Slide>\n<\/Slides>$/);
+});
+
+test("presentationToMdx separates consecutive slides with a blank line", () => {
+  const mdx = presentationToMdx(deck([slide({ title: "One" }), slide({ title: "Two" })]), "base");
+
+  assert.equal(
+    mdx,
+    ["<Slides>", "<Slide>", "  # One", "</Slide>", "", "<Slide>", "  # Two", "</Slide>", "</Slides>"].join("\n"),
+  );
+});
+
+test("assembleMdxDocument puts a blank line between the exports and the body, and ends with a newline", () => {
+  const doc = assembleMdxDocument("export const title = 'Deck';", "<Slides>\n<Slide />\n</Slides>");
+
+  assert.equal(doc, "export const title = 'Deck';\n\n<Slides>\n<Slide />\n</Slides>\n");
+  assert.match(doc, /;\n\n<Slides>/);
 });

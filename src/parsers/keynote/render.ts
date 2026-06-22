@@ -3,16 +3,29 @@ import type { Paragraph, Presentation, Slide, TextBox } from "./model.ts";
 const INDENT = "  ";
 
 /**
- * Makes plain text safe as MDX flow content. Only `<` (parsed as a JSX tag) and
- * `{` (parsed as a JS expression) are significant; everything else is literal.
- * Do not use on code spans/fences (which are already literal in MDX).
+ * Makes plain text safe as MDX flow content. The angle brackets `<`/`>` (parsed
+ * as JSX tags) and braces `{`/`}` (parsed as JS expressions) are significant;
+ * everything else is literal. Do not use on code spans/fences (already literal).
  */
 export function escapeMdxText(text: string): string {
-  return text.replace(/</g, "&lt;").replace(/\{/g, "&#123;");
+  return text
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\{/g, "&#123;")
+    .replace(/\}/g, "&#125;");
+}
+
+/**
+ * Joins the metadata exports and the rendered MDX body with a blank line between
+ * them, and a trailing newline. Kept separate so the blank line is asserted in
+ * isolation (a template literal here would invite `dedent` to collapse it).
+ */
+export function assembleMdxDocument(metadataExports: string, content: string): string {
+  return `${metadataExports}\n\n${content}\n`;
 }
 
 export function presentationToMdx(presentation: Presentation, basename: string): string {
-  const slides = presentation.slides.map((slide) => renderSlide(slide, basename)).join("\n");
+  const slides = presentation.slides.map((slide) => renderSlide(slide, basename)).join("\n\n");
 
   let output = `<Slides>\n${slides}\n</Slides>`;
 
