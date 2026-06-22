@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Presentation, Slide } from "./model.ts";
-import { presentationToMdx } from "./render.ts";
+import { escapeMdxText, presentationToMdx } from "./render.ts";
 
 function slide(overrides: Partial<Slide> = {}): Slide {
   return { body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [], ...overrides };
@@ -10,6 +10,45 @@ function slide(overrides: Partial<Slide> = {}): Slide {
 function deck(slides: Slide[], unplacedImages: string[] = []): Presentation {
   return { title: "Deck", slides, unplacedImages };
 }
+
+test("escapeMdxText escapes MDX-significant < and { only", () => {
+  assert.equal(escapeMdxText("<click>"), "&lt;click>");
+  assert.equal(escapeMdxText("a {b} c"), "a &#123;b} c");
+  assert.equal(escapeMdxText("plain text 100% safe"), "plain text 100% safe");
+});
+
+test("presentationToMdx escapes a < in a speaker note instead of emitting raw JSX", () => {
+  const mdx = presentationToMdx(deck([slide({ notes: [{ depth: 0, text: "press <click> now" }] })]), "base");
+  assert.doesNotMatch(mdx, /<click>/);
+  assert.match(mdx, /&lt;click> now/);
+});
+
+test("presentationToMdx escapes < and { in titles, bullets, and prose text boxes", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        title: "<Heading>",
+        body: [{ depth: 0, text: "use {value}" }],
+        textBoxes: [{ kind: "text", paragraphs: [{ depth: 0, text: "a <b> {c}" }] }],
+      }),
+    ]),
+    "base",
+  );
+  assert.doesNotMatch(mdx, /<Heading>/);
+  assert.match(mdx, /# &lt;Heading>/);
+  assert.match(mdx, /- use &#123;value}/);
+  assert.match(mdx, /a &lt;b> &#123;c}/);
+});
+
+test("presentationToMdx emits a code text box verbatim, leaving < and { unescaped inside the fence", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ textBoxes: [{ kind: "code", language: "tsx", text: "const x = <T>{1}</T>" }] })]),
+    "base",
+  );
+  assert.match(mdx, /const x = <T>\{1\}<\/T>/);
+  assert.doesNotMatch(mdx, /&lt;/);
+  assert.doesNotMatch(mdx, /&#123;/);
+});
 
 test("presentationToMdx wraps all slides in <Slides> and a slide in <Slide> with indented content", () => {
   const presentation = deck([

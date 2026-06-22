@@ -2,6 +2,15 @@ import type { Paragraph, Presentation, Slide, TextBox } from "./model.ts";
 
 const INDENT = "  ";
 
+/**
+ * Makes plain text safe as MDX flow content. Only `<` (parsed as a JSX tag) and
+ * `{` (parsed as a JS expression) are significant; everything else is literal.
+ * Do not use on code spans/fences (which are already literal in MDX).
+ */
+export function escapeMdxText(text: string): string {
+  return text.replace(/</g, "&lt;").replace(/\{/g, "&#123;");
+}
+
 export function presentationToMdx(presentation: Presentation, basename: string): string {
   const slides = presentation.slides.map((slide) => renderSlide(slide, basename)).join("\n");
 
@@ -40,7 +49,7 @@ function renderSlide(slide: Slide, basename: string): string {
 function slideBlocks(slide: Slide, basename: string): string[] {
   const blocks: string[] = [];
 
-  if (slide.title) blocks.push(`# ${slide.title}`);
+  if (slide.title) blocks.push(`# ${escapeMdxText(slide.title)}`);
   if (slide.body.length > 0) blocks.push(renderBullets(slide.body));
 
   for (const textBox of slide.textBoxes) {
@@ -48,7 +57,7 @@ function slideBlocks(slide: Slide, basename: string): string[] {
   }
 
   for (const image of slide.images) {
-    blocks.push(`![${image.altText}](/img/presentations/${basename}/${image.fileName})`);
+    blocks.push(`![${escapeMdxText(image.altText)}](/img/presentations/${basename}/${image.fileName})`);
   }
 
   for (const video of slide.videos) {
@@ -71,14 +80,16 @@ function renderSpeakerNotes(notes: Paragraph[]): string {
 }
 
 function renderBullets(paragraphs: Paragraph[]): string {
-  return paragraphs.map((paragraph) => `${INDENT.repeat(Math.max(0, paragraph.depth))}- ${paragraph.text}`).join("\n");
+  return paragraphs
+    .map((paragraph) => `${INDENT.repeat(Math.max(0, paragraph.depth))}- ${escapeMdxText(paragraph.text)}`)
+    .join("\n");
 }
 
 function renderTextBox(textBox: TextBox): string {
   if (textBox.kind === "code") {
     return `\`\`\`${textBox.language}\n${textBox.text}\n\`\`\``;
   }
-  return textBox.paragraphs.map((paragraph) => paragraph.text).join("\n\n");
+  return textBox.paragraphs.map((paragraph) => escapeMdxText(paragraph.text)).join("\n\n");
 }
 
 /** Indents every non-blank line by two spaces (slide content sits inside `<Slide>`). */
