@@ -17,6 +17,26 @@ function imageSrc(fileName: string): string {
 }
 
 /**
+ * One JSX inline-style entry: a camelCase property and its value. String values
+ * are emitted quoted (`"10%"`); number values are emitted bare (`700`), matching
+ * how React/JSX style objects accept unitless numerics.
+ */
+type Declaration = readonly [property: string, value: string | number];
+
+/**
+ * Turns ordered style declarations into a JSX `style={{ … }}` attribute string,
+ * e.g. `style={{ position: "absolute", left: "10%", fontWeight: 700 }}`. Returns
+ * an empty string when there is nothing to emit.
+ */
+export function styleAttr(declarations: Declaration[]): string {
+  if (declarations.length === 0) return "";
+  const body = declarations
+    .map(([property, value]) => `${property}: ${typeof value === "number" ? value : `"${value}"`}`)
+    .join(", ");
+  return `style={{ ${body} }}`;
+}
+
+/**
  * Makes plain text safe as MDX flow content. The angle brackets `<`/`>` (parsed
  * as JSX tags) and braces `{`/`}` (parsed as JS expressions) are significant;
  * everything else is literal. Do not use on code spans/fences (already literal).
@@ -46,11 +66,6 @@ export function presentationToMdx(presentation: Presentation): string {
   const className = kebabCase(presentation.title);
   let output = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
 
-  // Positioning/styling for free text boxes is a generated stylesheet that sits
-  // before the deck wrapper (scoped to its slug), so it applies to every slide.
-  const styleBlock = renderStyleBlock(presentation, className);
-  if (styleBlock) output = `${styleBlock}\n\n${output}`;
-
   // The unplaced-images section is not a slide, so it sits after the wrapper.
   const appendix = renderUnplacedImages(presentation.unplacedImages);
   if (appendix) output += `\n\n${appendix}`;
@@ -58,45 +73,9 @@ export function presentationToMdx(presentation: Presentation): string {
   return output;
 }
 
-/**
- * A scoped `<style>` block placing/styling free text boxes by slide order and
- * box index (`.kn-box-M`). Emits only the properties that were extracted, one
- * rule per box that has any, and nothing at all when no box is styled.
- */
-function renderStyleBlock(presentation: Presentation, slug: string): string {
-  const rules: string[] = [];
-
-  presentation.slides.forEach((slide, slideIndex) => {
-    const scope = `.slides.${slug} .slide[data-slide-number="${slideIndex + 1}"]`;
-
-    slide.textBoxes.forEach((textBox, boxIndex) => {
-      if (textBox.kind !== "text") return;
-      const declarations = boxDeclarations(textBox);
-      if (declarations.length === 0) return;
-      rules.push(formatRule(`${scope} .kn-box-${boxIndex}`, declarations));
-    });
-
-    // Positioned images sit beneath text (z-index 1 vs 2) so attribution/label
-    // text boxes stay legible over diagrams and media.
-    slide.images.forEach((image, imageIndex) => {
-      if (!image.box) return;
-      rules.push(formatRule(`${scope} .kn-img-${imageIndex}`, imageDeclarations(image.box)));
-    });
-  });
-
-  if (rules.length === 0) return "";
-  return `<style>{\`\n${rules.join("\n\n")}\n\`}</style>`;
-}
-
-/** Formats one indented CSS rule from a selector and its declarations. */
-function formatRule(selector: string, declarations: string[]): string {
-  const body = declarations.map((declaration) => `    ${declaration}`).join("\n");
-  return `  ${selector} {\n${body}\n  }`;
-}
-
 /** Absolute-positioning declarations for a placed image, layered below text. */
-function imageDeclarations(box: TextBoxGeometry): string[] {
-  return ["position: absolute;", ...positionRules(box), "z-index: 1;"];
+function imageDeclarations(box: TextBoxGeometry): Declaration[] {
+  return [["position", "absolute"], ...positionRules(box), ["zIndex", 1]];
 }
 
 /** A box dimension at or below this percentage is treated as "auto" (Keynote reports 0). */
@@ -110,36 +89,39 @@ const SIZE_EPSILON = 0.5;
  * measured from the far edge). When the size is real we keep the start + size as
  * before. Pure and data-driven so absent props are simply not emitted.
  */
-export function positionRules(box: TextBoxGeometry): string[] {
+export function positionRules(box: TextBoxGeometry): Declaration[] {
   return [
     ...axisRules("left", "right", "width", box.left, box.width),
     ...axisRules("top", "bottom", "height", box.top, box.height),
   ];
 }
 
-function axisRules(near: string, far: string, sizeProp: string, start: number, size: number): string[] {
+function axisRules(near: string, far: string, sizeProp: string, start: number, size: number): Declaration[] {
   if (size <= SIZE_EPSILON) {
-    return start <= 50 ? [`${near}: ${percent(start)}%;`] : [`${far}: ${percent(100 - start)}%;`];
+    return start <= 50 ? [[near, `${percent(start)}%`]] : [[far, `${percent(100 - start)}%`]];
   }
-  return [`${near}: ${percent(start)}%;`, `${sizeProp}: ${percent(size)}%;`];
+  return [
+    [near, `${percent(start)}%`],
+    [sizeProp, `${percent(size)}%`],
+  ];
 }
 
-/** The CSS declarations for one free text box, in source order, skipping absent properties. */
-function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): string[] {
-  const declarations: string[] = [];
+/** The inline-style declarations for one free text box, in source order, skipping absent properties. */
+function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): Declaration[] {
+  const declarations: Declaration[] = [];
 
   if (textBox.box) {
-    declarations.push("position: absolute;");
+    declarations.push(["position", "absolute"]);
     declarations.push(...positionRules(textBox.box));
     // Above positioned images (z-index 1) so text labels stay on top of media.
-    declarations.push("z-index: 2;");
+    declarations.push(["zIndex", 2]);
   }
 
   const style = textBox.style;
-  if (style?.fontSizeToken) declarations.push(`font-size: ${style.fontSizeToken};`);
-  if (style?.color) declarations.push(`color: ${style.color};`);
-  if (style?.fontWeight !== undefined) declarations.push(`font-weight: ${style.fontWeight};`);
-  if (style?.textAlign) declarations.push(`text-align: ${style.textAlign};`);
+  if (style?.fontSizeToken) declarations.push(["fontSize", style.fontSizeToken]);
+  if (style?.color) declarations.push(["color", style.color]);
+  if (style?.fontWeight !== undefined) declarations.push(["fontWeight", style.fontWeight]);
+  if (style?.textAlign) declarations.push(["textAlign", style.textAlign]);
 
   return declarations;
 }
@@ -183,7 +165,9 @@ function slideAttributes(slide: Slide): string {
   const parts: string[] = [];
   if (slide.className) parts.push(`className="${slide.className}"`);
   if (slide.background) {
-    parts.push(rootedAttr("background", slide.background));
+    // The `Slide` component prepends `backgroundRoot` (= imageRoot), so this is a
+    // bare file name; rooting it here would double the prefix and 404 the image.
+    parts.push(`background="${slide.background}"`);
     parts.push("opaqueBackground");
   }
   return parts.join(" ");
@@ -195,13 +179,13 @@ function slideBlocks(slide: Slide): string[] {
   if (slide.title) blocks.push(`# ${escapeMdxText(slide.title)}`);
   if (slide.body.length > 0) blocks.push(renderBullets(slide.body));
 
-  slide.textBoxes.forEach((textBox, index) => {
-    blocks.push(renderTextBox(textBox, index));
-  });
+  for (const textBox of slide.textBoxes) {
+    blocks.push(renderTextBox(textBox));
+  }
 
-  slide.images.forEach((image, index) => {
-    blocks.push(renderImage(image, index));
-  });
+  for (const image of slide.images) {
+    blocks.push(renderImage(image));
+  }
 
   for (const video of slide.videos) {
     blocks.push(`<video controls ${imageSrc(video)}></video>`);
@@ -222,13 +206,12 @@ function slideBlocks(slide: Slide): string[] {
 }
 
 /**
- * An `<Image>` block. Images carrying geometry get a `.kn-img-N` class so the
- * generated stylesheet can position them absolutely; un-positioned images stay
- * in normal flow.
+ * An `<Image>` block. Images carrying geometry get an inline `style` placing them
+ * absolutely (layered below text); un-positioned images stay in normal flow.
  */
-function renderImage(image: SlideImage, index: number): string {
-  const className = image.box ? ` className="kn-img-${index}"` : "";
-  return `<Image${className} ${imageSrc(image.fileName)} role="presentation" alt="${escapeMdxText(image.altText)}" />`;
+function renderImage(image: SlideImage): string {
+  const style = image.box ? `${styleAttr(imageDeclarations(image.box))} ` : "";
+  return `<Image ${style}${imageSrc(image.fileName)} role="presentation" alt="${escapeMdxText(image.altText)}" />`;
 }
 
 function renderSpeakerNotes(notes: Paragraph[]): string {
@@ -242,13 +225,15 @@ function renderBullets(paragraphs: Paragraph[]): string {
     .join("\n");
 }
 
-function renderTextBox(textBox: TextBox, index: number): string {
+function renderTextBox(textBox: TextBox): string {
   if (textBox.kind === "code") {
     return `\`\`\`${textBox.language}\n${textBox.text}\n\`\`\``;
   }
-  // Wrapped in a `.kn-box-N` div so the generated stylesheet can position/style it.
   const prose = textBox.paragraphs.map((paragraph) => escapeMdxText(paragraph.text)).join("\n\n");
-  return `<div className="kn-box-${index}">\n${prose}\n</div>`;
+  // Positioned/styled boxes get an inline-style div; otherwise the prose stays in
+  // normal flow with no wrapper (there is nothing to style).
+  const style = styleAttr(boxDeclarations(textBox));
+  return style ? `<div ${style}>\n${prose}\n</div>` : prose;
 }
 
 /**
@@ -262,10 +247,11 @@ export function renderTable(table: TableData): string {
   const rows = trimTable(table.rows);
   if (rows.length === 0) return "";
 
+  const cellStyle = `style={{ border: "1px solid currentColor", padding: "0.25em" }}`;
   const body = rows
-    .map((row) => `${INDENT}<tr>${row.map((cell) => `<td>${cellHtml(cell)}</td>`).join("")}</tr>`)
+    .map((row) => `${INDENT}<tr>${row.map((cell) => `<td ${cellStyle}>${cellHtml(cell)}</td>`).join("")}</tr>`)
     .join("\n");
-  return `<table>\n${body}\n</table>`;
+  return `<table style={{ borderCollapse: "collapse" }}>\n${body}\n</table>`;
 }
 
 /** Escapes a cell's text for MDX flow content, rendering newlines as line breaks. */

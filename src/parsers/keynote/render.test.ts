@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Presentation, Slide } from "./model.ts";
-import { assembleMdxDocument, escapeMdxText, positionRules, presentationToMdx } from "./render.ts";
+import { assembleMdxDocument, escapeMdxText, positionRules, presentationToMdx, styleAttr } from "./render.ts";
 
 function slide(overrides: Partial<Slide> = {}): Slide {
   return { body: [], textBoxes: [], images: [], videos: [], tables: [], tableCount: 0, notes: [], ...overrides };
@@ -152,7 +152,12 @@ test("presentationToMdx renders an extracted table as escaped HTML with <br/> fo
     ]),
   );
 
-  assert.match(mdx, /<table>\n {4}<tr><td>Header<\/td><td>a &lt;b&gt;<\/td><\/tr>\n {4}<tr><td>line1<br\/>line2<\/td><td><\/td><\/tr>\n {2}<\/table>/);
+  const td = '<td style={{ border: "1px solid currentColor", padding: "0.25em" }}>';
+  assert.match(mdx, /<table style=\{\{ borderCollapse: "collapse" \}\}>/);
+  assert.equal(mdx.includes(`${td}Header</td>`), true);
+  assert.equal(mdx.includes(`${td}a &lt;b&gt;</td>`), true);
+  assert.equal(mdx.includes(`${td}line1<br/>line2</td>`), true);
+  assert.equal(mdx.includes(`${td}</td>`), true);
 });
 
 test("presentationToMdx renders a code text box as a fenced block with its language", () => {
@@ -220,7 +225,7 @@ test("presentationToMdx separates consecutive slides with a blank line", () => {
   );
 });
 
-test("presentationToMdx emits a scoped <style> block and wraps the positioned box in a kn-box div", () => {
+test("presentationToMdx renders a positioned, styled text box as an inline-style div (no <style> block, no kn-box)", () => {
   const mdx = presentationToMdx(
     deck(
       [
@@ -241,30 +246,27 @@ test("presentationToMdx emits a scoped <style> block and wraps the positioned bo
     ),
   );
 
-  // The style block precedes the deck wrapper and is scoped to the slug.
-  assert.match(mdx, /^<style>\{`/);
-  assert.match(mdx, /\.slides\.network-monitor \.slide\[data-slide-number="2"\] \.kn-box-0 \{/);
-  assert.match(mdx, /position: absolute;/);
-  assert.match(mdx, /left: 10%;/);
-  assert.match(mdx, /top: 20%;/);
-  assert.match(mdx, /width: 30%;/);
-  assert.match(mdx, /height: 40%;/);
-  assert.match(mdx, /font-size: var\(--text-4xl\);/);
-  assert.match(mdx, /color: #ff0000;/);
-  assert.match(mdx, /font-weight: 700;/);
-  assert.match(mdx, /text-align: center;/);
-  // The box itself is wrapped for the selector to target.
-  assert.match(mdx, /<div className="kn-box-0">\n\s*99\.9%\n\s*<\/div>/);
+  // No generated stylesheet and no positioning class scheme survive.
+  assert.doesNotMatch(mdx, /<style>/);
+  assert.doesNotMatch(mdx, /kn-box/);
+  assert.doesNotMatch(mdx, /className="kn-/);
+
+  assert.match(
+    mdx,
+    /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", zIndex: 2, fontSize: "var\(--text-4xl\)", color: "#ff0000", fontWeight: 700, textAlign: "center" \}\}>\n\s*99\.9%\n\s*<\/div>/,
+  );
 });
 
-test("presentationToMdx renders a promoted full-bleed image as the slide background (cover, no contain)", () => {
+test("presentationToMdx renders a promoted full-bleed image as a bare-filename background (cover, no contain)", () => {
   const mdx = presentationToMdx(deck([slide({ title: "Bg", background: "x.png", className: "blank" })]));
 
-  assert.match(mdx, /<Slide className="blank" background=\{`\$\{imageRoot\}\/x\.png`\} opaqueBackground>/);
+  // Bare file name: the Slide component already prepends backgroundRoot (= imageRoot).
+  assert.match(mdx, /<Slide className="blank" background="x\.png" opaqueBackground>/);
+  assert.doesNotMatch(mdx, /background=\{`\$\{imageRoot\}/);
   assert.doesNotMatch(mdx, /backgroundContain/);
 });
 
-test("presentationToMdx layers positioned text (z-index 2) above positioned images (z-index 1)", () => {
+test("presentationToMdx layers positioned text (zIndex 2) above positioned images (zIndex 1) via inline style", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -276,13 +278,17 @@ test("presentationToMdx layers positioned text (z-index 2) above positioned imag
     ]),
   );
 
-  assert.match(mdx, /\.kn-img-0 \{[^}]*z-index: 1;/);
-  assert.match(mdx, /\.kn-box-0 \{[^}]*z-index: 2;/);
-  // A positioned image carries the kn-img class so its rule targets it.
-  assert.match(mdx, /<Image className="kn-img-0" src=\{`\$\{imageRoot\}\/diagram\.png`\}/);
+  assert.doesNotMatch(mdx, /<style>/);
+  // The image carries an inline absolute style (zIndex 1) and comes before src.
+  assert.match(
+    mdx,
+    /<Image style=\{\{ position: "absolute", left: "10%", width: "50%", top: "10%", height: "50%", zIndex: 1 \}\} src=\{`\$\{imageRoot\}\/diagram\.png`\}/,
+  );
+  // The text box is layered above it (zIndex 2).
+  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 2 \}\}>/);
 });
 
-test("presentationToMdx omits the <style> block when no text box is positioned or styled", () => {
+test("presentationToMdx leaves an unpositioned, unstyled text box in normal flow with no wrapper or <style>", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -295,28 +301,48 @@ test("presentationToMdx omits the <style> block when no text box is positioned o
   );
 
   assert.doesNotMatch(mdx, /<style>/);
-  // Title, body, and image stay in normal flow (unpositioned, no kn-box selector).
+  assert.doesNotMatch(mdx, /kn-box/);
   assert.match(mdx, /^<Slides /);
   assert.match(mdx, /# Title/);
   assert.match(mdx, /- A bullet/);
-  assert.match(mdx, /<Image src=/);
+  assert.match(mdx, /loose caption/);
+  // An unpositioned image stays in flow with no style attribute.
+  assert.match(mdx, /<Image src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
+});
+
+test("styleAttr quotes string values, leaves numbers bare, and returns '' when empty", () => {
+  assert.equal(
+    styleAttr([
+      ["position", "absolute"],
+      ["left", "10%"],
+      ["fontWeight", 700],
+    ]),
+    'style={{ position: "absolute", left: "10%", fontWeight: 700 }}',
+  );
+  assert.equal(styleAttr([]), "");
 });
 
 test("positionRules anchors a bottom-right auto-size box by its near (right/bottom) edges", () => {
-  assert.deepEqual(positionRules({ left: 94.4, top: 97.2, width: 0, height: 0 }), ["right: 5.6%;", "bottom: 2.8%;"]);
+  assert.deepEqual(positionRules({ left: 94.4, top: 97.2, width: 0, height: 0 }), [
+    ["right", "5.6%"],
+    ["bottom", "2.8%"],
+  ]);
 });
 
 test("positionRules keeps left/top/width/height for a real-sized box", () => {
   assert.deepEqual(positionRules({ left: 10, top: 20, width: 30, height: 40 }), [
-    "left: 10%;",
-    "width: 30%;",
-    "top: 20%;",
-    "height: 40%;",
+    ["left", "10%"],
+    ["width", "30%"],
+    ["top", "20%"],
+    ["height", "40%"],
   ]);
 });
 
 test("positionRules anchors a top-left auto-size box by left/top (no width/height)", () => {
-  assert.deepEqual(positionRules({ left: 28, top: 12, width: 0, height: 0 }), ["left: 28%;", "top: 12%;"]);
+  assert.deepEqual(positionRules({ left: 28, top: 12, width: 0, height: 0 }), [
+    ["left", "28%"],
+    ["top", "12%"],
+  ]);
 });
 
 test("presentationToMdx anchors a positioned auto-size box without emitting width:0", () => {
@@ -330,10 +356,9 @@ test("presentationToMdx anchors a positioned auto-size box without emitting widt
     ]),
   );
 
-  assert.match(mdx, /right: 5\.6%;/);
-  assert.match(mdx, /bottom: 2\.8%;/);
-  assert.doesNotMatch(mdx, /width: 0%;/);
-  assert.doesNotMatch(mdx, /height: 0%;/);
+  assert.match(mdx, /<div style=\{\{ position: "absolute", right: "5\.6%", bottom: "2\.8%", zIndex: 2 \}\}>/);
+  assert.doesNotMatch(mdx, /width: "0%"/);
+  assert.doesNotMatch(mdx, /height: "0%"/);
   assert.doesNotMatch(mdx, /left:/);
   assert.doesNotMatch(mdx, /top:/);
 });
