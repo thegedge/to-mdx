@@ -27,10 +27,11 @@ export async function parse(outputRoot: string, presentationFile: string, option
   const allWarnings = [...warnings, ...registry.warnings];
 
   const imageArchives = registry.entriesOfTypes(typeIds("ImageArchive")).length;
-  const extractedImages = presentation.slides.reduce((total, slide) => total + slide.images.length, 0);
-  if (imageArchives > 0 && extractedImages < imageArchives) {
+  const placedImages = presentation.slides.reduce((total, slide) => total + slide.images.length, 0);
+  if (imageArchives > 0 && placedImages < imageArchives) {
+    const unlinked = imageArchives - placedImages;
     allWarnings.push(
-      `Resolved ${extractedImages} of ${imageArchives} images; the rest had no data→filename mapping (run with --dump-keynote-raw to inspect)`,
+      `Placed ${placedImages} of ${imageArchives} images; ${unlinked} could not be linked to a slide (container lost to a partial chunk)`,
     );
   }
 

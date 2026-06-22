@@ -102,7 +102,7 @@ test("extractSlide resolves movies to a video data file", () => {
   const registry = buildRegistry([
     ...show(10n),
     mockObject(10n, T.slideArchive, { ownedDrawables: [ref(70n)], drawablesZOrder: [] }),
-    mockObject(70n, T.movieArchive, { super: {}, movieData: ref(700n) }),
+    mockObject(70n, T.movieArchive, { super: { parent: ref(10n) }, movieData: ref(700n) }),
     mockObject(80n, T.packageMetadata, { datas: [{ identifier: 700n, fileName: "demo.mov" }] }),
   ]);
 
@@ -113,7 +113,7 @@ test("extractSlide resolves an image via the Data/ filename map keyed by data id
   const registry = buildRegistry([
     ...show(10n),
     mockObject(10n, T.slideArchive, { ownedDrawables: [ref(70n)], drawablesZOrder: [] }),
-    mockObject(70n, T.imageArchive, { super: { accessibilityDescription: "card" }, data: ref(479n) }),
+    mockObject(70n, T.imageArchive, { super: { accessibilityDescription: "card", parent: ref(10n) }, data: ref(479n) }),
   ]);
   const dataFiles = new Map<string, Uint8Array>([["Data/unite-cardreader-small-479.jpg", new Uint8Array()]]);
 
@@ -126,7 +126,7 @@ test("extractSlide resolves a movie via the Data/ filename map keyed by movie da
   const registry = buildRegistry([
     ...show(10n),
     mockObject(10n, T.slideArchive, { ownedDrawables: [ref(70n)], drawablesZOrder: [] }),
-    mockObject(70n, T.movieArchive, { super: {}, movieData: ref(5855n) }),
+    mockObject(70n, T.movieArchive, { super: { parent: ref(10n) }, movieData: ref(5855n) }),
   ]);
   const dataFiles = new Map<string, Uint8Array>([["Data/black_friday-5855.mp4", new Uint8Array()]]);
 

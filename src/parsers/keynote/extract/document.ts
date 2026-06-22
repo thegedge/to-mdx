@@ -3,13 +3,16 @@ import type { Registry, RegistryEntry } from "../registry.ts";
 import { isType, typeIds } from "../type_ids.ts";
 import type {
   DocumentArchive,
+  ImageArchive,
+  MovieArchive,
   Reference,
   ShowArchive,
   SlideArchive,
   SlideNodeArchive,
 } from "../types.ts";
-import { buildDataFileNameMap, buildDataInfoMap } from "./images.ts";
-import type { SlideDefaults } from "./slide.ts";
+import { buildDataFileNameMap, buildDataInfoMap, imageFromArchive, videoFileFromArchive } from "./images.ts";
+import { owningSlideId } from "./ownership.ts";
+import type { SlideDefaults, SlidePlacements } from "./slide.ts";
 import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
 
 export function buildPresentation(
@@ -20,12 +23,65 @@ export function buildPresentation(
   const dataFileNames = buildDataFileNameMap(dataFiles);
   const dataInfo = buildDataInfoMap(registry);
   const defaultsFor = makeDefaultsResolver(registry);
-  const slides = orderedSlideArchives(registry).map((entry) => {
+
+  const orderedEntries = orderedSlideArchives(registry);
+  const contentSlideIds = new Set(orderedEntries.map((entry) => entry.id));
+  const placements = placeDrawables(registry, contentSlideIds, dataFileNames, dataInfo);
+
+  const slides = orderedEntries.map((entry) => {
     const slide = entry.message as SlideArchive;
-    return extractSlide(slide, registry, dataFileNames, dataInfo, defaultsFor(slide));
+    return extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id));
   });
 
   return { title: presentationTitle(slides, fallbackTitle), slides };
+}
+
+/**
+ * Places every ImageArchive/MovieArchive on its owning content slide by walking
+ * the drawable's parent chain upward (see `owningSlideId`). This is robust to
+ * unknown container types that a top-down drawable traversal would fail to
+ * descend into (e.g. animation-build groups), so it — not the text pass — is
+ * authoritative for images and movies. Deduped by archive id.
+ */
+function placeDrawables(
+  registry: Registry,
+  contentSlideIds: Set<bigint>,
+  dataFileNames: Map<number, string>,
+  dataInfo: Map<bigint, string>,
+): Map<bigint, SlidePlacements> {
+  const placements = new Map<bigint, SlidePlacements>();
+  const placed = new Set<bigint>();
+
+  const slotFor = (slideId: bigint): SlidePlacements => {
+    const existing = placements.get(slideId);
+    if (existing) return existing;
+    const slot: SlidePlacements = { images: [], videos: [] };
+    placements.set(slideId, slot);
+    return slot;
+  };
+
+  for (const entry of registry.entriesOfTypes(typeIds("ImageArchive"))) {
+    if (placed.has(entry.id)) continue;
+    const slideId = owningSlideId(entry, registry, contentSlideIds);
+    if (slideId === undefined) continue;
+    const image = entry.message as ImageArchive;
+    const resolved = imageFromArchive(image, dataFileNames, dataInfo, image.super?.accessibilityDescription ?? "");
+    if (!resolved) continue;
+    placed.add(entry.id);
+    slotFor(slideId).images.push(resolved);
+  }
+
+  for (const entry of registry.entriesOfTypes(typeIds("MovieArchive"))) {
+    if (placed.has(entry.id)) continue;
+    const slideId = owningSlideId(entry, registry, contentSlideIds);
+    if (slideId === undefined) continue;
+    const fileName = videoFileFromArchive(entry.message as MovieArchive, dataFileNames, dataInfo);
+    if (!fileName) continue;
+    placed.add(entry.id);
+    slotFor(slideId).videos.push(fileName);
+  }
+
+  return placements;
 }
 
 function presentationTitle(slides: Slide[], fallbackTitle: string): string {

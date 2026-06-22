@@ -4,8 +4,6 @@ import { isType } from "../type_ids.ts";
 import { PlaceholderKind } from "../types.ts";
 import type {
   GroupArchive,
-  ImageArchive,
-  MovieArchive,
   NoteArchive,
   PlaceholderArchive,
   Reference,
@@ -14,7 +12,6 @@ import type {
   StorageArchive,
 } from "../types.ts";
 import { asTextBox } from "./code.ts";
-import { imageFromArchive, videoFileFromArchive } from "./images.ts";
 import { extractParagraphs, storageForShape } from "./text.ts";
 
 /** Title/body text inherited from a slide's master, treated as "empty" if unchanged. */
@@ -25,32 +22,37 @@ export interface SlideDefaults {
 
 export const NO_DEFAULTS: SlideDefaults = { titles: new Set(), bodies: new Set() };
 
+/** Images/movies resolved for a slide bottom-up (by owner), supplied to extraction. */
+export interface SlidePlacements {
+  images: SlideImage[];
+  videos: string[];
+}
+
+const NO_PLACEMENTS: SlidePlacements = { images: [], videos: [] };
+
 type Role = "title" | "body" | undefined;
 
 interface Collected {
   titles: Paragraph[][];
   bodies: Paragraph[][];
   textBoxes: TextBox[];
-  images: SlideImage[];
-  videos: string[];
   tableCount: number;
 }
 
 export function extractSlide(
   slide: SlideArchive,
   registry: Registry,
-  dataFileNames: Map<number, string>,
-  dataInfo: Map<bigint, string>,
   defaults: SlideDefaults = NO_DEFAULTS,
+  placements: SlidePlacements = NO_PLACEMENTS,
 ): Slide {
-  const collected = collectFromSlide(slide, registry, dataFileNames, dataInfo);
+  const collected = collectFromSlide(slide, registry);
 
   return {
     title: pickTitle(slide, collected.titles, defaults.titles),
     body: pickBody(collected.bodies, defaults.bodies),
     textBoxes: collected.textBoxes,
-    images: collected.images,
-    videos: collected.videos,
+    images: placements.images,
+    videos: placements.videos,
     tableCount: collected.tableCount,
     notes: notesParagraphs(slide.note, registry),
   };
@@ -58,41 +60,36 @@ export function extractSlide(
 
 /** Title/body placeholder texts of a (master) slide, used to detect inherited defaults. */
 export function slidePlaceholderTexts(slide: SlideArchive, registry: Registry): { titles: string[]; bodies: string[] } {
-  const collected = collectFromSlide(slide, registry, new Map(), new Map());
+  const collected = collectFromSlide(slide, registry);
   return {
     titles: collected.titles.map(joinText).filter((text) => text.length > 0),
     bodies: collected.bodies.map(joinText).filter((text) => text.length > 0),
   };
 }
 
-function collectFromSlide(
-  slide: SlideArchive,
-  registry: Registry,
-  dataFileNames: Map<number, string>,
-  dataInfo: Map<bigint, string>,
-): Collected {
-  const collected: Collected = { titles: [], bodies: [], textBoxes: [], images: [], videos: [], tableCount: 0 };
+function collectFromSlide(slide: SlideArchive, registry: Registry): Collected {
+  const collected: Collected = { titles: [], bodies: [], textBoxes: [], tableCount: 0 };
   const handled = new Set<bigint>();
 
   // Process the explicit title/body refs first: their role is authoritative even
   // on older files that omit the placeholder `kind` discriminator.
-  processRef(slide.titlePlaceholder, "title", registry, dataFileNames, dataInfo, collected, handled);
-  processRef(slide.bodyPlaceholder, "body", registry, dataFileNames, dataInfo, collected, handled);
+  processRef(slide.titlePlaceholder, "title", registry, collected, handled);
+  processRef(slide.bodyPlaceholder, "body", registry, collected, handled);
 
   const drawables = slide.drawablesZOrder.length > 0 ? slide.drawablesZOrder : slide.ownedDrawables;
   for (const ref of drawables) {
-    processRef(ref, undefined, registry, dataFileNames, dataInfo, collected, handled);
+    processRef(ref, undefined, registry, collected, handled);
   }
 
   return collected;
 }
 
+// Images and movies are placed bottom-up (see extract/document.ts); this top-down
+// pass only collects text, placeholders, and tables.
 function processRef(
   ref: Reference | undefined,
   role: Role,
   registry: Registry,
-  dataFileNames: Map<number, string>,
-  dataInfo: Map<bigint, string>,
   collected: Collected,
   handled: Set<bigint>,
 ): void {
@@ -102,26 +99,9 @@ function processRef(
   const entry = registry.get(ref.identifier);
   if (!entry) return;
 
-  if (isType(entry.type, "ImageArchive")) {
-    const image = imageFromArchive(
-      entry.message as ImageArchive,
-      dataFileNames,
-      dataInfo,
-      (entry.message as ImageArchive).super?.accessibilityDescription ?? "",
-    );
-    if (image) collected.images.push(image);
-    return;
-  }
-
-  if (isType(entry.type, "MovieArchive")) {
-    const fileName = videoFileFromArchive(entry.message as MovieArchive, dataFileNames, dataInfo);
-    if (fileName) collected.videos.push(fileName);
-    return;
-  }
-
   if (isType(entry.type, "GroupArchive")) {
     for (const child of (entry.message as GroupArchive).children) {
-      processRef(child, undefined, registry, dataFileNames, dataInfo, collected, handled);
+      processRef(child, undefined, registry, collected, handled);
     }
     return;
   }

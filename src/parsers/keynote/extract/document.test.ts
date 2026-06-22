@@ -30,7 +30,7 @@ function fullDeck() {
         ],
       },
     }),
-    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "a pic" }, data: ref(100n) }),
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "a pic", parent: ref(4n) }, data: ref(100n) }),
     mockObject(20n, T.noteArchive, { containedStorage: ref(21n) }),
     mockObject(21n, T.storageArchive, { text: ["Speaker note"] }),
     mockObject(50n, T.packageMetadata, { datas: [{ identifier: 100n, fileName: "image1.png" }] }),
@@ -57,7 +57,7 @@ test("buildPresentation resolves images through the Data/ filenames when given d
     mockObject(1n, T.documentArchive, { show: ref(2n) }),
     mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] } }),
     mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n)], drawablesZOrder: [] }),
-    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "a pic" }, data: ref(4235n) }),
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "a pic", parent: ref(4n) }, data: ref(4235n) }),
     // No PackageMetadata at all: the Data/ filename map must carry resolution.
   ]);
   const dataFiles = new Map<string, Uint8Array>([["Data/flamegraph-4235.png", new Uint8Array()]]);
@@ -117,6 +117,54 @@ test("buildPresentation counts tables and groups recurse into children", () => {
   const slide = buildPresentation(registry, "x").slides[0];
   assert.equal(slide.tableCount, 1);
   assert.deepEqual(slide.textBoxes, [{ kind: "text", paragraphs: [{ depth: 0, text: "Boxed text" }] }]);
+});
+
+test("buildPresentation places an image nested in a group under its content slide", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(40n)], drawablesZOrder: [] }),
+    mockObject(40n, T.groupArchive, { super: { parent: ref(4n) }, children: [ref(9n)] }),
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "nested", parent: ref(40n) }, data: ref(100n) }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/pic-100.png", new Uint8Array()]]);
+
+  assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].images, [
+    { fileName: "pic-100.png", altText: "nested" },
+  ]);
+});
+
+test("buildPresentation places duplicate image objects on their respective content slides", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n), ref(14n)] } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n)], drawablesZOrder: [] }),
+    mockObject(14n, T.slideArchive, { ownedDrawables: [ref(19n)], drawablesZOrder: [] }),
+    // Two distinct ImageArchive objects backing the same Data/ file, one per slide.
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "a", parent: ref(4n) }, data: ref(100n) }),
+    mockObject(19n, T.imageArchive, { super: { accessibilityDescription: "b", parent: ref(14n) }, data: ref(100n) }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/pic-100.png", new Uint8Array()]]);
+
+  const slides = buildPresentation(registry, "x", dataFiles).slides;
+  assert.deepEqual(slides[0].images, [{ fileName: "pic-100.png", altText: "a" }]);
+  assert.deepEqual(slides[1].images, [{ fileName: "pic-100.png", altText: "b" }]);
+});
+
+test("buildPresentation counts an image reachable both top-down and bottom-up only once", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] } }),
+    // Image is a direct drawable of the slide (top-down reachable) and its parent
+    // points back to the slide (bottom-up reachable): must not double-count.
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n)], drawablesZOrder: [] }),
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "once", parent: ref(4n) }, data: ref(100n) }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/pic-100.png", new Uint8Array()]]);
+
+  assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].images, [
+    { fileName: "pic-100.png", altText: "once" },
+  ]);
 });
 
 function slideWithTitle(slideId: bigint, storageId: bigint, title: string) {
