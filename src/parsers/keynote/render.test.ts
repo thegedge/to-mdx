@@ -136,28 +136,71 @@ test("presentationToMdx embeds images as <Image>, videos as <video>, and a table
   assert.match(mdx, /\{\/\* 2 table\(s\) on this slide could not be extracted \*\/\}/);
 });
 
-test("presentationToMdx renders an extracted table as escaped HTML with <br/> for newlines", () => {
+function cell(text: string, colSpan = 1, rowSpan = 1) {
+  return { text, colSpan, rowSpan };
+}
+
+test("presentationToMdx renders a table with a kn-table class, span attrs, escaped text, and <br/>", () => {
+  const mdx = presentationToMdx(
+    deck(
+      [
+        slide({
+          tables: [
+            {
+              rows: [
+                [cell("Header", 8), cell("a <b>")],
+                [cell("line1\nline2")],
+              ],
+            },
+          ],
+        }),
+      ],
+      [],
+      "My Deck",
+    ),
+  );
+
+  assert.match(mdx, /<table className="kn-table">/);
+  assert.equal(mdx.includes('<td colspan="8">Header</td>'), true);
+  assert.equal(mdx.includes("<td>a &lt;b&gt;</td>"), true);
+  assert.equal(mdx.includes("<td>line1<br/>line2</td>"), true);
+});
+
+test("presentationToMdx renders a rowspan attribute and omits span attrs of 1", () => {
+  const mdx = presentationToMdx(deck([slide({ tables: [{ rows: [[cell("merged", 1, 3)]] }] })]));
+  assert.equal(mdx.includes('<td rowspan="3">merged</td>'), true);
+  assert.doesNotMatch(mdx, /colspan/);
+});
+
+test("presentationToMdx emits one shared scoped <style> rule for tables, scoped to the deck slug", () => {
+  const mdx = presentationToMdx(deck([slide({ tables: [{ rows: [[cell("x")]] }] })], [], "Network Monitor"));
+
+  assert.equal(
+    (mdx.match(/<style>/g) ?? []).length,
+    1,
+    "exactly one <style> block",
+  );
+  assert.match(mdx, /\.slides\.network-monitor \.kn-table td, \.slides\.network-monitor \.kn-table th \{ border: 1px solid currentColor; padding: 0\.25em \}/);
+  // The shared rule means cells carry no inline border style.
+  assert.doesNotMatch(mdx, /<td style=/);
+});
+
+test("presentationToMdx emits the table <style> only once even with multiple tables across slides", () => {
   const mdx = presentationToMdx(
     deck([
-      slide({
-        tables: [
-          {
-            rows: [
-              ["Header", "a <b>"],
-              ["line1\nline2", ""],
-            ],
-          },
-        ],
-      }),
+      slide({ tables: [{ rows: [[cell("a")]] }] }),
+      slide({ tables: [{ rows: [[cell("b")]] }, { rows: [[cell("c")]] }] }),
     ]),
   );
 
-  const td = '<td style={{ border: "1px solid currentColor", padding: "0.25em" }}>';
-  assert.match(mdx, /<table style=\{\{ borderCollapse: "collapse" \}\}>/);
-  assert.equal(mdx.includes(`${td}Header</td>`), true);
-  assert.equal(mdx.includes(`${td}a &lt;b&gt;</td>`), true);
-  assert.equal(mdx.includes(`${td}line1<br/>line2</td>`), true);
-  assert.equal(mdx.includes(`${td}</td>`), true);
+  assert.equal((mdx.match(/<style>/g) ?? []).length, 1);
+  assert.equal((mdx.match(/className="kn-table"/g) ?? []).length, 3);
+});
+
+test("presentationToMdx emits no table <style> when there are no tables", () => {
+  const mdx = presentationToMdx(deck([slide({ title: "No tables" })]));
+  assert.doesNotMatch(mdx, /<style>/);
+  assert.doesNotMatch(mdx, /kn-table/);
 });
 
 test("presentationToMdx renders a code text box as a fenced block with its language", () => {

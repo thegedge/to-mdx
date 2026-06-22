@@ -53,6 +53,7 @@ export type TableModelArchive = TSTArchives.TableModelArchive;
 export type TableDataList = TSTArchives.TableDataList;
 export type Tile = TSTArchives.Tile;
 export type TileRowInfo = TSTArchives.TileRowInfo;
+export type RichTextPayloadArchive = TSTArchives.RichTextPayloadArchive;
 export type PackageMetadata = TSPArchiveMessages.PackageMetadata;
 export type DataInfo = TSPArchiveMessages.DataInfo;
 

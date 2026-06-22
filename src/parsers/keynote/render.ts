@@ -1,5 +1,5 @@
 import { kebabCase } from "../../utils.ts";
-import type { Paragraph, Presentation, Slide, SlideImage, TableData, TextBox, TextBoxGeometry } from "./model.ts";
+import type { Paragraph, Presentation, Slide, SlideImage, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
 
@@ -64,7 +64,11 @@ export function presentationToMdx(presentation: Presentation): string {
   // `backgroundRoot={imageRoot}` references the exported `imageRoot` const (a JSX
   // expression), not a string literal.
   const className = kebabCase(presentation.title);
-  let output = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
+
+  // Tables share one scoped stylesheet emitted once for the whole document, so a
+  // table's cells reference a class instead of repeating inline borders.
+  const body = slides.includes('className="kn-table"') ? `${tableStyleBlock(className)}\n\n${slides}` : slides;
+  let output = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${body}\n</Slides>`;
 
   // The unplaced-images section is not a slide, so it sits after the wrapper.
   const appendix = renderUnplacedImages(presentation.unplacedImages);
@@ -237,38 +241,44 @@ function renderTextBox(textBox: TextBox): string {
 }
 
 /**
+ * The single scoped stylesheet shared by every table in the document, emitted
+ * once inside `<Slides>`. The selector is scoped to the deck's slug (the same
+ * class on `<Slides>`) so the table styling cannot leak. Built by string
+ * concatenation so the CSS braces survive inside the JSX expression container.
+ */
+function tableStyleBlock(slug: string): string {
+  const scope = `.slides.${slug} .kn-table`;
+  const css = `${scope} { border-collapse: collapse } ${scope} td, ${scope} th { border: 1px solid currentColor; padding: 0.25em }`;
+  return "<style>{`" + css + "`}</style>";
+}
+
+/**
  * Renders an extracted table as raw HTML (`<table>`/`<tr>`/`<td>`), which MDX
- * passes through. Cell text is MDX-escaped and intra-cell newlines become
- * `<br/>`. Fully-empty trailing rows and columns are dropped so a sparsely
- * populated grid does not emit a wall of empty cells; an empty table renders
- * nothing.
+ * passes through. Only anchor cells are emitted; merges become `colspan`/`rowspan`
+ * attributes (omitted when 1). Cell text is MDX-escaped and intra-cell newlines
+ * become `<br/>`. Borders come from the shared `.kn-table` rule, so cells carry no
+ * inline style. A table with no cells renders nothing.
  */
 export function renderTable(table: TableData): string {
-  const rows = trimTable(table.rows);
-  if (rows.length === 0) return "";
+  if (table.rows.every((row) => row.length === 0)) return "";
 
-  const cellStyle = `style={{ border: "1px solid currentColor", padding: "0.25em" }}`;
-  const body = rows
-    .map((row) => `${INDENT}<tr>${row.map((cell) => `<td ${cellStyle}>${cellHtml(cell)}</td>`).join("")}</tr>`)
+  const body = table.rows
+    .map((row) => `${INDENT}<tr>${row.map(renderCell).join("")}</tr>`)
     .join("\n");
-  return `<table style={{ borderCollapse: "collapse" }}>\n${body}\n</table>`;
+  return `<table className="kn-table">\n${body}\n</table>`;
+}
+
+/** A single `<td>` with span attributes (omitted when 1) and escaped text. */
+function renderCell(cell: TableCell): string {
+  let attrs = "";
+  if (cell.colSpan > 1) attrs += ` colspan="${cell.colSpan}"`;
+  if (cell.rowSpan > 1) attrs += ` rowspan="${cell.rowSpan}"`;
+  return `<td${attrs}>${cellHtml(cell.text)}</td>`;
 }
 
 /** Escapes a cell's text for MDX flow content, rendering newlines as line breaks. */
 function cellHtml(text: string): string {
   return escapeMdxText(text).replace(/\n/g, "<br/>");
-}
-
-/** Drops fully-empty trailing rows and columns; correctness preserved for the rest. */
-function trimTable(rows: string[][]): string[][] {
-  let rowEnd = rows.length;
-  while (rowEnd > 0 && rows[rowEnd - 1].every((cell) => cell === "")) rowEnd--;
-  const kept = rows.slice(0, rowEnd);
-  if (kept.length === 0) return [];
-
-  let colEnd = Math.max(...kept.map((row) => row.length));
-  while (colEnd > 0 && kept.every((row) => (row[colEnd - 1] ?? "") === "")) colEnd--;
-  return kept.map((row) => row.slice(0, colEnd));
 }
 
 /** Indents every non-blank line by two spaces (slide content sits inside `<Slide>`). */

@@ -47,11 +47,26 @@ export type TextBox =
   | { kind: "code"; language: string; text: string };
 
 /**
- * A table's extracted cell text. `rows` is row-major; each row is a fixed-length
- * array of `numberOfColumns` cells, with an empty string for blank/non-text cells.
+ * One rendered table cell: its text plus how many columns/rows it spans. Spans
+ * are derived from the sparsity of Keynote's per-row cell-offset array (a
+ * `0xFFFF` slot means the column is covered by a merge), so only anchor cells are
+ * carried — covered columns are absorbed into the anchor's `colSpan`/`rowSpan`.
+ */
+export interface TableCell {
+  text: string;
+  /** Columns this cell occupies, including itself (>= 1). */
+  colSpan: number;
+  /** Rows this cell occupies, including itself (>= 1). */
+  rowSpan: number;
+}
+
+/**
+ * A table's extracted cells. `rows` is row-major in stored order; each row holds
+ * only its anchor cells (in column order). Covered columns are omitted and folded
+ * into the spanning anchor, matching the standard merged HTML-table model.
  */
 export interface TableData {
-  rows: string[][];
+  rows: TableCell[][];
 }
 
 export interface Slide {
