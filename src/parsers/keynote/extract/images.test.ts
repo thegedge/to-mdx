@@ -3,7 +3,13 @@ import { test } from "node:test";
 import { buildRegistry, mockObject } from "../test_support.ts";
 import { KeynoteType } from "../types.ts";
 import type { ImageArchive } from "../types.ts";
-import { buildDataFileNameMap, buildDataInfoMap, imageFromArchive } from "./images.ts";
+import {
+  buildDataFileNameMap,
+  buildDataInfoMap,
+  distinctImageFileNames,
+  imageCoverageWarning,
+  imageFromArchive,
+} from "./images.ts";
 
 test("buildDataFileNameMap keys each Data/ asset by its trailing id (last number wins)", () => {
   const empty = new Uint8Array();
@@ -77,4 +83,47 @@ test("imageFromArchive falls back to originalData and returns null when unmapped
 
   const unmapped = { data: { identifier: 999n } } as ImageArchive;
   assert.equal(imageFromArchive(unmapped, new Map(), dataInfo, ""), null);
+});
+
+test("distinctImageFileNames collapses reused occurrences to unique file names", () => {
+  const empty = new Uint8Array();
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/chart-10.png", empty],
+    ["Data/logo-20.png", empty],
+  ]);
+  // Three ImageArchives, but two reuse the same backing asset (id 10).
+  const registry = buildRegistry([
+    mockObject(1n, KeynoteType.imageArchive, { data: { identifier: 10n } }),
+    mockObject(2n, KeynoteType.imageArchive, { data: { identifier: 10n } }),
+    mockObject(3n, KeynoteType.imageArchive, { data: { identifier: 20n } }),
+    // Unresolvable backing data must not inflate the distinct count.
+    mockObject(4n, KeynoteType.imageArchive, { data: { identifier: 999n } }),
+  ]);
+
+  const names = distinctImageFileNames(registry, dataFiles);
+  assert.deepEqual([...names].sort(), ["chart-10.png", "logo-20.png"]);
+});
+
+test("imageCoverageWarning reports occurrence + distinct coverage and appends the unlinked clause", () => {
+  const warning = imageCoverageWarning({
+    placedOccurrences: 24,
+    totalOccurrences: 36,
+    placedDistinct: 21,
+    totalDistinct: 21,
+  });
+  assert.equal(
+    warning,
+    "Placed 24 of 36 image occurrences (21 of 21 distinct images); 12 occurrence(s) could not be linked to a slide (container lost to a partial chunk)",
+  );
+});
+
+test("imageCoverageWarning is null when every occurrence is placed", () => {
+  assert.equal(
+    imageCoverageWarning({ placedOccurrences: 36, totalOccurrences: 36, placedDistinct: 21, totalDistinct: 21 }),
+    null,
+  );
+  assert.equal(
+    imageCoverageWarning({ placedOccurrences: 0, totalOccurrences: 0, placedDistinct: 0, totalDistinct: 0 }),
+    null,
+  );
 });

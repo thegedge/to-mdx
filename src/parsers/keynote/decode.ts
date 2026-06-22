@@ -7,6 +7,12 @@ export interface DecodedArchive {
   /** Non-IWA zip entries, keyed by their full name (e.g. `Data/image-1.png`). */
   dataFiles: Map<string, Uint8Array>;
   warnings: string[];
+  /**
+   * Sorted, de-duplicated names of `.iwa` entries that had at least one chunk
+   * only partially decode (e.g. `Index/Slide-12.iwa`). Tells the user which
+   * slides/metadata are affected by the loss.
+   */
+  partialEntries: string[];
 }
 
 const PARTIAL_DECODE = /Error while parsing/i;
@@ -24,6 +30,7 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
 
   let totalChunks = 0;
   let partialChunks = 0;
+  const partialEntryNames = new Set<string>();
 
   // `splitObjectsAs` reports unrecoverable per-chunk parse failures by writing to
   // console and abandoning the rest of that chunk (a known limitation against
@@ -52,7 +59,10 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
           for await (const object of splitObjectsAs(chunk, KeynoteArchives)) {
             registry.add(object);
           }
-          if (chunkFailed) partialChunks += 1;
+          if (chunkFailed) {
+            partialChunks += 1;
+            partialEntryNames.add(entry.name);
+          }
         }
       } catch (error) {
         warnings.push(`Failed to decode ${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -66,11 +76,24 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
   const summary = partialDecodeWarning(partialChunks, totalChunks);
   if (summary) warnings.push(summary);
 
-  return { registry, dataFiles, warnings };
+  const partialEntries = sortPartialEntries(partialEntryNames);
+
+  return { registry, dataFiles, warnings, partialEntries };
+}
+
+/** Sorted, de-duplicated `.iwa` entry names that had at least one partial chunk. */
+export function sortPartialEntries(names: Iterable<string>): string[] {
+  return [...new Set(names)].sort();
 }
 
 /** Single human-readable summary of how many .iwa chunks failed to fully decode. */
 export function partialDecodeWarning(partialChunks: number, totalChunks: number): string | null {
   if (partialChunks <= 0) return null;
   return `⚠️  ${partialChunks} of ${totalChunks} .iwa chunks only partially decoded (library limitation; some content may be missing)`;
+}
+
+/** Lists the `.iwa` components affected by partial decoding, so the user knows what is lost. */
+export function partialEntriesWarning(partialEntries: string[]): string | null {
+  if (partialEntries.length === 0) return null;
+  return `Partial .iwa components: ${partialEntries.join(", ")}`;
 }

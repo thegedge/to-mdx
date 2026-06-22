@@ -33,6 +33,32 @@ export function buildDataInfoMap(registry: Registry): Map<bigint, string> {
   return map;
 }
 
+export interface ImageCoverage {
+  /** Total `slide.images` placements across the presentation. */
+  placedOccurrences: number;
+  /** Total `ImageArchive` objects in the registry. */
+  totalOccurrences: number;
+  /** Distinct file names actually placed on slides. */
+  placedDistinct: number;
+  /** Distinct resolvable file names across all `ImageArchive` objects. */
+  totalDistinct: number;
+}
+
+/**
+ * Reports image coverage in both occurrence and distinct terms. Distinct counts
+ * reassure that no unique image was lost even when reused occurrences (animation
+ * builds) go unplaced. Returns null when every occurrence is placed.
+ */
+export function imageCoverageWarning(coverage: ImageCoverage): string | null {
+  const { placedOccurrences, totalOccurrences, placedDistinct, totalDistinct } = coverage;
+  if (totalOccurrences <= 0 || placedOccurrences >= totalOccurrences) return null;
+
+  const base = `Placed ${placedOccurrences} of ${totalOccurrences} image occurrences (${placedDistinct} of ${totalDistinct} distinct images)`;
+  const unlinked = totalOccurrences - placedOccurrences;
+  if (unlinked <= 0) return base;
+  return `${base}; ${unlinked} occurrence(s) could not be linked to a slide (container lost to a partial chunk)`;
+}
+
 /** Reads `datas[]` off an entry whether it decoded as the expected type or not. */
 function datasOf(entry: RegistryEntry): DataInfo[] {
   const datas = (entry.message as Partial<PackageMetadata> | undefined)?.datas;
@@ -61,6 +87,24 @@ export function buildDataFileNameMap(dataFiles: Map<string, Uint8Array>): Map<nu
     map.set(Number(match[1]), baseName);
   }
   return map;
+}
+
+/**
+ * Distinct resolvable file names across EVERY `ImageArchive` in the registry,
+ * resolved through the same `imageFromArchive` path `buildPresentation` uses.
+ * Duplicate occurrences (the deck reuses images across animation-build slides)
+ * collapse, so the count reflects unique images, not placements.
+ */
+export function distinctImageFileNames(registry: Registry, dataFiles: Map<string, Uint8Array>): Set<string> {
+  const dataFileNames = buildDataFileNameMap(dataFiles);
+  const dataInfo = buildDataInfoMap(registry);
+
+  const names = new Set<string>();
+  for (const entry of registry.entriesOfTypes(typeIds("ImageArchive"))) {
+    const resolved = imageFromArchive(entry.message as ImageArchive, dataFileNames, dataInfo, "");
+    if (resolved) names.add(resolved.fileName);
+  }
+  return names;
 }
 
 export function imageFromArchive(
