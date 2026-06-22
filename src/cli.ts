@@ -52,6 +52,7 @@ function showHelp(programName: string): void {
   console.log("");
   console.log("Options:");
   console.log("  --use-heuristics    Use heuristics to determine classnames and eliminate positioning divs");
+  console.log("  --use-llm-detection Use a local LLM to detect code languages when regex detection is ambiguous");
   console.log("  -h, --help         Show this help message");
 }
 
@@ -63,6 +64,8 @@ export async function main(argv: string[]): Promise<void> {
     const arg = argv[i];
     if (arg === "--use-heuristics") {
       options.useHeuristics = true;
+    } else if (arg === "--use-llm-detection") {
+      options.useLlmDetection = true;
     } else if (arg === "-h" || arg === "--help") {
       showHelp(process.argv[1]);
       process.exit(0);

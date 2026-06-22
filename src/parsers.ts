@@ -3,6 +3,7 @@ import { parse as parseOpenDocument } from "./parsers/open_document.ts";
 
 export interface Options {
   useHeuristics?: boolean;
+  useLlmDetection?: boolean;
 }
 
 export async function parse(outputRoot: string, filePath: string, options: Options): Promise<void> {

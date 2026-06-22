@@ -10,23 +10,39 @@ export class CodeDetector {
     this.toString = toString;
   }
 
-  maybeCodeSnippet(): string | null {
+  isCodeCandidate(): boolean {
     if (!this.element.context("options")?.useHeuristics) {
-      return null;
+      return false;
     }
 
-    const isMonospace = this.isUsingMonospaceFont();
-    if (!isMonospace) {
+    return this.isUsingMonospaceFont();
+  }
+
+  maybeCodeSnippet(): string | null {
+    if (!this.isCodeCandidate()) {
       return null;
     }
 
     const textContent = this.toString().trim();
-    const language = LanguageDetector.detect(textContent);
+    const language = this.detectLanguage(textContent);
     if (!language) {
       return null;
     }
 
     return `\n\`\`\`${language}\n${textContent}\n\`\`\`\n`;
+  }
+
+  private detectLanguage(textContent: string): string | null {
+    const regexLanguage = LanguageDetector.detect(textContent);
+    if (regexLanguage) {
+      return regexLanguage;
+    }
+
+    if (!this.element.context("options")?.useLlmDetection) {
+      return null;
+    }
+
+    return this.element.context("codeLanguageCache")?.get(textContent) ?? null;
   }
 
   isUsingMonospaceFont(): boolean {

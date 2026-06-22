@@ -2,17 +2,32 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as yauzl from "yauzl";
-import { formatDate, generateFilename, generateMetadataExports, sanitizeFilename, titleFromPath } from "../generators/mdx.ts";
+import {
+  formatDate,
+  generateFilename,
+  generateFrontmatter,
+  generateMetadataExports,
+  sanitizeFilename,
+  titleFromPath,
+} from "../generators/mdx.ts";
+import { CodeDetector } from "../detectors/code-detector.ts";
+import { LanguageDetector } from "../detectors/language-detector.ts";
+import { LlmLanguageDetector } from "../detectors/llm-language-detector.ts";
+import { resolveCodeLanguages } from "../detectors/resolve-code-languages.ts";
 import { infer } from "../page-dimensions.ts";
 import type { Options } from "../parsers.ts";
 import { Styles } from "../styles.ts";
-import type { ParseContext } from "./base_element.ts";
+import type { ParsedElement, ParseContext } from "./base_element.ts";
 import { BaseElement } from "./base_element.ts";
 
 import dedent from "dedent-js";
 import "./open-document/all_parsers.ts"; // Register all of the parsers
 
-export async function parse(outputRoot: string, presentationFile: string, options: Options = {}): Promise<void> {
+export async function parse(
+  outputRoot: string,
+  presentationFile: string,
+  options: Options = {},
+): Promise<void> {
   let contentDoc: string | null = null;
   let metaDoc: string | null = null;
   let stylesDoc: string | null = null;
@@ -23,7 +38,9 @@ export async function parse(outputRoot: string, presentationFile: string, option
   stylesDoc = docs.styles;
 
   if (!contentDoc || !metaDoc || !stylesDoc) {
-    throw new Error("Error: Could not find content.xml, meta.xml, or styles.xml in the presentation file.");
+    throw new Error(
+      "Error: Could not find content.xml, meta.xml, or styles.xml in the presentation file.",
+    );
   }
 
   const contentDocument = BaseElement.parseXml(contentDoc);
@@ -58,6 +75,15 @@ export async function parse(outputRoot: string, presentationFile: string, option
   BaseElement.parse(stylesDocument.documentElement, context);
   const content = BaseElement.parse(contentDocument.documentElement, context);
 
+  if (options.useLlmDetection && content) {
+    const llmDetector = new LlmLanguageDetector();
+    const candidates = collectCodeCandidates(content as unknown as ParsedElement);
+    context.codeLanguageCache = await resolveCodeLanguages(candidates, {
+      regexDetect: (code) => LanguageDetector.detect(code),
+      llmDetect: (code) => llmDetector.detect(code),
+    });
+  }
+
   const relativeOutputFile = path.join("src/pages/presentations", generateFilename(date, title));
   const outputFile = path.join(outputRoot, relativeOutputFile);
 
@@ -79,12 +105,34 @@ export async function parse(outputRoot: string, presentationFile: string, option
   console.log(`✅ ${relativeOutputFile}`);
 }
 
+function collectCodeCandidates(node: ParsedElement): string[] {
+  const candidates: string[] = [];
+
+  const walk = (current: ParsedElement): void => {
+    const detector = new CodeDetector(current, () => current.toString());
+    if (detector.isCodeCandidate()) {
+      candidates.push(current.toString().trim());
+    }
+
+    for (const child of current) {
+      walk(child);
+    }
+  };
+
+  walk(node);
+  return candidates;
+}
+
 async function extractXmlDocuments(presentationFile: string): Promise<{
   content: string | null;
   meta: string | null;
   styles: string | null;
 }> {
-  const docs = { content: null as string | null, meta: null as string | null, styles: null as string | null };
+  const docs = {
+    content: null as string | null,
+    meta: null as string | null,
+    styles: null as string | null,
+  };
 
   return await new Promise((resolve, reject) => {
     yauzl.open(presentationFile, { lazyEntries: true }, (err, zipFile) => {
@@ -94,7 +142,11 @@ async function extractXmlDocuments(presentationFile: string): Promise<{
       }
 
       zipFile.on("entry", (entry: yauzl.Entry) => {
-        if (entry.fileName !== "content.xml" && entry.fileName !== "meta.xml" && entry.fileName !== "styles.xml") {
+        if (
+          entry.fileName !== "content.xml" &&
+          entry.fileName !== "meta.xml" &&
+          entry.fileName !== "styles.xml"
+        ) {
           zipFile.readEntry();
           return;
         }
@@ -131,7 +183,11 @@ async function extractXmlDocuments(presentationFile: string): Promise<{
   });
 }
 
-async function extractImages(zipFileName: string, basename: string, projectRoot: string): Promise<void> {
+async function extractImages(
+  zipFileName: string,
+  basename: string,
+  projectRoot: string,
+): Promise<void> {
   const imagesDir = path.join(projectRoot, "src/static/img/presentations", basename);
   if (!fs.existsSync(imagesDir)) {
     fs.mkdirSync(imagesDir, { recursive: true });
@@ -184,20 +240,25 @@ async function extractImages(zipFileName: string, basename: string, projectRoot:
   });
 }
 
-async function getPresentationTitle(metadata: Record<string, unknown>, presentationFile: string): Promise<string> {
+async function getPresentationTitle(
+  metadata: Record<string, unknown>,
+  presentationFile: string,
+): Promise<string> {
   const title = metadata.title;
   if (typeof title === "string" && title.trim()) {
     console.log(`🔍 Found presentation title: ${title}`);
     return title;
   }
 
-  // Degrade to the file name rather than throwing (mirrors the Keynote path).
   const fallback = titleFromPath(presentationFile);
   console.warn(`⚠️  No presentation title in metadata; using file name "${fallback}"`);
   return fallback;
 }
 
-async function getPresentationDate(metadata: Record<string, unknown>, presentationFile: string): Promise<Date> {
+async function getPresentationDate(
+  metadata: Record<string, unknown>,
+  presentationFile: string,
+): Promise<Date> {
   const presentationDate = metadata.presentation_date;
   if (typeof presentationDate === "string") {
     const parsedDate = new Date(presentationDate);
@@ -221,11 +282,10 @@ async function getPresentationDate(metadata: Record<string, unknown>, presentati
     }
   }
 
-  // Degrade to the file's creation time rather than throwing (mirrors the Keynote
-  // path). birthtime is unset on some filesystems, where it reads as epoch 0 — fall
-  // back to mtime there.
   const stats = fs.statSync(presentationFile);
   const created = stats.birthtimeMs > 0 ? stats.birthtime : stats.mtime;
-  console.warn(`⚠️  No presentation date in metadata; using file creation time ${formatDate(created)}`);
+  console.warn(
+    `⚠️  No presentation date in metadata; using file creation time ${formatDate(created)}`,
+  );
   return created;
 }

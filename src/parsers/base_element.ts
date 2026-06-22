@@ -7,7 +7,9 @@ export interface ParseContext {
   basename?: string;
   options?: {
     useHeuristics?: boolean;
+    useLlmDetection?: boolean;
   };
+  codeLanguageCache?: Map<string, string | null>;
   pageDimensions?: {
     width: number;
     height: number;

@@ -8,8 +8,7 @@ A tool for converting things to MDX (Markdown + React).
 
 ## Requirements
 
-- Node.js 23.5+ (the bin uses Node's [Permission Model](https://nodejs.org/api/permissions.html),
-  stabilized in 23.5; 24 LTS recommended)
+- Node.js 23.5+
 - pnpm
 
 ## Installation
@@ -41,6 +40,7 @@ run un-sandboxed.
 ### Options
 
 - `--use-heuristics`: Use heuristics to determine classnames and eliminate positioning divs
+- `--use-llm-detection`: Use a local LLM (fallback to regex) to detect code-snippet languages, validated against starry-night
 - `-h, --help`: Show help message
 
 ## Conversions
