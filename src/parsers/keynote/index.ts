@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import dedent from "dedent-js";
-import { generateFrontmatter } from "../../generators/mdx.ts";
+import { generateMetadataExports } from "../../generators/mdx.ts";
 import type { Options } from "../../parsers.ts";
 import { decodeKeynote, partialEntriesWarning } from "./decode.ts";
 import { writeDebugDump, writeRawDump } from "./debug.ts";
@@ -18,7 +18,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
   console.log(`🔍 Decoded ${registry.size} Keynote objects`);
 
   const fallbackTitle = titleFromPath(presentationFile);
-  const presentation = buildPresentation(registry, fallbackTitle, dataFiles);
+  const presentation = buildPresentation(registry, fallbackTitle, dataFiles, options.useHeuristics ?? false);
   const title = presentation.title;
   console.log(`🔍 Presentation title: ${title} (${presentation.slides.length} slides)`);
 
@@ -51,7 +51,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
   await copyImages(presentation, dataFiles, basename, outputRoot);
 
   const metadata: Record<string, unknown> = { title };
-  const frontmatter = generateFrontmatter(metadata);
+  const metadataExports = generateMetadataExports(metadata);
   const content = presentationToMdx(presentation, basename);
 
   const relativeOutputFile = path.join("src/pages/presentations", generateFilename(date, title));
@@ -60,7 +60,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
   await writeFile(
     outputFile,
     dedent`
-      ${frontmatter}
+      ${metadataExports}
       ${content}
     ` + "\n",
   );

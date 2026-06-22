@@ -12,6 +12,7 @@ import type {
   StorageArchive,
 } from "../types.ts";
 import { asTextBox } from "./code.ts";
+import { contentBoxPercent, type RawBox, slideLayoutClass } from "./layout.ts";
 import { extractParagraphs, storageForShape } from "./text.ts";
 
 /** Title/body text inherited from a slide's master, treated as "empty" if unchanged. */
@@ -30,6 +31,14 @@ export interface SlidePlacements {
 
 const NO_PLACEMENTS: SlidePlacements = { images: [], videos: [] };
 
+/** Slide-size + heuristics gate threaded in for layout classification. */
+export interface LayoutContext {
+  useHeuristics: boolean;
+  slideSize: { width: number; height: number };
+}
+
+export const NO_LAYOUT: LayoutContext = { useHeuristics: false, slideSize: { width: 1920, height: 1080 } };
+
 type Role = "title" | "body" | undefined;
 
 /** The `sageTagToInfoMap` tag whose drawable holds a modern slide's real title. */
@@ -42,6 +51,8 @@ interface Collected {
   bodies: Paragraph[][];
   textBoxes: TextBox[];
   tableCount: number;
+  /** Geometry of contentful drawables, in slide (point) coordinates, for layout heuristics. */
+  geometries: RawBox[];
 }
 
 export function extractSlide(
@@ -49,10 +60,12 @@ export function extractSlide(
   registry: Registry,
   defaults: SlideDefaults = NO_DEFAULTS,
   placements: SlidePlacements = NO_PLACEMENTS,
+  layout: LayoutContext = NO_LAYOUT,
 ): Slide {
   const collected = collectFromSlide(slide, registry);
 
   return {
+    className: layout.useHeuristics ? classifyLayout(slide, registry, collected, layout.slideSize) : undefined,
     title: pickTitle(slide, collected, defaults.titles),
     body: pickBody(collected.bodies, defaults.bodies),
     textBoxes: collected.textBoxes,
@@ -61,6 +74,25 @@ export function extractSlide(
     tableCount: collected.tableCount,
     notes: notesParagraphs(slide.note, registry),
   };
+}
+
+function classifyLayout(
+  slide: SlideArchive,
+  registry: Registry,
+  collected: Collected,
+  slideSize: { width: number; height: number },
+): string | undefined {
+  return slideLayoutClass({
+    masterName: masterName(slide, registry),
+    contentBox: contentBoxPercent(collected.geometries, slideSize),
+  });
+}
+
+/** The slide's master ("template") name, used to map to a layout class. */
+function masterName(slide: SlideArchive, registry: Registry): string | undefined {
+  const ref = slide.templateSlide;
+  if (!ref) return undefined;
+  return registry.resolve<SlideArchive>(ref)?.name;
 }
 
 /** Title/body placeholder texts of a (master) slide, used to detect inherited defaults. */
@@ -76,7 +108,7 @@ export function slidePlaceholderTexts(slide: SlideArchive, registry: Registry): 
 }
 
 function collectFromSlide(slide: SlideArchive, registry: Registry): Collected {
-  const collected: Collected = { titles: [], sageTitle: [], bodies: [], textBoxes: [], tableCount: 0 };
+  const collected: Collected = { titles: [], sageTitle: [], bodies: [], textBoxes: [], tableCount: 0, geometries: [] };
   const handled = new Set<bigint>();
 
   // Modern decks keep a content slide's real title in the Sage-tagged "Title"
@@ -86,6 +118,7 @@ function collectFromSlide(slide: SlideArchive, registry: Registry): Collected {
   if (sageTitleId !== undefined) {
     handled.add(sageTitleId);
     collected.sageTitle = drawableParagraphs(sageTitleId, registry);
+    if (collected.sageTitle.length > 0) pushGeometry(registry.get(sageTitleId)?.message, collected);
   }
 
   // Process the explicit title/body refs first: their role is authoritative even
@@ -128,18 +161,60 @@ function processRef(
     return;
   }
 
+  if (isType(entry.type, "ImageArchive")) {
+    // Images are placed bottom-up; here we only record geometry for layout heuristics.
+    pushGeometry(entry.message, collected);
+    return;
+  }
+
   if (isType(entry.type, "PlaceholderArchive")) {
     const placeholder = entry.message as PlaceholderArchive;
     const resolvedRole = role ?? roleFromKind(placeholder.kind);
     const paragraphs = extractParagraphs(storageForShape(placeholder.super, registry), registry);
     bucketParagraphs(resolvedRole, paragraphs, collected);
+    if (paragraphs.length > 0) pushGeometry(placeholder, collected);
     return;
   }
 
   if (isType(entry.type, "ShapeInfoArchive")) {
     const paragraphs = extractParagraphs(storageForShape(entry.message as ShapeInfoArchive, registry), registry);
     bucketParagraphs(role, paragraphs, collected);
+    if (paragraphs.length > 0) pushGeometry(entry.message, collected);
   }
+}
+
+/** Records a drawable's geometry (walked through its `super` chain) for layout heuristics. */
+function pushGeometry(message: unknown, collected: Collected): void {
+  const box = drawableGeometry(message);
+  if (box) collected.geometries.push(box);
+}
+
+/**
+ * A drawable's bounding box lives on the `TSD.GeometryArchive` reached through the
+ * `super` chain (shallow), mirroring how `parentReference` finds `parent`.
+ */
+function drawableGeometry(message: unknown): RawBox | undefined {
+  let node: unknown = message;
+  for (let depth = 0; node && typeof node === "object" && depth < 8; depth += 1) {
+    const geometry = (node as { geometry?: GeometryLike }).geometry;
+    const position = geometry?.position;
+    const size = geometry?.size;
+    if (
+      position?.x !== undefined &&
+      position.y !== undefined &&
+      size?.width !== undefined &&
+      size.height !== undefined
+    ) {
+      return { x: position.x, y: position.y, width: size.width, height: size.height };
+    }
+    node = (node as { super?: unknown }).super;
+  }
+  return undefined;
+}
+
+interface GeometryLike {
+  position?: { x?: number; y?: number };
+  size?: { width?: number; height?: number };
 }
 
 function bucketParagraphs(role: Role, paragraphs: Paragraph[], collected: Collected): void {

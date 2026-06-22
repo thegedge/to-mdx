@@ -17,14 +17,19 @@ import {
   imageFromArchive,
   videoFileFromArchive,
 } from "./images.ts";
+import type { LayoutContext } from "./slide.ts";
 import { owningSlideId } from "./ownership.ts";
 import type { SlideDefaults, SlidePlacements } from "./slide.ts";
 import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
+
+/** Fallback slide size (16:9 at 1080p) when the document declares none. */
+const DEFAULT_SLIDE_SIZE = { width: 1920, height: 1080 };
 
 export function buildPresentation(
   registry: Registry,
   fallbackTitle: string,
   dataFiles: Map<string, Uint8Array> = new Map(),
+  useHeuristics = false,
 ): Presentation {
   const dataFileNames = buildDataFileNameMap(dataFiles);
   const dataInfo = buildDataInfoMap(registry);
@@ -34,9 +39,11 @@ export function buildPresentation(
   const contentSlideIds = new Set(orderedEntries.map((entry) => entry.id));
   const placements = placeDrawables(registry, contentSlideIds, dataFileNames, dataInfo);
 
+  const layout: LayoutContext = { useHeuristics, slideSize: resolveSlideSize(registry) };
+
   const slides = orderedEntries.map((entry) => {
     const slide = entry.message as SlideArchive;
-    return extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id));
+    return extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id), layout);
   });
 
   const placed = new Set(slides.flatMap((slide) => slide.images.map((image) => image.fileName)));
@@ -147,6 +154,19 @@ export function orderedSlideArchives(registry: Registry): RegistryEntry[] {
 
   // Last-ditch fallback: every SlideArchive in the document, unordered.
   return registry.entriesOfTypes(typeIds("SlideArchive"));
+}
+
+/**
+ * The deck's slide size in points, read from the `ShowArchive`. Degrades to a
+ * 16:9 1080p default when the document declares none (kept in sync with
+ * `NO_LAYOUT` in slide.ts).
+ */
+function resolveSlideSize(registry: Registry): { width: number; height: number } {
+  const size = findShow(registry)?.size;
+  if (size && size.width > 0 && size.height > 0) {
+    return { width: size.width, height: size.height };
+  }
+  return DEFAULT_SLIDE_SIZE;
 }
 
 function findShow(registry: Registry): ShowArchive | undefined {

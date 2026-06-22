@@ -2,7 +2,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as yauzl from "yauzl";
-import { generateFrontmatter } from "../generators/mdx.ts";
+import { generateMetadataExports } from "../generators/mdx.ts";
 import { infer } from "../page-dimensions.ts";
 import type { Options } from "../parsers.ts";
 import { Styles } from "../styles.ts";
@@ -53,7 +53,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
 
   await extractImages(presentationFile, basename, outputRoot);
 
-  const frontmatter = generateFrontmatter(metadata);
+  const metadataExports = generateMetadataExports(metadata);
 
   BaseElement.parse(stylesDocument.documentElement, context);
   const content = BaseElement.parse(contentDocument.documentElement, context);
@@ -70,7 +70,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
   fs.writeFileSync(
     outputFile,
     dedent`
-      ${frontmatter}
+      ${metadataExports}
       ${content?.toMdx() ?? ""}
     `,
   );

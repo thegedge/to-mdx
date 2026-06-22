@@ -1,72 +1,115 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Presentation } from "./model.ts";
+import type { Presentation, Slide } from "./model.ts";
 import { presentationToMdx } from "./render.ts";
 
-test("presentationToMdx renders title as H1 and body as a depth-nested bullet list", () => {
-  const presentation: Presentation = {
-    title: "Deck",
-    unplacedImages: [],
-    slides: [
-      {
-        title: "Intro",
-        body: [
-          { depth: 0, text: "Top" },
-          { depth: 1, text: "Nested" },
-          { depth: 2, text: "Deeper" },
-        ],
-        textBoxes: [],
-        images: [],
-        videos: [],
-        tableCount: 0,
-        notes: [],
-      },
-    ],
-  };
+function slide(overrides: Partial<Slide> = {}): Slide {
+  return { body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [], ...overrides };
+}
+
+function deck(slides: Slide[], unplacedImages: string[] = []): Presentation {
+  return { title: "Deck", slides, unplacedImages };
+}
+
+test("presentationToMdx wraps all slides in <Slides> and a slide in <Slide> with indented content", () => {
+  const presentation = deck([
+    slide({
+      title: "Intro",
+      body: [
+        { depth: 0, text: "Top" },
+        { depth: 1, text: "Nested" },
+        { depth: 2, text: "Deeper" },
+      ],
+    }),
+  ]);
 
   assert.equal(
     presentationToMdx(presentation, "2026-01-01_deck"),
-    ["# Intro", "", "- Top", "  - Nested", "    - Deeper"].join("\n"),
+    [
+      "<Slides>",
+      "<Slide>",
+      "  # Intro",
+      "",
+      "  - Top",
+      "    - Nested",
+      "      - Deeper",
+      "</Slide>",
+      "</Slides>",
+    ].join("\n"),
   );
 });
 
-test("presentationToMdx joins slides with a thematic break and embeds images by basename", () => {
-  const presentation: Presentation = {
-    title: "Deck",
-    unplacedImages: [],
-    slides: [
-      { title: "One", body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [] },
-      {
-        body: [],
-        textBoxes: [],
-        images: [{ fileName: "pic.png", altText: "alt" }],
-        videos: [],
-        tableCount: 0,
-        notes: [],
-      },
-    ],
-  };
+test("presentationToMdx renders a className on the <Slide> tag when present", () => {
+  const mdx = presentationToMdx(deck([slide({ className: "title centered", title: "Hi" })]), "base");
+  assert.match(mdx, /<Slide className="title centered">\n {2}# Hi\n<\/Slide>/);
+});
+
+test("presentationToMdx renders an empty slide as a self-closing <Slide />", () => {
+  assert.equal(presentationToMdx(deck([slide()]), "base"), "<Slides>\n<Slide />\n</Slides>");
+});
+
+test("presentationToMdx renders speaker notes as a nested unordered list inside <SpeakerNotes>", () => {
+  const presentation = deck([
+    slide({
+      title: "Talk",
+      notes: [
+        { depth: 0, text: "Open strong" },
+        { depth: 1, text: "Cite the metric" },
+      ],
+    }),
+  ]);
 
   assert.equal(
     presentationToMdx(presentation, "base"),
-    ["# One", "", "---", "", "![alt](/img/presentations/base/pic.png)"].join("\n"),
+    [
+      "<Slides>",
+      "<Slide>",
+      "  # Talk",
+      "",
+      "  <SpeakerNotes>",
+      "    - Open strong",
+      "      - Cite the metric",
+      "  </SpeakerNotes>",
+      "</Slide>",
+      "</Slides>",
+    ].join("\n"),
   );
 });
 
-test("presentationToMdx appends an unplaced-images section after the last slide", () => {
-  const presentation: Presentation = {
-    title: "Deck",
-    unplacedImages: ["lost-1.png", "lost-2.png"],
-    slides: [{ title: "Only", body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [] }],
-  };
+test("presentationToMdx embeds images and emits table/video comments inside the slide", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ images: [{ fileName: "pic.png", altText: "alt" }], videos: ["clip.mov"], tableCount: 2 })]),
+    "base",
+  );
 
-  const mdx = presentationToMdx(presentation, "base");
+  assert.match(mdx, /!\[alt\]\(\/img\/presentations\/base\/pic\.png\)/);
+  assert.match(mdx, /\{\/\* video: \/img\/presentations\/base\/clip\.mov \*\/\}/);
+  assert.match(mdx, /\{\/\* 2 table\(s\) on this slide were not extracted \*\/\}/);
+});
+
+test("presentationToMdx renders a code text box as a fenced block with its language", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ textBoxes: [{ kind: "code", language: "ruby", text: "def foo\n  bar\nend" }] })]),
+    "base",
+  );
+
   assert.equal(
     mdx,
+    ["<Slides>", "<Slide>", "  ```ruby", "  def foo", "    bar", "  end", "  ```", "</Slide>", "</Slides>"].join("\n"),
+  );
+});
+
+test("presentationToMdx appends the unplaced-images section after </Slides>", () => {
+  const presentation = deck([slide({ title: "Only" })], ["lost-1.png", "lost-2.png"]);
+
+  assert.equal(
+    presentationToMdx(presentation, "base"),
     [
-      "# Only",
-      "",
-      "---",
+      "<Slides>",
+      "<Slide>",
+      "  # Only",
+      "</Slide>",
+      "</Slides>",
       "",
       "{/* Unplaced images: these could not be linked to a slide (container lost to a partially-decoded chunk) */}",
       "",
@@ -78,54 +121,7 @@ test("presentationToMdx appends an unplaced-images section after the last slide"
 });
 
 test("presentationToMdx omits the unplaced-images section when the list is empty", () => {
-  const presentation: Presentation = {
-    title: "Deck",
-    unplacedImages: [],
-    slides: [{ title: "Only", body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [] }],
-  };
-
-  const mdx = presentationToMdx(presentation, "base");
-  assert.equal(mdx, "# Only");
+  const mdx = presentationToMdx(deck([slide({ title: "Only" })]), "base");
   assert.doesNotMatch(mdx, /Unplaced images/);
-});
-
-test("presentationToMdx renders a code text box as a fenced block with its language", () => {
-  const presentation: Presentation = {
-    title: "Deck",
-    unplacedImages: [],
-    slides: [
-      {
-        body: [],
-        textBoxes: [{ kind: "code", language: "ruby", text: "def foo\n  bar\nend" }],
-        images: [],
-        videos: [],
-        tableCount: 0,
-        notes: [],
-      },
-    ],
-  };
-
-  assert.equal(presentationToMdx(presentation, "base"), "```ruby\ndef foo\n  bar\nend\n```");
-});
-
-test("presentationToMdx emits table, video and presenter-note comments", () => {
-  const presentation: Presentation = {
-    title: "Deck",
-    unplacedImages: [],
-    slides: [
-      {
-        body: [],
-        textBoxes: [],
-        images: [],
-        videos: ["clip.mov"],
-        tableCount: 2,
-        notes: [{ depth: 0, text: "remember this" }],
-      },
-    ],
-  };
-
-  const mdx = presentationToMdx(presentation, "base");
-  assert.match(mdx, /\{\/\* 2 table\(s\)/);
-  assert.match(mdx, /\{\/\* video: \/img\/presentations\/base\/clip\.mov \*\/\}/);
-  assert.match(mdx, /Presenter notes:\nremember this/);
+  assert.match(mdx, /^<Slides>\n<Slide>\n {2}# Only\n<\/Slide>\n<\/Slides>$/);
 });

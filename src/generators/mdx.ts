@@ -1,5 +1,3 @@
-import * as yaml from "yaml";
-
 export interface FrontmatterData {
   title: string;
   subtitle: string;
@@ -16,8 +14,14 @@ export interface FrontmatterData {
   [key: string]: unknown;
 }
 
-export function generateFrontmatter(metadata: Record<string, unknown>): string {
-  const frontmatter: FrontmatterData = {
+/**
+ * Emits presentation metadata as individual MDX `export const` statements — one
+ * per top-level field, every field always present (empties included) so the page
+ * module exposes a stable shape. Values are JSON-serialized so strings, objects,
+ * arrays, and embedded newlines are all safe. `date`/`metadata` are skipped.
+ */
+export function generateMetadataExports(metadata: Record<string, unknown>): string {
+  const fields: FrontmatterData = {
     title: "",
     subtitle: "",
     description: "",
@@ -33,20 +37,14 @@ export function generateFrontmatter(metadata: Record<string, unknown>): string {
   };
 
   Object.entries(metadata).forEach(([name, value]) => {
-    if (name === "date") return; // Skip date in frontmatter
+    if (name === "date") return;
     if (name === "metadata") return;
-
-    if (typeof value === "string" && value.includes("\\n")) {
-      frontmatter[name] = value
-        .split("\\n")
-        .map((line) => line.trimEnd())
-        .join("\n");
-    } else {
-      frontmatter[name] = value;
-    }
+    fields[name] = value;
   });
 
-  return `---\n${yaml.stringify(frontmatter, { blockQuote: "folded", lineWidth: 100 })}---`;
+  return Object.entries(fields)
+    .map(([name, value]) => `export const ${name} = ${JSON.stringify(value)};`)
+    .join("\n");
 }
 
 export function generateSlideContent(slideContent: string): string {

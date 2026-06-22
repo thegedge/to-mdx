@@ -3,14 +3,15 @@ import type { Paragraph, Presentation, Slide, TextBox } from "./model.ts";
 const INDENT = "  ";
 
 export function presentationToMdx(presentation: Presentation, basename: string): string {
-  const sections = presentation.slides
-    .map((slide) => renderSlide(slide, basename))
-    .filter((block) => block.trim().length > 0);
+  const slides = presentation.slides.map((slide) => renderSlide(slide, basename)).join("\n");
 
+  let output = `<Slides>\n${slides}\n</Slides>`;
+
+  // The unplaced-images section is not a slide, so it sits after the wrapper.
   const appendix = renderUnplacedImages(presentation.unplacedImages, basename);
-  if (appendix) sections.push(appendix);
+  if (appendix) output += `\n\n${appendix}`;
 
-  return sections.join("\n\n---\n\n");
+  return output;
 }
 
 /**
@@ -29,6 +30,14 @@ function renderUnplacedImages(fileNames: string[], basename: string): string {
 }
 
 function renderSlide(slide: Slide, basename: string): string {
+  const blocks = slideBlocks(slide, basename);
+  if (blocks.length === 0) return "<Slide />";
+
+  const open = slide.className ? `<Slide className="${slide.className}">` : "<Slide>";
+  return `${open}\n${indent(blocks.join("\n\n"))}\n</Slide>`;
+}
+
+function slideBlocks(slide: Slide, basename: string): string[] {
   const blocks: string[] = [];
 
   if (slide.title) blocks.push(`# ${slide.title}`);
@@ -50,11 +59,15 @@ function renderSlide(slide: Slide, basename: string): string {
     blocks.push(`{/* ${slide.tableCount} table(s) on this slide were not extracted */}`);
   }
 
-  if (slide.notes.length > 0) {
-    blocks.push(`{/* Presenter notes:\n${slide.notes.map((p) => p.text).join("\n")}\n*/}`);
-  }
+  const notes = renderSpeakerNotes(slide.notes);
+  if (notes) blocks.push(notes);
 
-  return blocks.filter((block) => block.length > 0).join("\n\n");
+  return blocks.filter((block) => block.length > 0);
+}
+
+function renderSpeakerNotes(notes: Paragraph[]): string {
+  if (notes.length === 0) return "";
+  return `<SpeakerNotes>\n${indent(renderBullets(notes))}\n</SpeakerNotes>`;
 }
 
 function renderBullets(paragraphs: Paragraph[]): string {
@@ -66,4 +79,12 @@ function renderTextBox(textBox: TextBox): string {
     return `\`\`\`${textBox.language}\n${textBox.text}\n\`\`\``;
   }
   return textBox.paragraphs.map((paragraph) => paragraph.text).join("\n\n");
+}
+
+/** Indents every non-blank line by two spaces (slide content sits inside `<Slide>`). */
+function indent(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => (line.length > 0 ? `${INDENT}${line}` : line))
+    .join("\n");
 }

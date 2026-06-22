@@ -18,6 +18,8 @@ export type TextBox =
   | { kind: "code"; language: string; text: string };
 
 export interface Slide {
+  /** Slide-layout CSS class derived from heuristics; absent when heuristics are off. */
+  className?: string;
   title?: string;
   body: Paragraph[];
   textBoxes: TextBox[];
