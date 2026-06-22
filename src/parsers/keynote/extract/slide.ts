@@ -32,8 +32,13 @@ const NO_PLACEMENTS: SlidePlacements = { images: [], videos: [] };
 
 type Role = "title" | "body" | undefined;
 
+/** The `sageTagToInfoMap` tag whose drawable holds a modern slide's real title. */
+const SAGE_TITLE_TAG = "Title";
+
 interface Collected {
   titles: Paragraph[][];
+  /** Text of the `sageTagToInfoMap` "Title" drawable (modern content-slide title). */
+  sageTitle: Paragraph[];
   bodies: Paragraph[][];
   textBoxes: TextBox[];
   tableCount: number;
@@ -48,7 +53,7 @@ export function extractSlide(
   const collected = collectFromSlide(slide, registry);
 
   return {
-    title: pickTitle(slide, collected.titles, defaults.titles),
+    title: pickTitle(slide, collected, defaults.titles),
     body: pickBody(collected.bodies, defaults.bodies),
     textBoxes: collected.textBoxes,
     images: placements.images,
@@ -61,15 +66,27 @@ export function extractSlide(
 /** Title/body placeholder texts of a (master) slide, used to detect inherited defaults. */
 export function slidePlaceholderTexts(slide: SlideArchive, registry: Registry): { titles: string[]; bodies: string[] } {
   const collected = collectFromSlide(slide, registry);
+  // Masters carry their default title in the Sage "Title" drawable too, so a
+  // content slide inheriting that exact string must be treated as inherited.
+  const titles = [...collected.titles.map(joinText), joinText(collected.sageTitle)];
   return {
-    titles: collected.titles.map(joinText).filter((text) => text.length > 0),
+    titles: titles.filter((text) => text.length > 0),
     bodies: collected.bodies.map(joinText).filter((text) => text.length > 0),
   };
 }
 
 function collectFromSlide(slide: SlideArchive, registry: Registry): Collected {
-  const collected: Collected = { titles: [], bodies: [], textBoxes: [], tableCount: 0 };
+  const collected: Collected = { titles: [], sageTitle: [], bodies: [], textBoxes: [], tableCount: 0 };
   const handled = new Set<bigint>();
+
+  // Modern decks keep a content slide's real title in the Sage-tagged "Title"
+  // drawable (the title placeholder is empty). Consume it first and mark it
+  // handled so it doesn't also surface as a free text box.
+  const sageTitleId = sageTitleDrawableId(slide);
+  if (sageTitleId !== undefined) {
+    handled.add(sageTitleId);
+    collected.sageTitle = drawableParagraphs(sageTitleId, registry);
+  }
 
   // Process the explicit title/body refs first: their role is authoritative even
   // on older files that omit the placeholder `kind` discriminator.
@@ -143,19 +160,43 @@ function roleFromKind(kind: number | undefined): Role {
   return undefined;
 }
 
-/**
- * Picks the slide's real title. `thumbnailTextForTitlePlaceholder` is Keynote's
- * authoritative navigator/outline title, so it wins when present; otherwise the
- * first title placeholder whose text isn't the master's inherited default.
- */
-function pickTitle(slide: SlideArchive, titles: Paragraph[][], defaults: Set<string>): string | undefined {
-  const thumbnail = (slide.thumbnailTextForTitlePlaceholder ?? "").trim();
-  if (thumbnail && !defaults.has(thumbnail)) return thumbnail;
+/** Identifier of the `sageTagToInfoMap` entry tagged "Title", if present. */
+function sageTitleDrawableId(slide: SlideArchive): bigint | undefined {
+  const entry = slide.sageTagToInfoMap?.find((mapEntry) => mapEntry.tag === SAGE_TITLE_TAG);
+  return entry?.info?.identifier;
+}
 
-  for (const paragraphs of titles) {
+/** Text of a drawable referenced by id, whether a shape or a title placeholder. */
+function drawableParagraphs(id: bigint, registry: Registry): Paragraph[] {
+  const entry = registry.get(id);
+  if (!entry) return [];
+
+  if (isType(entry.type, "ShapeInfoArchive")) {
+    return extractParagraphs(storageForShape(entry.message as ShapeInfoArchive, registry), registry);
+  }
+  if (isType(entry.type, "PlaceholderArchive")) {
+    return extractParagraphs(storageForShape((entry.message as PlaceholderArchive).super, registry), registry);
+  }
+  return [];
+}
+
+/**
+ * Picks the slide's real title, taking the first non-empty, non-inherited
+ * candidate in order: the Sage "Title" drawable (modern content slides), then
+ * the kind-2 title placeholder, then Keynote's navigator/outline thumbnail.
+ */
+function pickTitle(slide: SlideArchive, collected: Collected, defaults: Set<string>): string | undefined {
+  const sageTitle = joinText(collected.sageTitle);
+  if (sageTitle && !defaults.has(sageTitle)) return sageTitle;
+
+  for (const paragraphs of collected.titles) {
     const text = joinText(paragraphs);
     if (text && !defaults.has(text)) return text;
   }
+
+  const thumbnail = (slide.thumbnailTextForTitlePlaceholder ?? "").trim();
+  if (thumbnail && !defaults.has(thumbnail)) return thumbnail;
+
   return undefined;
 }
 

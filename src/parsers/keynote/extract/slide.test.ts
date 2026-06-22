@@ -85,6 +85,66 @@ test("extractSlide prefers the authoritative thumbnail title over inherited defa
   assert.equal(buildPresentation(registry, "x").slides[0].title, "Takeaways");
 });
 
+test("extractSlide uses the Sage Title drawable and keeps it out of textBoxes", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, {
+      titlePlaceholder: ref(20n),
+      sageTagToInfoMap: [{ tag: "Title", info: ref(30n) }],
+      ownedDrawables: [ref(30n)],
+      drawablesZOrder: [],
+    }),
+    // On a modern content slide the title placeholder is empty.
+    ...placeholder(20n, 21n, PlaceholderKind.title, ""),
+    mockObject(30n, T.shapeInfoArchive, { ownedStorage: ref(31n) }),
+    mockObject(31n, T.storageArchive, { text: ["Network Monitor"] }),
+  ]);
+
+  const slide = buildPresentation(registry, "x").slides[0];
+  assert.equal(slide.title, "Network Monitor");
+  assert.deepEqual(slide.textBoxes, []);
+});
+
+test("extractSlide drops a Sage Title equal to the master's Sage Title", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, {
+      sageTagToInfoMap: [{ tag: "Title", info: ref(30n) }],
+      ownedDrawables: [ref(30n)],
+      drawablesZOrder: [],
+      templateSlide: ref(90n),
+    }),
+    mockObject(30n, T.shapeInfoArchive, { ownedStorage: ref(31n) }),
+    mockObject(31n, T.storageArchive, { text: ["Comparison Slide"] }),
+    // Master supplies the same Sage Title text, so the slide inherited it.
+    mockObject(90n, T.slideArchive, {
+      sageTagToInfoMap: [{ tag: "Title", info: ref(91n) }],
+      ownedDrawables: [],
+      drawablesZOrder: [],
+    }),
+    mockObject(91n, T.shapeInfoArchive, { ownedStorage: ref(92n) }),
+    mockObject(92n, T.storageArchive, { text: ["Comparison Slide"] }),
+  ]);
+
+  const slide = buildPresentation(registry, "x").slides[0];
+  assert.equal(slide.title, undefined);
+  assert.deepEqual(slide.textBoxes, []);
+});
+
+test("extractSlide falls back to the title placeholder when no Sage Title tag exists", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, {
+      titlePlaceholder: ref(20n),
+      ownedDrawables: [ref(20n)],
+      drawablesZOrder: [],
+    }),
+    ...placeholder(20n, 21n, PlaceholderKind.title, "Plain Title"),
+  ]);
+
+  assert.equal(buildPresentation(registry, "x").slides[0].title, "Plain Title");
+});
+
 test("extractSlide emits a fenced code block for a code-like text box", () => {
   const registry = buildRegistry([
     ...show(10n),
