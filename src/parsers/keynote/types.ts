@@ -3,6 +3,7 @@ import type {
   TSDArchives,
   TSPArchiveMessages,
   TSPMessages,
+  TSTArchives,
   TSWPArchives,
 } from "keynote-archives";
 
@@ -47,6 +48,11 @@ export type Color = TSPMessages.Color;
 export type ImageArchive = TSDArchives.ImageArchive;
 export type MovieArchive = TSDArchives.MovieArchive;
 export type GroupArchive = TSDArchives.GroupArchive;
+export type TableInfoArchive = TSTArchives.TableInfoArchive;
+export type TableModelArchive = TSTArchives.TableModelArchive;
+export type TableDataList = TSTArchives.TableDataList;
+export type Tile = TSTArchives.Tile;
+export type TileRowInfo = TSTArchives.TileRowInfo;
 export type PackageMetadata = TSPArchiveMessages.PackageMetadata;
 export type DataInfo = TSPArchiveMessages.DataInfo;
 

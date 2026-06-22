@@ -4,7 +4,7 @@ import type { Presentation, Slide } from "./model.ts";
 import { assembleMdxDocument, escapeMdxText, positionRules, presentationToMdx } from "./render.ts";
 
 function slide(overrides: Partial<Slide> = {}): Slide {
-  return { body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [], ...overrides };
+  return { body: [], textBoxes: [], images: [], videos: [], tables: [], tableCount: 0, notes: [], ...overrides };
 }
 
 function deck(slides: Slide[], unplacedImages: string[] = [], title = "Deck"): Presentation {
@@ -133,7 +133,26 @@ test("presentationToMdx embeds images as <Image>, videos as <video>, and a table
 
   assert.match(mdx, /<Image src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
   assert.match(mdx, /<video controls src=\{`\$\{imageRoot\}\/clip\.mov`\}><\/video>/);
-  assert.match(mdx, /\{\/\* 2 table\(s\) on this slide were not extracted \*\/\}/);
+  assert.match(mdx, /\{\/\* 2 table\(s\) on this slide could not be extracted \*\/\}/);
+});
+
+test("presentationToMdx renders an extracted table as escaped HTML with <br/> for newlines", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        tables: [
+          {
+            rows: [
+              ["Header", "a <b>"],
+              ["line1\nline2", ""],
+            ],
+          },
+        ],
+      }),
+    ]),
+  );
+
+  assert.match(mdx, /<table>\n {4}<tr><td>Header<\/td><td>a &lt;b&gt;<\/td><\/tr>\n {4}<tr><td>line1<br\/>line2<\/td><td><\/td><\/tr>\n {2}<\/table>/);
 });
 
 test("presentationToMdx renders a code text box as a fenced block with its language", () => {

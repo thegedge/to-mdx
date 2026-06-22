@@ -1,5 +1,5 @@
 import { kebabCase } from "../../utils.ts";
-import type { Paragraph, Presentation, Slide, SlideImage, TextBox, TextBoxGeometry } from "./model.ts";
+import type { Paragraph, Presentation, Slide, SlideImage, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
 
@@ -207,8 +207,12 @@ function slideBlocks(slide: Slide): string[] {
     blocks.push(`<video controls ${imageSrc(video)}></video>`);
   }
 
+  for (const table of slide.tables) {
+    blocks.push(renderTable(table));
+  }
+
   if (slide.tableCount > 0) {
-    blocks.push(`{/* ${slide.tableCount} table(s) on this slide were not extracted */}`);
+    blocks.push(`{/* ${slide.tableCount} table(s) on this slide could not be extracted */}`);
   }
 
   const notes = renderSpeakerNotes(slide.notes);
@@ -245,6 +249,40 @@ function renderTextBox(textBox: TextBox, index: number): string {
   // Wrapped in a `.kn-box-N` div so the generated stylesheet can position/style it.
   const prose = textBox.paragraphs.map((paragraph) => escapeMdxText(paragraph.text)).join("\n\n");
   return `<div className="kn-box-${index}">\n${prose}\n</div>`;
+}
+
+/**
+ * Renders an extracted table as raw HTML (`<table>`/`<tr>`/`<td>`), which MDX
+ * passes through. Cell text is MDX-escaped and intra-cell newlines become
+ * `<br/>`. Fully-empty trailing rows and columns are dropped so a sparsely
+ * populated grid does not emit a wall of empty cells; an empty table renders
+ * nothing.
+ */
+export function renderTable(table: TableData): string {
+  const rows = trimTable(table.rows);
+  if (rows.length === 0) return "";
+
+  const body = rows
+    .map((row) => `${INDENT}<tr>${row.map((cell) => `<td>${cellHtml(cell)}</td>`).join("")}</tr>`)
+    .join("\n");
+  return `<table>\n${body}\n</table>`;
+}
+
+/** Escapes a cell's text for MDX flow content, rendering newlines as line breaks. */
+function cellHtml(text: string): string {
+  return escapeMdxText(text).replace(/\n/g, "<br/>");
+}
+
+/** Drops fully-empty trailing rows and columns; correctness preserved for the rest. */
+function trimTable(rows: string[][]): string[][] {
+  let rowEnd = rows.length;
+  while (rowEnd > 0 && rows[rowEnd - 1].every((cell) => cell === "")) rowEnd--;
+  const kept = rows.slice(0, rowEnd);
+  if (kept.length === 0) return [];
+
+  let colEnd = Math.max(...kept.map((row) => row.length));
+  while (colEnd > 0 && kept.every((row) => (row[colEnd - 1] ?? "") === "")) colEnd--;
+  return kept.map((row) => row.slice(0, colEnd));
 }
 
 /** Indents every non-blank line by two spaces (slide content sits inside `<Slide>`). */

@@ -1,4 +1,4 @@
-import type { Paragraph, Slide, SlideImage, TextBox } from "../model.ts";
+import type { Paragraph, Slide, SlideImage, TableData, TextBox } from "../model.ts";
 import type { Registry } from "../registry.ts";
 import { isType } from "../type_ids.ts";
 import { PlaceholderKind } from "../types.ts";
@@ -10,7 +10,9 @@ import type {
   ShapeInfoArchive,
   SlideArchive,
   StorageArchive,
+  TableInfoArchive,
 } from "../types.ts";
+import { extractTable } from "./table.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
 import { boxPercent, textBoxStyle } from "./style.ts";
@@ -51,6 +53,7 @@ interface Collected {
   sageTitle: Paragraph[];
   bodies: Paragraph[][];
   textBoxes: TextBox[];
+  tables: TableData[];
   tableCount: number;
   /** Geometry of contentful drawables, in slide (point) coordinates, for layout heuristics. */
   geometries: RawBox[];
@@ -75,6 +78,7 @@ export function extractSlide(
     textBoxes: collected.textBoxes,
     images: placements.images,
     videos: placements.videos,
+    tables: collected.tables,
     tableCount: collected.tableCount,
     notes: notesParagraphs(slide.note, registry),
   };
@@ -123,6 +127,7 @@ function collectFromSlide(
     sageTitle: [],
     bodies: [],
     textBoxes: [],
+    tables: [],
     tableCount: 0,
     geometries: [],
     slideSize,
@@ -175,7 +180,9 @@ function processRef(
   }
 
   if (isType(entry.type, "TableInfoArchive")) {
-    collected.tableCount += 1;
+    const table = extractTable(entry.message as TableInfoArchive, registry);
+    if (table) collected.tables.push(table);
+    else collected.tableCount += 1;
     return;
   }
 

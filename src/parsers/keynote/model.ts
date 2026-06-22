@@ -46,6 +46,14 @@ export type TextBox =
   | { kind: "text"; paragraphs: Paragraph[]; box?: TextBoxGeometry; style?: TextBoxStyle }
   | { kind: "code"; language: string; text: string };
 
+/**
+ * A table's extracted cell text. `rows` is row-major; each row is a fixed-length
+ * array of `numberOfColumns` cells, with an empty string for blank/non-text cells.
+ */
+export interface TableData {
+  rows: string[][];
+}
+
 export interface Slide {
   /** Slide-layout CSS class derived from heuristics; absent when heuristics are off. */
   className?: string;
@@ -61,7 +69,9 @@ export interface Slide {
   images: SlideImage[];
   /** Resolved `Data/`-relative file names of movies/videos placed on the slide. */
   videos: string[];
-  /** Best-effort count of tables we detected but did not fully extract. */
+  /** Tables whose cell text we extracted, in slide (drawable) order. */
+  tables: TableData[];
+  /** Count of tables we detected but could not extract (missing/lost refs). */
   tableCount: number;
   notes: Paragraph[];
 }
