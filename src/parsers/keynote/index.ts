@@ -44,7 +44,8 @@ export async function parse(outputRoot: string, presentationFile: string, option
 
   const rawDumpPath = options.dumpKeynoteRaw ?? process.env.KEYNOTE_DEBUG_RAW;
   if (rawDumpPath) {
-    await writeRawDump(rawDumpPath, registry);
+    const rawSlides = options.dumpKeynoteRawSlides ?? process.env.KEYNOTE_DEBUG_RAW_SLIDES;
+    await writeRawDump(rawDumpPath, registry, rawSlides);
   }
 
   await copyImages(presentation, dataFiles, basename, outputRoot);

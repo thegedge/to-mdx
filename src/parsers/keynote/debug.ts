@@ -46,18 +46,43 @@ interface RawObject {
 const RAW_DUMP_CAP = 1000;
 
 /**
- * Writes the RAW decoded protobuf objects (bigints stringified) for the first
- * three slides plus everything they transitively reference, and for the package
- * metadata and every image. This is the ground-truth escape hatch: it lets us
- * confirm field paths (image→data→fileName, placeholder kinds, etc.) against a
- * real file without guessing.
+ * Parses a `KEYNOTE_DEBUG_RAW_SLIDES`-style spec (comma-separated 1-based slide
+ * numbers in presentation order) into sorted, de-duped 0-based indices. Returns
+ * undefined when the spec is unset or has no valid numbers, so callers fall back
+ * to the default first-three sampling.
  */
-export async function writeRawDump(dumpPath: string, registry: Registry): Promise<void> {
+export function parseRawSlideSelection(spec: string | undefined): number[] | undefined {
+  if (spec === undefined) return undefined;
+  const indices = spec
+    .split(",")
+    .map((part) => Number.parseInt(part.trim(), 10))
+    .filter((value) => Number.isInteger(value) && value >= 1)
+    .map((value) => value - 1);
+  if (indices.length === 0) return undefined;
+  return [...new Set(indices)].sort((a, b) => a - b);
+}
+
+/**
+ * Writes the RAW decoded protobuf objects (bigints stringified) for a set of
+ * slides plus everything they transitively reference, and for the package
+ * metadata and every image. By default it samples the first three slides; pass a
+ * `slideSpec` (see `parseRawSlideSelection`) to target specific 1-based slide
+ * numbers instead — e.g. to capture a particular table slide's archive. This is
+ * the ground-truth escape hatch: it lets us confirm field paths
+ * (image→data→fileName, placeholder kinds, etc.) against a real file without
+ * guessing.
+ */
+export async function writeRawDump(dumpPath: string, registry: Registry, slideSpec?: string): Promise<void> {
   const wanted = new Set<bigint>();
 
-  // First three slides in PRESENTATION order (real content), not registry order
-  // (which surfaces master/layout templates holding placeholder default text).
-  const slides = orderedSlideArchives(registry).slice(0, 3);
+  // Slides in PRESENTATION order (real content), not registry order (which
+  // surfaces master/layout templates holding placeholder default text). A spec
+  // selects exact 1-based slide numbers; otherwise we take the first three.
+  const ordered = orderedSlideArchives(registry);
+  const selection = parseRawSlideSelection(slideSpec);
+  const slides = selection
+    ? selection.map((index) => ordered[index]).filter((entry): entry is RegistryEntry => entry !== undefined)
+    : ordered.slice(0, 3);
   for (const slide of slides) collectTransitive(slide.id, registry, wanted);
 
   const metadataTypes = new Set<number>([...typeIds("PackageMetadata"), ...typeIds("PasteboardMetadata")]);

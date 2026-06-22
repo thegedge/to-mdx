@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { writeDebugDump, writeRawDump } from "./debug.ts";
+import { parseRawSlideSelection, writeDebugDump, writeRawDump } from "./debug.ts";
 import type { Presentation } from "./model.ts";
 import { buildRegistry, mockObject, ref } from "./test_support.ts";
 import { KeynoteType } from "./types.ts";
@@ -41,6 +41,42 @@ test("writeRawDump emits compact single-line JSON", async () => {
     const output = await readFile(filePath, "utf8");
     assert.ok(!output.includes("\n"), "expected no newlines");
     JSON.parse(output);
+  });
+});
+
+test("parseRawSlideSelection returns undefined when unset so callers keep the default sampling", () => {
+  assert.equal(parseRawSlideSelection(undefined), undefined);
+  assert.equal(parseRawSlideSelection(""), undefined);
+  assert.equal(parseRawSlideSelection("  "), undefined);
+  assert.equal(parseRawSlideSelection("0,-1,abc"), undefined);
+});
+
+test("parseRawSlideSelection maps 1-based numbers to sorted, de-duped 0-based indices", () => {
+  assert.deepEqual(parseRawSlideSelection("3"), [2]);
+  assert.deepEqual(parseRawSlideSelection("3, 1 ,1,2"), [0, 1, 2]);
+  assert.deepEqual(parseRawSlideSelection("5,2,0,foo"), [1, 4]);
+});
+
+test("writeRawDump targets the slides named by the spec instead of the first three", async () => {
+  await withTempFile(async (filePath) => {
+    const registry = buildRegistry([
+      mockObject(1n, T.documentArchive, { show: ref(2n) }),
+      mockObject(2n, T.showArchive, { slideTree: { slides: [ref(10n), ref(20n), ref(30n), ref(40n)] } }),
+      mockObject(10n, T.slideArchive, {}),
+      mockObject(20n, T.slideArchive, {}),
+      mockObject(30n, T.slideArchive, {}),
+      mockObject(40n, T.slideArchive, {}),
+    ]);
+
+    await writeRawDump(filePath, registry, "2,4");
+
+    const dumped = JSON.parse(await readFile(filePath, "utf8")) as Array<{ id: string }>;
+    const ids = new Set(dumped.map((object) => object.id));
+
+    assert.ok(ids.has("20"), "1-based slide 2 should be dumped");
+    assert.ok(ids.has("40"), "1-based slide 4 should be dumped");
+    assert.ok(!ids.has("10"), "slide 1 not in spec");
+    assert.ok(!ids.has("30"), "slide 3 not in spec");
   });
 });
 

@@ -96,14 +96,32 @@ function formatRule(selector: string, declarations: string[]): string {
 
 /** Absolute-positioning declarations for a placed image, layered below text. */
 function imageDeclarations(box: TextBoxGeometry): string[] {
+  return ["position: absolute;", ...positionRules(box), "z-index: 1;"];
+}
+
+/** A box dimension at or below this percentage is treated as "auto" (Keynote reports 0). */
+const SIZE_EPSILON = 0.5;
+
+/**
+ * The placement declarations for a box, one axis at a time. Auto-sizing Keynote
+ * text boxes report a zero width/height, which would collapse the element and
+ * push it off-screen; for those we omit the size and anchor by the near edge
+ * (`left`/`top` when the box starts in the first half, otherwise `right`/`bottom`
+ * measured from the far edge). When the size is real we keep the start + size as
+ * before. Pure and data-driven so absent props are simply not emitted.
+ */
+export function positionRules(box: TextBoxGeometry): string[] {
   return [
-    "position: absolute;",
-    `left: ${percent(box.left)}%;`,
-    `top: ${percent(box.top)}%;`,
-    `width: ${percent(box.width)}%;`,
-    `height: ${percent(box.height)}%;`,
-    "z-index: 1;",
+    ...axisRules("left", "right", "width", box.left, box.width),
+    ...axisRules("top", "bottom", "height", box.top, box.height),
   ];
+}
+
+function axisRules(near: string, far: string, sizeProp: string, start: number, size: number): string[] {
+  if (size <= SIZE_EPSILON) {
+    return start <= 50 ? [`${near}: ${percent(start)}%;`] : [`${far}: ${percent(100 - start)}%;`];
+  }
+  return [`${near}: ${percent(start)}%;`, `${sizeProp}: ${percent(size)}%;`];
 }
 
 /** The CSS declarations for one free text box, in source order, skipping absent properties. */
@@ -112,10 +130,7 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): string[] 
 
   if (textBox.box) {
     declarations.push("position: absolute;");
-    declarations.push(`left: ${percent(textBox.box.left)}%;`);
-    declarations.push(`top: ${percent(textBox.box.top)}%;`);
-    declarations.push(`width: ${percent(textBox.box.width)}%;`);
-    declarations.push(`height: ${percent(textBox.box.height)}%;`);
+    declarations.push(...positionRules(textBox.box));
     // Above positioned images (z-index 1) so text labels stay on top of media.
     declarations.push("z-index: 2;");
   }

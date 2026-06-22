@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Presentation, Slide } from "./model.ts";
-import { assembleMdxDocument, escapeMdxText, presentationToMdx } from "./render.ts";
+import { assembleMdxDocument, escapeMdxText, positionRules, presentationToMdx } from "./render.ts";
 
 function slide(overrides: Partial<Slide> = {}): Slide {
   return { body: [], textBoxes: [], images: [], videos: [], tableCount: 0, notes: [], ...overrides };
@@ -281,6 +281,42 @@ test("presentationToMdx omits the <style> block when no text box is positioned o
   assert.match(mdx, /# Title/);
   assert.match(mdx, /- A bullet/);
   assert.match(mdx, /<Image src=/);
+});
+
+test("positionRules anchors a bottom-right auto-size box by its near (right/bottom) edges", () => {
+  assert.deepEqual(positionRules({ left: 94.4, top: 97.2, width: 0, height: 0 }), ["right: 5.6%;", "bottom: 2.8%;"]);
+});
+
+test("positionRules keeps left/top/width/height for a real-sized box", () => {
+  assert.deepEqual(positionRules({ left: 10, top: 20, width: 30, height: 40 }), [
+    "left: 10%;",
+    "width: 30%;",
+    "top: 20%;",
+    "height: 40%;",
+  ]);
+});
+
+test("positionRules anchors a top-left auto-size box by left/top (no width/height)", () => {
+  assert.deepEqual(positionRules({ left: 28, top: 12, width: 0, height: 0 }), ["left: 28%;", "top: 12%;"]);
+});
+
+test("presentationToMdx anchors a positioned auto-size box without emitting width:0", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          { kind: "text", paragraphs: [{ depth: 0, text: "corner" }], box: { left: 94.4, top: 97.2, width: 0, height: 0 } },
+        ],
+      }),
+    ]),
+  );
+
+  assert.match(mdx, /right: 5\.6%;/);
+  assert.match(mdx, /bottom: 2\.8%;/);
+  assert.doesNotMatch(mdx, /width: 0%;/);
+  assert.doesNotMatch(mdx, /height: 0%;/);
+  assert.doesNotMatch(mdx, /left:/);
+  assert.doesNotMatch(mdx, /top:/);
 });
 
 test("assembleMdxDocument puts a blank line between the exports and the body, and ends with a newline", () => {

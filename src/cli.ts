@@ -30,6 +30,7 @@ function showHelp(programName: string): void {
   console.log("  --use-heuristics    Use heuristics to determine classnames and eliminate positioning divs");
   console.log("  --dump-keynote <path>  Write the decoded Keynote (.key) structure as JSON for debugging");
   console.log("  --dump-keynote-raw <path>  Write RAW decoded Keynote protobuf objects as JSON for debugging");
+  console.log("  --dump-keynote-raw-slides <list>  Comma-separated 1-based slide numbers to target for --dump-keynote-raw");
   console.log("  -h, --help         Show this help message");
 }
 
@@ -55,6 +56,13 @@ export async function main(argv: string[]): Promise<void> {
         process.exit(1);
       }
       options.dumpKeynoteRaw = value;
+    } else if (arg === "--dump-keynote-raw-slides") {
+      const value = argv[++i];
+      if (!value) {
+        console.error("Error: --dump-keynote-raw-slides requires a comma-separated list argument");
+        process.exit(1);
+      }
+      options.dumpKeynoteRawSlides = value;
     } else if (arg === "-h" || arg === "--help") {
       showHelp(process.argv[1]);
       process.exit(0);
