@@ -52,6 +52,21 @@ test("buildPresentation extracts title, body bullets, images and notes from a sl
   assert.deepEqual(slide.notes, [{ depth: 0, text: "Speaker note" }]);
 });
 
+test("buildPresentation resolves images through the Data/ filenames when given dataFiles", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n)], drawablesZOrder: [] }),
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "a pic" }, data: ref(4235n) }),
+    // No PackageMetadata at all: the Data/ filename map must carry resolution.
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/flamegraph-4235.png", new Uint8Array()]]);
+
+  assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].images, [
+    { fileName: "flamegraph-4235.png", altText: "a pic" },
+  ]);
+});
+
 test("buildPresentation uses the first slide title, falling back to the given title", () => {
   assert.equal(buildPresentation(fullDeck(), "fallback").title, "My Title");
 

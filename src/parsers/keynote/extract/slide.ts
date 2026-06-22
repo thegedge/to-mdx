@@ -39,10 +39,11 @@ interface Collected {
 export function extractSlide(
   slide: SlideArchive,
   registry: Registry,
+  dataFileNames: Map<number, string>,
   dataInfo: Map<bigint, string>,
   defaults: SlideDefaults = NO_DEFAULTS,
 ): Slide {
-  const collected = collectFromSlide(slide, registry, dataInfo);
+  const collected = collectFromSlide(slide, registry, dataFileNames, dataInfo);
 
   return {
     title: pickTitle(slide, collected.titles, defaults.titles),
@@ -57,25 +58,30 @@ export function extractSlide(
 
 /** Title/body placeholder texts of a (master) slide, used to detect inherited defaults. */
 export function slidePlaceholderTexts(slide: SlideArchive, registry: Registry): { titles: string[]; bodies: string[] } {
-  const collected = collectFromSlide(slide, registry, new Map());
+  const collected = collectFromSlide(slide, registry, new Map(), new Map());
   return {
     titles: collected.titles.map(joinText).filter((text) => text.length > 0),
     bodies: collected.bodies.map(joinText).filter((text) => text.length > 0),
   };
 }
 
-function collectFromSlide(slide: SlideArchive, registry: Registry, dataInfo: Map<bigint, string>): Collected {
+function collectFromSlide(
+  slide: SlideArchive,
+  registry: Registry,
+  dataFileNames: Map<number, string>,
+  dataInfo: Map<bigint, string>,
+): Collected {
   const collected: Collected = { titles: [], bodies: [], textBoxes: [], images: [], videos: [], tableCount: 0 };
   const handled = new Set<bigint>();
 
   // Process the explicit title/body refs first: their role is authoritative even
   // on older files that omit the placeholder `kind` discriminator.
-  processRef(slide.titlePlaceholder, "title", registry, dataInfo, collected, handled);
-  processRef(slide.bodyPlaceholder, "body", registry, dataInfo, collected, handled);
+  processRef(slide.titlePlaceholder, "title", registry, dataFileNames, dataInfo, collected, handled);
+  processRef(slide.bodyPlaceholder, "body", registry, dataFileNames, dataInfo, collected, handled);
 
   const drawables = slide.drawablesZOrder.length > 0 ? slide.drawablesZOrder : slide.ownedDrawables;
   for (const ref of drawables) {
-    processRef(ref, undefined, registry, dataInfo, collected, handled);
+    processRef(ref, undefined, registry, dataFileNames, dataInfo, collected, handled);
   }
 
   return collected;
@@ -85,6 +91,7 @@ function processRef(
   ref: Reference | undefined,
   role: Role,
   registry: Registry,
+  dataFileNames: Map<number, string>,
   dataInfo: Map<bigint, string>,
   collected: Collected,
   handled: Set<bigint>,
@@ -98,6 +105,7 @@ function processRef(
   if (isType(entry.type, "ImageArchive")) {
     const image = imageFromArchive(
       entry.message as ImageArchive,
+      dataFileNames,
       dataInfo,
       (entry.message as ImageArchive).super?.accessibilityDescription ?? "",
     );
@@ -106,14 +114,14 @@ function processRef(
   }
 
   if (isType(entry.type, "MovieArchive")) {
-    const fileName = videoFileFromArchive(entry.message as MovieArchive, dataInfo);
+    const fileName = videoFileFromArchive(entry.message as MovieArchive, dataFileNames, dataInfo);
     if (fileName) collected.videos.push(fileName);
     return;
   }
 
   if (isType(entry.type, "GroupArchive")) {
     for (const child of (entry.message as GroupArchive).children) {
-      processRef(child, undefined, registry, dataInfo, collected, handled);
+      processRef(child, undefined, registry, dataFileNames, dataInfo, collected, handled);
     }
     return;
   }

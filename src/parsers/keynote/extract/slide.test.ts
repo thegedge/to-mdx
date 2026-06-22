@@ -108,3 +108,27 @@ test("extractSlide resolves movies to a video data file", () => {
 
   assert.deepEqual(buildPresentation(registry, "x").slides[0].videos, ["demo.mov"]);
 });
+
+test("extractSlide resolves an image via the Data/ filename map keyed by data id", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(70n)], drawablesZOrder: [] }),
+    mockObject(70n, T.imageArchive, { super: { accessibilityDescription: "card" }, data: ref(479n) }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/unite-cardreader-small-479.jpg", new Uint8Array()]]);
+
+  assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].images, [
+    { fileName: "unite-cardreader-small-479.jpg", altText: "card" },
+  ]);
+});
+
+test("extractSlide resolves a movie via the Data/ filename map keyed by movie data id", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(70n)], drawablesZOrder: [] }),
+    mockObject(70n, T.movieArchive, { super: {}, movieData: ref(5855n) }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/black_friday-5855.mp4", new Uint8Array()]]);
+
+  assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].videos, ["black_friday-5855.mp4"]);
+});

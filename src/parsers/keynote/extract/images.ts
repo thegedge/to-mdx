@@ -39,9 +39,39 @@ function datasOf(entry: RegistryEntry): DataInfo[] {
   return Array.isArray(datas) ? datas : [];
 }
 
-export function imageFromArchive(image: ImageArchive, dataInfo: Map<bigint, string>, altText: string): SlideImage | null {
+/**
+ * PRIMARY data→filename resolver, built straight from the zip's non-IWA entries.
+ * Every `Data/` asset is named `<originalname>-<id>.<ext>`, where the trailing
+ * number group before the extension is exactly the `DataReference.identifier`
+ * referenced by image/movie drawables. We key by that id so resolution never
+ * depends on the `PackageMetadata` object, which the decoder routinely drops.
+ *
+ * Keyed by `number` (the id fits comfortably): callers convert the bigint
+ * `identifier` explicitly. Thumbnails (`-small-<id>`) and render previews
+ * (`st-`/`mt-<uuid>-<id>`) follow the same rule, so the map simply contains
+ * every asset; drawables only ever look up their full-asset `data.identifier`.
+ */
+export function buildDataFileNameMap(dataFiles: Map<string, Uint8Array>): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const fullName of dataFiles.keys()) {
+    if (!fullName.startsWith("Data/")) continue;
+    const baseName = fullName.slice("Data/".length);
+    const match = /-(\d+)\.[^.]+$/.exec(baseName);
+    if (!match) continue;
+    map.set(Number(match[1]), baseName);
+  }
+  return map;
+}
+
+export function imageFromArchive(
+  image: ImageArchive,
+  dataFileNames: Map<number, string>,
+  dataInfo: Map<bigint, string>,
+  altText: string,
+): SlideImage | null {
   const fileName = resolveDataFileName(
     [image.data, image.originalData, image.adjustedImageData, image.enhancedImageData],
+    dataFileNames,
     dataInfo,
   );
   if (!fileName) return null;
@@ -50,18 +80,25 @@ export function imageFromArchive(image: ImageArchive, dataInfo: Map<bigint, stri
 }
 
 /** Resolves a movie/video drawable to its backing data file name, if any. */
-export function videoFileFromArchive(movie: MovieArchive, dataInfo: Map<bigint, string>): string | null {
-  return resolveDataFileName([movie.movieData, movie.importedAuxiliaryMovieData], dataInfo);
+export function videoFileFromArchive(
+  movie: MovieArchive,
+  dataFileNames: Map<number, string>,
+  dataInfo: Map<bigint, string>,
+): string | null {
+  return resolveDataFileName([movie.movieData, movie.importedAuxiliaryMovieData], dataFileNames, dataInfo);
 }
 
 function resolveDataFileName(
   refs: Array<DataReference | undefined>,
+  dataFileNames: Map<number, string>,
   dataInfo: Map<bigint, string>,
 ): string | null {
   for (const ref of refs) {
     if (ref?.identifier === undefined) continue;
-    const fileName = dataInfo.get(ref.identifier);
-    if (fileName) return fileName;
+    const primary = dataFileNames.get(Number(ref.identifier));
+    if (primary) return primary;
+    const fallback = dataInfo.get(ref.identifier);
+    if (fallback) return fallback;
   }
   return null;
 }

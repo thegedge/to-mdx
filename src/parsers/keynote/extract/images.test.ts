@@ -3,7 +3,27 @@ import { test } from "node:test";
 import { buildRegistry, mockObject } from "../test_support.ts";
 import { KeynoteType } from "../types.ts";
 import type { ImageArchive } from "../types.ts";
-import { buildDataInfoMap, imageFromArchive } from "./images.ts";
+import { buildDataFileNameMap, buildDataInfoMap, imageFromArchive } from "./images.ts";
+
+test("buildDataFileNameMap keys each Data/ asset by its trailing id (last number wins)", () => {
+  const empty = new Uint8Array();
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/name-479.jpg", empty],
+    ["Data/name-small-480.jpg", empty],
+    ["Data/alex-238098-2103.jpg", empty],
+    ["Data/black_friday-5855.mp4", empty],
+    ["Documents/index.iwa", empty],
+    ["Data/no-id-here.png", empty],
+  ]);
+
+  const map = buildDataFileNameMap(dataFiles);
+  assert.equal(map.get(479), "name-479.jpg");
+  assert.equal(map.get(480), "name-small-480.jpg");
+  assert.equal(map.get(2103), "alex-238098-2103.jpg");
+  assert.equal(map.get(5855), "black_friday-5855.mp4");
+  // Non-Data entries and id-less names are ignored.
+  assert.equal(map.size, 4);
+});
 
 test("buildDataInfoMap reads datas from a PackageMetadata object resolved by name", () => {
   const registry = buildRegistry([
@@ -30,21 +50,31 @@ test("buildDataInfoMap duck-types datas even under an unexpected type id", () =>
   assert.equal(buildDataInfoMap(registry).get(200n), "diagram.png");
 });
 
-test("imageFromArchive resolves the file name via the data reference chain", () => {
-  const dataInfo = new Map<bigint, string>([[100n, "shot.png"]]);
+test("imageFromArchive resolves via the Data/ filename map (primary)", () => {
+  const dataFileNames = new Map<number, string>([[479, "unite-cardreader-small-479.jpg"]]);
   const image = {
     super: { accessibilityDescription: "a chart" },
-    data: { identifier: 100n },
+    data: { identifier: 479n },
   } as ImageArchive;
 
-  assert.deepEqual(imageFromArchive(image, dataInfo, "a chart"), { fileName: "shot.png", altText: "a chart" });
+  assert.deepEqual(imageFromArchive(image, dataFileNames, new Map(), "a chart"), {
+    fileName: "unite-cardreader-small-479.jpg",
+    altText: "a chart",
+  });
+});
+
+test("imageFromArchive falls back to the datas map when the Data/ map misses", () => {
+  const dataInfo = new Map<bigint, string>([[100n, "shot.png"]]);
+  const image = { data: { identifier: 100n } } as ImageArchive;
+
+  assert.equal(imageFromArchive(image, new Map(), dataInfo, "")?.fileName, "shot.png");
 });
 
 test("imageFromArchive falls back to originalData and returns null when unmapped", () => {
   const dataInfo = new Map<bigint, string>([[55n, "orig.png"]]);
   const viaOriginal = { originalData: { identifier: 55n } } as ImageArchive;
-  assert.equal(imageFromArchive(viaOriginal, dataInfo, "")?.fileName, "orig.png");
+  assert.equal(imageFromArchive(viaOriginal, new Map(), dataInfo, "")?.fileName, "orig.png");
 
   const unmapped = { data: { identifier: 999n } } as ImageArchive;
-  assert.equal(imageFromArchive(unmapped, dataInfo, ""), null);
+  assert.equal(imageFromArchive(unmapped, new Map(), dataInfo, ""), null);
 });

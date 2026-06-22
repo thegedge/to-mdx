@@ -17,7 +17,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
   console.log(`🔍 Decoded ${registry.size} Keynote objects`);
 
   const fallbackTitle = titleFromPath(presentationFile);
-  const presentation = buildPresentation(registry, fallbackTitle);
+  const presentation = buildPresentation(registry, fallbackTitle, dataFiles);
   const title = presentation.title;
   console.log(`🔍 Presentation title: ${title} (${presentation.slides.length} slides)`);
 

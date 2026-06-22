@@ -8,16 +8,21 @@ import type {
   SlideArchive,
   SlideNodeArchive,
 } from "../types.ts";
-import { buildDataInfoMap } from "./images.ts";
+import { buildDataFileNameMap, buildDataInfoMap } from "./images.ts";
 import type { SlideDefaults } from "./slide.ts";
 import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
 
-export function buildPresentation(registry: Registry, fallbackTitle: string): Presentation {
+export function buildPresentation(
+  registry: Registry,
+  fallbackTitle: string,
+  dataFiles: Map<string, Uint8Array> = new Map(),
+): Presentation {
+  const dataFileNames = buildDataFileNameMap(dataFiles);
   const dataInfo = buildDataInfoMap(registry);
   const defaultsFor = makeDefaultsResolver(registry);
   const slides = orderedSlideArchives(registry).map((entry) => {
     const slide = entry.message as SlideArchive;
-    return extractSlide(slide, registry, dataInfo, defaultsFor(slide));
+    return extractSlide(slide, registry, dataFileNames, dataInfo, defaultsFor(slide));
   });
 
   return { title: presentationTitle(slides, fallbackTitle), slides };
