@@ -95,6 +95,7 @@ async function copyImages(
     for (const image of slide.images) fileNames.add(image.fileName);
     for (const video of slide.videos) fileNames.add(video);
   }
+  for (const fileName of presentation.unplacedImages) fileNames.add(fileName);
   if (fileNames.size === 0) return;
 
   await mkdir(imagesDir, { recursive: true });

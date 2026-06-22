@@ -32,4 +32,11 @@ export interface Slide {
 export interface Presentation {
   title: string;
   slides: Slide[];
+  /**
+   * Distinct `Data/`-relative file names of images that resolve to a file but
+   * could not be linked to any slide (their container was lost to a partially
+   * decoded `.iwa` chunk). Sorted; emitted in a trailing appendix so the content
+   * is preserved for manual placement.
+   */
+  unplacedImages: string[];
 }

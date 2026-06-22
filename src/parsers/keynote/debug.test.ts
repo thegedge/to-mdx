@@ -19,7 +19,7 @@ async function withTempFile(run: (filePath: string) => Promise<void>): Promise<v
   }
 }
 
-const emptyPresentation: Presentation = { title: "T", slides: [] };
+const emptyPresentation: Presentation = { title: "T", slides: [], unplacedImages: [] };
 
 test("writeDebugDump emits compact single-line JSON", async () => {
   await withTempFile(async (filePath) => {

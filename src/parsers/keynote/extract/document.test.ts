@@ -167,6 +167,30 @@ test("buildPresentation counts an image reachable both top-down and bottom-up on
   ]);
 });
 
+test("buildPresentation collects resolvable but unlinkable images into unplacedImages, deduped", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n)], drawablesZOrder: [] }),
+    // Placed: parent chain reaches the content slide.
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "ok", parent: ref(4n) }, data: ref(100n) }),
+    // Severed owner chain (no parent): resolves to a file but cannot be placed.
+    mockObject(19n, T.imageArchive, { super: { accessibilityDescription: "lost" }, data: ref(200n) }),
+    // Duplicate occurrence of the same lost file: must collapse to one filename.
+    mockObject(29n, T.imageArchive, { super: { accessibilityDescription: "lost too" }, data: ref(200n) }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/placed-100.png", new Uint8Array()],
+    ["Data/lost-200.png", new Uint8Array()],
+  ]);
+
+  const presentation = buildPresentation(registry, "x", dataFiles);
+
+  assert.deepEqual(presentation.slides[0].images, [{ fileName: "placed-100.png", altText: "ok" }]);
+  assert.deepEqual(presentation.unplacedImages, ["lost-200.png"]);
+  assert.ok(!presentation.unplacedImages.includes("placed-100.png"));
+});
+
 function slideWithTitle(slideId: bigint, storageId: bigint, title: string) {
   return [
     mockObject(slideId, T.slideArchive, { titlePlaceholder: ref(storageId + 1000n), ownedDrawables: [], drawablesZOrder: [] }),

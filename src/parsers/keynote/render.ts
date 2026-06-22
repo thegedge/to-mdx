@@ -3,10 +3,29 @@ import type { Paragraph, Presentation, Slide, TextBox } from "./model.ts";
 const INDENT = "  ";
 
 export function presentationToMdx(presentation: Presentation, basename: string): string {
-  return presentation.slides
+  const sections = presentation.slides
     .map((slide) => renderSlide(slide, basename))
-    .filter((block) => block.trim().length > 0)
-    .join("\n\n---\n\n");
+    .filter((block) => block.trim().length > 0);
+
+  const appendix = renderUnplacedImages(presentation.unplacedImages, basename);
+  if (appendix) sections.push(appendix);
+
+  return sections.join("\n\n---\n\n");
+}
+
+/**
+ * Trailing section for images that resolved to a file but could not be linked to
+ * any slide (their container was lost to a partially decoded chunk). Emitted so
+ * the content is preserved in the doc for manual placement.
+ */
+function renderUnplacedImages(fileNames: string[], basename: string): string {
+  if (fileNames.length === 0) return "";
+
+  const blocks = [
+    "{/* Unplaced images: these could not be linked to a slide (container lost to a partially-decoded chunk) */}",
+    ...fileNames.map((fileName) => `![image](/img/presentations/${basename}/${fileName})`),
+  ];
+  return blocks.join("\n\n");
 }
 
 function renderSlide(slide: Slide, basename: string): string {

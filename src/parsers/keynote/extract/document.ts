@@ -10,7 +10,13 @@ import type {
   SlideArchive,
   SlideNodeArchive,
 } from "../types.ts";
-import { buildDataFileNameMap, buildDataInfoMap, imageFromArchive, videoFileFromArchive } from "./images.ts";
+import {
+  buildDataFileNameMap,
+  buildDataInfoMap,
+  distinctImageFileNames,
+  imageFromArchive,
+  videoFileFromArchive,
+} from "./images.ts";
 import { owningSlideId } from "./ownership.ts";
 import type { SlideDefaults, SlidePlacements } from "./slide.ts";
 import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
@@ -33,7 +39,12 @@ export function buildPresentation(
     return extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id));
   });
 
-  return { title: presentationTitle(slides, fallbackTitle), slides };
+  const placed = new Set(slides.flatMap((slide) => slide.images.map((image) => image.fileName)));
+  const unplacedImages = [...distinctImageFileNames(registry, dataFiles)]
+    .filter((fileName) => !placed.has(fileName))
+    .sort();
+
+  return { title: presentationTitle(slides, fallbackTitle), slides, unplacedImages };
 }
 
 /**
