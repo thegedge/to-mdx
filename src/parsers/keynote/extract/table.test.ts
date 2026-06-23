@@ -1,14 +1,38 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { TableModelArchive } from "../types.ts";
+import type { CellStyleArchive, TableModelArchive } from "../types.ts";
 import { buildRegistry, mockObject, ref } from "../test_support.ts";
-import { type CellTables, cellValue, tableData } from "./table.ts";
+import {
+  type CellTables,
+  cellBackground,
+  cellStyleId,
+  type CellStyling,
+  cellValue,
+  effectiveCellFill,
+  fillToBackground,
+  tableData,
+} from "./table.ts";
 
 /** A v5 cell record: type byte at +1, a little-endian uint32 key at +12. */
 function cell(type: number, key: number): Uint8Array {
   const buffer = new Uint8Array(16);
   buffer[1] = type;
   new DataView(buffer.buffer).setUint32(12, key, true);
+  return buffer;
+}
+
+/**
+ * A v5 BNC cell record carrying a string key (flag 0x8) and a cell style id (flag
+ * 0x20): flags `uint32` at +8, then the string key at +12 and the style id at +16.
+ */
+function styledCell(stringKey: number, styleId: number): Uint8Array {
+  const buffer = new Uint8Array(20);
+  buffer[0] = 5; // version
+  buffer[1] = 3; // text cell
+  const view = new DataView(buffer.buffer);
+  view.setUint32(8, 0x8 | 0x20, true); // string + cell-style fields present
+  view.setUint32(12, stringKey, true);
+  view.setUint32(16, styleId, true);
   return buffer;
 }
 
@@ -276,4 +300,101 @@ test("tableData returns undefined when the data store or dimensions are missing"
     tableData({ numberOfRows: 0, numberOfColumns: 0, baseDataStore: {} } as unknown as TableModelArchive, registry),
     undefined,
   );
+});
+
+test("fillToBackground converts a cell fill to hex, mapping a sub-1 alpha to a rounded opacity", () => {
+  // Translucent red (0.985, 0.546, 0.541, a:0.249) — a per-cell highlight from the deck.
+  const fill = { color: { r: 0.985, g: 0.546, b: 0.541, a: 0.249 } };
+  assert.deepEqual(fillToBackground(fill), { backgroundColor: "#fb8b8a", backgroundOpacity: 0.249 });
+
+  // Opaque fill emits no opacity field.
+  assert.deepEqual(fillToBackground({ color: { r: 1, g: 1, b: 1, a: 1 } }), { backgroundColor: "#ffffff" });
+
+  // No solid color → no background.
+  assert.equal(fillToBackground(undefined), undefined);
+  assert.equal(fillToBackground({}), undefined);
+});
+
+test("effectiveCellFill walks the super chain when the outer style carries no cellFill", () => {
+  const style = {
+    cellProperties: {}, // empty outer properties
+    super: { super: { cellProperties: { cellFill: { color: { r: 0, g: 0.4, b: 0.75 } } } } },
+  };
+  const fill = effectiveCellFill(style as unknown as CellStyleArchive);
+  assert.deepEqual(fillToBackground(fill), { backgroundColor: "#0066bf" });
+});
+
+test("cellStyleId reads the BNC style id past the variable-width value/string fields", () => {
+  assert.equal(cellStyleId(styledCell(7, 4), 0), 4); // string (4 bytes) then style id
+  // A cell with no style flag set yields undefined (the legacy zeroed-flags record).
+  assert.equal(cellStyleId(cell(3, 7), 0), undefined);
+  // Bounds-safe on a truncated record.
+  assert.equal(cellStyleId(new Uint8Array(4), 0), undefined);
+});
+
+test("cellBackground maps a per-cell style id to its styleTable fill, else the positional default", () => {
+  const styling: CellStyling = {
+    byKey: new Map([
+      [4, { backgroundColor: "#223274", backgroundOpacity: 0.151 }],
+      [6, undefined], // present but transparent
+    ]),
+    header: { backgroundColor: "#0066bf" },
+    headerColumn: undefined,
+    footer: undefined,
+    body: { backgroundColor: "#ffffff" },
+    headerRows: 1,
+    headerColumns: 0,
+    footerRows: 0,
+    rowCount: 3,
+  };
+
+  // Per-cell style id 4 wins regardless of position.
+  assert.deepEqual(cellBackground(styling, styledCell(1, 4), 0, 2, 0), {
+    backgroundColor: "#223274",
+    backgroundOpacity: 0.151,
+  });
+  // A present-but-transparent style id (6) suppresses the positional default.
+  assert.equal(cellBackground(styling, styledCell(1, 6), 0, 0, 0), undefined);
+  // No per-cell style → positional default: header row, then body.
+  assert.deepEqual(cellBackground(styling, cell(3, 1), 0, 0, 0), { backgroundColor: "#0066bf" });
+  assert.deepEqual(cellBackground(styling, cell(3, 1), 0, 1, 0), { backgroundColor: "#ffffff" });
+});
+
+test("tableData applies per-cell styleTable fills and positional defaults to cells", () => {
+  const model: TableModelArchive = {
+    numberOfRows: 1,
+    numberOfColumns: 2,
+    bodyCellStyle: ref(500n),
+    baseDataStore: {
+      stringTable: ref(200n),
+      styleTable: ref(600n),
+      tiles: { tileSize: 256, tiles: [{ tileid: 0, tile: ref(300n) }] },
+    },
+  } as unknown as TableModelArchive;
+
+  const registry = buildRegistry([
+    mockObject(200n, 6005, { listType: 1, entries: [{ key: 1, string: "A" }, { key: 2, string: "B" }] }),
+    mockObject(500n, 6004, { cellProperties: { cellFill: { color: { r: 1, g: 1, b: 1, a: 1 } } } }),
+    mockObject(600n, 6005, { listType: 4, entries: [{ key: 4, reference: ref(601n) }] }),
+    mockObject(601n, 6004, { cellProperties: { cellFill: { color: { r: 0.133, g: 0.196, b: 0.454, a: 0.151 } } } }),
+    mockObject(300n, 6002, {
+      rowInfos: [
+        {
+          tileRowIndex: 0,
+          // Col 0: styled cell (id 4) → blue 15%. Col 1: no style id → positional body white.
+          cellStorageBuffer: concat(styledCell(1, 4), cell(3, 2)),
+          cellOffsets: offsets([0, 20]),
+        },
+      ],
+    }),
+  ]);
+
+  assert.deepEqual(tableData(model, registry), {
+    rows: [
+      [
+        { text: "A", colSpan: 1, rowSpan: 1, backgroundColor: "#223274", backgroundOpacity: 0.151 },
+        { text: "B", colSpan: 1, rowSpan: 1, backgroundColor: "#ffffff" },
+      ],
+    ],
+  });
 });

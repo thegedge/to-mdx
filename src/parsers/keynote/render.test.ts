@@ -258,6 +258,30 @@ test("presentationToMdx renders a rowspan attribute and omits span attrs of 1", 
   assert.doesNotMatch(mdx, /colSpan/);
 });
 
+test("presentationToMdx forces a spanless table to HTML when any cell has a background, emitting the fill on <td>", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        tables: [
+          {
+            rows: [
+              [{ text: "Opaque", colSpan: 1, rowSpan: 1, backgroundColor: "#223274" }],
+              [{ text: "Faded", colSpan: 1, rowSpan: 1, backgroundColor: "#fb8b8a", backgroundOpacity: 0.249 }],
+            ],
+          },
+        ],
+      }),
+    ]),
+  );
+
+  // A background defeats the markdown path even though every cell is 1x1.
+  assert.match(mdx, /<table>/);
+  assert.doesNotMatch(mdx, /\| --- \|/);
+  // Opaque fill → plain hex; translucent fill → rgba() so the text stays opaque.
+  assert.equal(mdx.includes(`<td style={{ backgroundColor: "#223274" }}>Opaque</td>`), true);
+  assert.equal(mdx.includes(`<td style={{ backgroundColor: "rgba(251, 139, 138, 0.249)" }}>Faded</td>`), true);
+});
+
 test("presentationToMdx renders a spanless table as a GFM markdown table (header + separator), escaping pipes and newlines", () => {
   const mdx = presentationToMdx(
     deck([

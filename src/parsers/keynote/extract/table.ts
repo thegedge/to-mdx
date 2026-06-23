@@ -1,6 +1,10 @@
 import type { TableCell, TableData } from "../model.ts";
 import type { Registry } from "../registry.ts";
 import type {
+  CellStyleArchive,
+  Color,
+  FillArchive,
+  Reference,
   RichTextPayloadArchive,
   StorageArchive,
   TableDataList,
@@ -8,6 +12,7 @@ import type {
   TableModelArchive,
   Tile,
 } from "../types.ts";
+import { colorToHex } from "./style.ts";
 
 /**
  * Extracts a table's cells from its `TableInfoArchive` (type 6000). The layout is
@@ -62,6 +67,7 @@ export function tableData(model: TableModelArchive, registry: Registry): TableDa
     strings: stringMap(registry.resolve<TableDataList>(store.stringTable)),
     richText: richTextMap(registry.resolve<TableDataList>(store.richTextTable), registry),
   };
+  const styling = resolveStyling(model, registry);
 
   // Per global-row column offsets (undefined = the row was never stored, which
   // stops a vertical merge run); buffers carry the cell payloads for present rows.
@@ -82,7 +88,7 @@ export function tableData(model: TableModelArchive, registry: Registry): TableDa
 
   const rows: TableCell[][] = [];
   for (let r = 0; r < rowCount; r++) {
-    rows.push(decodeRow(r, columns, rowCount, offsetsByRow, buffers[r], tables));
+    rows.push(decodeRow(r, columns, rowCount, offsetsByRow, buffers[r], tables, styling));
   }
   return { rows };
 }
@@ -135,6 +141,7 @@ function decodeRow(
   offsetsByRow: (number[] | undefined)[],
   buffer: Uint8Array | undefined,
   tables: CellTables,
+  styling: CellStyling,
 ): TableCell[] {
   const offsets = offsetsByRow[r];
   if (!offsets || !buffer) return [];
@@ -142,10 +149,13 @@ function decodeRow(
   const cells: TableCell[] = [];
   for (let c = 0; c < columns; c++) {
     if (offsets[c] === NO_CELL) continue; // covered by a merge (or empty)
+    const background = cellBackground(styling, buffer, offsets[c], r, c);
     cells.push({
       text: cellValue(buffer, offsets[c], tables),
       colSpan: colSpanAt(offsets, c, columns),
       rowSpan: rowSpanAt(offsetsByRow, r, c, rowCount),
+      ...(background ? { backgroundColor: background.backgroundColor } : {}),
+      ...(background?.backgroundOpacity !== undefined ? { backgroundOpacity: background.backgroundOpacity } : {}),
     });
   }
   return cells;
@@ -204,4 +214,176 @@ export function cellValue(buffer: Uint8Array, offset: number, tables: CellTables
   if (cellType === CELL_TYPE_NUMBER) return String(key);
   if (cellType === CELL_TYPE_RICH) return tables.richText.get(key) ?? "";
   return tables.strings.get(key) ?? "";
+}
+
+/** A resolved cell background fill: the hex color plus its alpha when translucent. */
+export interface CellBackground {
+  /** `#RRGGBB`. */
+  backgroundColor: string;
+  /** Fill alpha (0–1, rounded to 3 decimals) when below 1; absent when fully opaque. */
+  backgroundOpacity?: number;
+}
+
+/**
+ * The cell-fill styling resolved once per table model: the per-cell style table
+ * (keyed by the `styleTable` entry key referenced from each cell's BNC record) and
+ * the positional defaults (header row/column, footer row, body) applied to cells
+ * that carry no per-cell style. A map value of `undefined` means the style exists
+ * but resolves to no solid fill (transparent), which still overrides the
+ * positional default — so we distinguish "absent key" from "present, no fill".
+ */
+export interface CellStyling {
+  byKey: Map<number, CellBackground | undefined>;
+  header?: CellBackground;
+  headerColumn?: CellBackground;
+  footer?: CellBackground;
+  body?: CellBackground;
+  headerRows: number;
+  headerColumns: number;
+  footerRows: number;
+  rowCount: number;
+}
+
+/**
+ * A node in a `CellStyleArchive`'s inheritance chain. Mirrors the shape-style
+ * pattern: a cell style's own `cellProperties` is often empty and the effective
+ * `cellFill` lives one level down its inherited `super`. The library types `super`
+ * as a bare `TSS.StyleArchive`, but at runtime each link is cell-style-shaped, so
+ * we model the chain structurally to walk it without casts.
+ */
+interface CellStyleNode {
+  cellProperties?: { cellFill?: FillArchive };
+  super?: CellStyleNode;
+}
+
+/**
+ * The effective cell fill for a style: the first `cellProperties.cellFill` found
+ * walking the `super` chain (a `CellStyleArchive` usually holds it one level down,
+ * so empty links are skipped rather than stopping at the top-level properties).
+ */
+export function effectiveCellFill(style: CellStyleArchive | undefined): FillArchive | undefined {
+  let node: CellStyleNode | undefined = style as unknown as CellStyleNode | undefined;
+  while (node) {
+    if (node.cellProperties?.cellFill) return node.cellProperties.cellFill;
+    node = node.super;
+  }
+  return undefined;
+}
+
+/** Converts a fill to a render-ready background (hex + optional rounded alpha), or undefined when not a solid color. */
+export function fillToBackground(fill: FillArchive | undefined): CellBackground | undefined {
+  const color = fill?.color;
+  if (!hasRgb(color)) return undefined;
+  const background: CellBackground = { backgroundColor: colorToHex(color) };
+  const a = color.a ?? 1;
+  if (a < 1) background.backgroundOpacity = Math.round(a * 1000) / 1000;
+  return background;
+}
+
+function hasRgb(color: Color | undefined): color is Color {
+  return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
+}
+
+/** Resolves a style reference to its effective background fill (or undefined). */
+function backgroundOf(ref: Reference | undefined, registry: Registry): CellBackground | undefined {
+  return fillToBackground(effectiveCellFill(registry.resolve<CellStyleArchive>(ref)));
+}
+
+/** Builds the per-cell + positional fill lookup for a table model (resolved once). */
+function resolveStyling(model: TableModelArchive, registry: Registry): CellStyling {
+  const byKey = new Map<number, CellBackground | undefined>();
+  const styleList = registry.resolve<TableDataList>(model.baseDataStore?.styleTable);
+  for (const entry of styleList?.entries ?? []) {
+    byKey.set(entry.key, fillToBackground(effectiveCellFill(registry.resolve<CellStyleArchive>(entry.reference))));
+  }
+  return {
+    byKey,
+    header: backgroundOf(model.headerRowStyle, registry),
+    headerColumn: backgroundOf(model.headerColumnStyle, registry),
+    footer: backgroundOf(model.footerRowStyle, registry),
+    body: backgroundOf(model.bodyCellStyle, registry),
+    headerRows: model.numberOfHeaderRows ?? 0,
+    headerColumns: model.numberOfHeaderColumns ?? 0,
+    footerRows: model.numberOfFooterRows ?? 0,
+    rowCount: model.numberOfRows ?? 0,
+  };
+}
+
+/**
+ * Gated-field widths (in bytes) of a v5 BNC cell record, in flag-bit order. The
+ * record's flags `uint32` sits at `offset + 8`; the gated fields begin at
+ * `offset + 12`, each present only when its bit is set in the flags. The cell
+ * style id (the `styleTable` entry key) is the field gated by `CELL_STYLE_FLAG`;
+ * its byte position is dynamic because the value/string fields ahead of it vary in
+ * width, so we walk the list summing widths until we reach that bit.
+ */
+const FLAGS_OFFSET = 8;
+const GATED_FIELDS_OFFSET = 12;
+const CELL_STYLE_FLAG = 0x20;
+const GATED_FIELD_WIDTHS: ReadonlyArray<readonly [bit: number, width: number]> = [
+  [0x1, 16], // decimal128 value
+  [0x2, 8], // double value
+  [0x4, 8], // date (seconds)
+  [0x8, 4], // string-table id
+  [0x10, 4], // rich-text id
+  [0x20, 4], // cell style id
+  [0x40, 4], // text style id
+  [0x80, 4], // conditional style id
+  [0x100, 4], // conditional rule style id
+  [0x200, 4], // formula id
+  [0x400, 4], // control id
+  [0x800, 4], // formula error id
+  [0x1000, 4], // suggest id
+  [0x2000, 4], // number-format id
+  [0x4000, 4], // currency-format id
+  [0x8000, 4], // date-format id
+];
+
+/**
+ * Reads a cell's per-cell style id (its `styleTable` entry key) from the v5 BNC
+ * cell record at `offset`, or undefined when the cell carries no style field or
+ * the read would run past the buffer. Walks the flag-gated fields, summing the
+ * widths of the present fields ahead of the style field to find its position.
+ */
+export function cellStyleId(buffer: Uint8Array, offset: number): number | undefined {
+  if (offset < 0 || offset + GATED_FIELDS_OFFSET > buffer.byteLength) return undefined;
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const flags = view.getUint32(offset + FLAGS_OFFSET, true);
+  let p = offset + GATED_FIELDS_OFFSET;
+  for (const [bit, width] of GATED_FIELD_WIDTHS) {
+    if (!(flags & bit)) {
+      if (bit === CELL_STYLE_FLAG) return undefined; // style field not present
+      continue;
+    }
+    if (bit === CELL_STYLE_FLAG) return p + 4 <= buffer.byteLength ? view.getUint32(p, true) : undefined;
+    p += width;
+  }
+  return undefined;
+}
+
+/**
+ * The background fill for the anchor cell at `(r, c)`. Prefers the cell's per-cell
+ * style (resolved from its BNC style id through the `styleTable`); a present id
+ * with no solid fill yields transparent and still suppresses the positional
+ * default. A cell with no per-cell style falls back to the positional default for
+ * its position (header row, then footer row, then header column, else body).
+ */
+export function cellBackground(
+  styling: CellStyling,
+  buffer: Uint8Array,
+  offset: number,
+  r: number,
+  c: number,
+): CellBackground | undefined {
+  const id = cellStyleId(buffer, offset);
+  if (id !== undefined && styling.byKey.has(id)) return styling.byKey.get(id);
+  return positionalBackground(styling, r, c);
+}
+
+/** The positional default fill for a cell, by row/column band. */
+function positionalBackground(styling: CellStyling, r: number, c: number): CellBackground | undefined {
+  if (r < styling.headerRows) return styling.header;
+  if (styling.footerRows > 0 && r >= styling.rowCount - styling.footerRows) return styling.footer;
+  if (c < styling.headerColumns) return styling.headerColumn;
+  return styling.body;
 }

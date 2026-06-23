@@ -405,12 +405,19 @@ function tableStyleBlock(slug: string): string {
  */
 export function renderTable(table: TableData): string {
   if (table.rows.every((row) => row.length === 0)) return "";
-  return isSpanless(table) ? renderMarkdownTable(table) : renderHtmlTable(table);
+  // GFM cannot express col/row spans or cell backgrounds, so either forces the
+  // raw-HTML form; only a span-free, background-free table stays markdown.
+  return isSpanless(table) && !hasCellBackground(table) ? renderMarkdownTable(table) : renderHtmlTable(table);
 }
 
 /** True when no cell in the table spans more than one column or row. */
 function isSpanless(table: TableData): boolean {
   return table.rows.every((row) => row.every((cell) => cell.colSpan === 1 && cell.rowSpan === 1));
+}
+
+/** True when any cell carries a resolved background fill (forcing the HTML form). */
+function hasCellBackground(table: TableData): boolean {
+  return table.rows.some((row) => row.some((cell) => cell.backgroundColor !== undefined));
 }
 
 /**
@@ -450,12 +457,33 @@ function renderHtmlTable(table: TableData): string {
   return `<table>\n${body}\n</table>`;
 }
 
-/** A single `<td>` with span attributes (omitted when 1) and escaped text. */
+/** A single `<td>` with span attributes (omitted when 1), an optional background style, and escaped text. */
 function renderCell(cell: TableCell): string {
   let attrs = "";
   if (cell.colSpan > 1) attrs += ` colSpan={${cell.colSpan}}`;
   if (cell.rowSpan > 1) attrs += ` rowSpan={${cell.rowSpan}}`;
+  const fill = cellFillStyle(cell);
+  if (fill) attrs += ` style={{ backgroundColor: "${fill}" }}`;
   return `<td${attrs}>${cellHtml(cell.text)}</td>`;
+}
+
+/**
+ * The CSS `background-color` value for a cell, or undefined when it has no fill. A
+ * translucent fill becomes an `rgba()` so only the cell background fades (not its
+ * text, as a `td`-level `opacity` would); an opaque fill stays the plain hex.
+ */
+function cellFillStyle(cell: TableCell): string | undefined {
+  if (cell.backgroundColor === undefined) return undefined;
+  if (cell.backgroundOpacity === undefined) return cell.backgroundColor;
+  return rgba(cell.backgroundColor, cell.backgroundOpacity);
+}
+
+/** Composes an `rgba()` string from a `#RRGGBB` hex and a 0–1 alpha. */
+function rgba(hex: string, alpha: number): string {
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 /** Escapes a cell's text for MDX flow content, rendering newlines as line breaks. */

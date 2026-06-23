@@ -119,6 +119,14 @@ export interface TableCell {
   colSpan: number;
   /** Rows this cell occupies, including itself (>= 1). */
   rowSpan: number;
+  /**
+   * The cell's resolved background fill as `#RRGGBB`, from its per-cell style (or
+   * the positional header/footer/body default when the cell carries no per-cell
+   * style). Absent when the effective fill is transparent / not a solid color.
+   */
+  backgroundColor?: string;
+  /** Background-fill alpha (0–1, rounded to 3 decimals) when the fill is translucent. */
+  backgroundOpacity?: number;
 }
 
 /**
