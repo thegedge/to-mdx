@@ -84,12 +84,14 @@ async function copyImages(
 ): Promise<void> {
   const imagesDir = path.join(outputRoot, "src/static/img/presentations", basename);
 
+  // Only assets actually referenced by a slide are extracted; unreferenced images
+  // (resolvable but linked to no slide) are dropped, not copied.
   const fileNames = new Set<string>();
   for (const slide of presentation.slides) {
     for (const image of slide.images) fileNames.add(image.fileName);
     for (const video of slide.videos) fileNames.add(video);
+    if (slide.background) fileNames.add(slide.background);
   }
-  for (const fileName of presentation.unplacedImages) fileNames.add(fileName);
   if (fileNames.size === 0) return;
 
   await mkdir(imagesDir, { recursive: true });

@@ -90,13 +90,7 @@ export function presentationToMdx(presentation: Presentation): string {
   // Tables share one scoped stylesheet emitted once for the whole document (and
   // before `<Slides>`, since the scoped selectors still match). HTML `<table>`s
   // depend on it; spanless markdown tables get default styling but it is harmless.
-  let output = hasRenderableTable(presentation) ? `${tableStyleBlock(className)}\n\n${wrapper}` : wrapper;
-
-  // The unplaced-images section is not a slide, so it sits after the wrapper.
-  const appendix = renderUnplacedImages(presentation.unplacedImages);
-  if (appendix) output += `\n\n${appendix}`;
-
-  return output;
+  return hasRenderableTable(presentation) ? `${tableStyleBlock(className)}\n\n${wrapper}` : wrapper;
 }
 
 /** Absolute-positioning declarations for a placed image, layered below text. */
@@ -156,21 +150,6 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): Declarati
 /** Rounds a percentage to two decimals and drops trailing zeros (e.g. 10, 33.33). */
 function percent(value: number): number {
   return Number(value.toFixed(2));
-}
-
-/**
- * Trailing section for images that resolved to a file but could not be linked to
- * any slide (their container was lost to a partially decoded chunk). Emitted so
- * the content is preserved in the doc for manual placement.
- */
-function renderUnplacedImages(fileNames: string[]): string {
-  if (fileNames.length === 0) return "";
-
-  const blocks = [
-    "{/* Unplaced images: these could not be linked to a slide (container lost to a partially-decoded chunk) */}",
-    ...fileNames.map((fileName) => `<Image ${imageSrc(fileName)} role="presentation" alt="" />`),
-  ];
-  return blocks.join("\n\n");
 }
 
 function renderSlide(slide: Slide, slideSize: { width: number; height: number }): string {

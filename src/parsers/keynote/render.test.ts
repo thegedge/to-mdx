@@ -303,30 +303,10 @@ test("presentationToMdx renders a code text box as a fenced block with its langu
   );
 });
 
-test("presentationToMdx appends the unplaced-images section as <Image> after </Slides>", () => {
-  const presentation = deck([slide({ title: "Only" })], ["lost-1.png", "lost-2.png"]);
-
-  assert.equal(
-    presentationToMdx(presentation),
-    [
-      '<Slides className="deck" backgroundRoot={imageRoot}>',
-      "<Slide>",
-      "  # Only",
-      "</Slide>",
-      "</Slides>",
-      "",
-      "{/* Unplaced images: these could not be linked to a slide (container lost to a partially-decoded chunk) */}",
-      "",
-      "<Image src={`${imageRoot}/lost-1.png`} role=\"presentation\" alt=\"\" />",
-      "",
-      "<Image src={`${imageRoot}/lost-2.png`} role=\"presentation\" alt=\"\" />",
-    ].join("\n"),
-  );
-});
-
-test("presentationToMdx omits the unplaced-images section when the list is empty", () => {
-  const mdx = presentationToMdx(deck([slide({ title: "Only" })]));
+test("presentationToMdx never emits an unplaced-images section (unreferenced images are dropped)", () => {
+  const mdx = presentationToMdx(deck([slide({ title: "Only" })], ["lost-1.png", "lost-2.png"]));
   assert.doesNotMatch(mdx, /Unplaced images/);
+  assert.doesNotMatch(mdx, /lost-1\.png/);
   assert.match(mdx, /^<Slides className="deck" backgroundRoot=\{imageRoot\}>\n<Slide>\n {2}# Only\n<\/Slide>\n<\/Slides>$/);
 });
 
