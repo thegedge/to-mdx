@@ -56,7 +56,7 @@ export function imageCoverageWarning(coverage: ImageCoverage): string | null {
   const base = `Placed ${placedOccurrences} of ${totalOccurrences} image occurrences (${placedDistinct} of ${totalDistinct} distinct images)`;
   const unlinked = totalOccurrences - placedOccurrences;
   if (unlinked <= 0) return base;
-  return `${base}; ${unlinked} occurrence(s) could not be linked to a slide (container lost to a partial chunk)`;
+  return `${base}; ${unlinked} occurrence(s) could not be linked to a slide`;
 }
 
 /** Reads `datas[]` off an entry whether it decoded as the expected type or not. */

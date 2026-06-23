@@ -150,7 +150,7 @@ test("imageCoverageWarning reports occurrence + distinct coverage and appends th
   });
   assert.equal(
     warning,
-    "Placed 24 of 36 image occurrences (21 of 21 distinct images); 12 occurrence(s) could not be linked to a slide (container lost to a partial chunk)",
+    "Placed 24 of 36 image occurrences (21 of 21 distinct images); 12 occurrence(s) could not be linked to a slide",
   );
 });
 

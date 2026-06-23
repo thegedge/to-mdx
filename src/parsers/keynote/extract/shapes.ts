@@ -242,8 +242,13 @@ function resolveStroke(stroke: StrokeArchive | undefined): ResolvedStroke | unde
   if (dasharray) resolved.dasharray = dasharray;
   if (stroke.cap === ROUND_CAP) resolved.linecap = "round";
   const a = alpha(stroke.color);
-  if (a < 1) resolved.opacity = a;
+  if (a < 1) resolved.opacity = roundOpacity(a);
   return resolved;
+}
+
+/** Rounds an alpha to 3 decimals so emitted opacity stays clean (0.851, not 0.8500608…). */
+function roundOpacity(a: number): number {
+  return Math.round(a * 1000) / 1000;
 }
 
 /**
@@ -269,7 +274,7 @@ function resolveFill(fill: FillArchive | undefined): ResolvedFill | undefined {
   if (!hasRgb(color)) return undefined;
   const resolved: ResolvedFill = { color: colorToHex(color) };
   const a = alpha(color);
-  if (a < 1) resolved.opacity = a;
+  if (a < 1) resolved.opacity = roundOpacity(a);
   return resolved;
 }
 
