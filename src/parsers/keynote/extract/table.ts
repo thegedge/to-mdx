@@ -2,8 +2,10 @@ import type { TableCell, TableData } from "../model.ts";
 import type { Registry } from "../registry.ts";
 import type {
   CellStyleArchive,
+  CharacterStyleArchive,
   Color,
   FillArchive,
+  ParagraphStyleArchive,
   Reference,
   RichTextPayloadArchive,
   StorageArchive,
@@ -12,7 +14,7 @@ import type {
   TableModelArchive,
   Tile,
 } from "../types.ts";
-import { colorToHex } from "./style.ts";
+import { alignmentToken, colorToHex } from "./style.ts";
 
 /**
  * Extracts a table's cells from its `TableInfoArchive` (type 6000). The layout is
@@ -47,6 +49,13 @@ export interface CellTables {
   strings: Map<number, string>;
   /** Rich-text-table key → resolved storage text (rich-text cells). */
   richText: Map<number, string>;
+  /**
+   * Rich-text-table key → the run's text color as `#RRGGBB`, captured from the
+   * cell storage's first character style when it carries a solid `fontColor`.
+   * A cell with no per-run color is simply absent (it falls back to positional).
+   * Optional so callers building minimal tables can omit it.
+   */
+  richColor?: Map<number, string>;
 }
 
 /**
@@ -63,9 +72,11 @@ export function tableData(model: TableModelArchive, registry: Registry): TableDa
   const rowCount = model.numberOfRows;
   if (!columns || !rowCount) return undefined;
 
+  const richColor = new Map<number, string>();
   const tables: CellTables = {
     strings: stringMap(registry.resolve<TableDataList>(store.stringTable)),
-    richText: richTextMap(registry.resolve<TableDataList>(store.richTextTable), registry),
+    richText: richTextMap(registry.resolve<TableDataList>(store.richTextTable), registry, richColor),
+    richColor,
   };
   const styling = resolveStyling(model, registry);
 
@@ -106,16 +117,27 @@ function stringMap(list: TableDataList | undefined): Map<number, string> {
 /**
  * Maps each rich-text-table key to its resolved text. Each entry's
  * `richTextPayload` resolves to a `RichTextPayloadArchive` whose `storage` is a
- * `StorageArchive`; its text segments are joined with newlines.
+ * `StorageArchive`; its text segments are joined with newlines. When the storage's
+ * first character style carries a solid `fontColor`, that per-run color is also
+ * recorded in `colors` (keyed the same way) so the cell can override the
+ * positional text color.
  */
-function richTextMap(list: TableDataList | undefined, registry: Registry): Map<number, string> {
+function richTextMap(
+  list: TableDataList | undefined,
+  registry: Registry,
+  colors: Map<number, string>,
+): Map<number, string> {
   const map = new Map<number, string>();
   if (!list) return map;
   for (const entry of list.entries) {
     if (!entry.richTextPayload) continue;
     const payload = registry.resolve<RichTextPayloadArchive>(entry.richTextPayload);
     const storage = registry.resolve<StorageArchive>(payload?.storage);
-    if (storage) map.set(entry.key, storage.text.join("\n"));
+    if (!storage) continue;
+    map.set(entry.key, storage.text.join("\n"));
+    const charStyle = registry.resolve<CharacterStyleArchive>(storage.tableCharStyle?.entries[0]?.object);
+    const fontColor = charStyle?.charProperties?.fontColor;
+    if (hasRgb(fontColor)) colors.set(entry.key, colorToHex(fontColor));
   }
   return map;
 }
@@ -150,12 +172,15 @@ function decodeRow(
   for (let c = 0; c < columns; c++) {
     if (offsets[c] === NO_CELL) continue; // covered by a merge (or empty)
     const background = cellBackground(styling, buffer, offsets[c], r, c);
+    const text = cellText(styling, tables, buffer, offsets[c], r, c);
     cells.push({
       text: cellValue(buffer, offsets[c], tables),
       colSpan: colSpanAt(offsets, c, columns),
       rowSpan: rowSpanAt(offsetsByRow, r, c, rowCount),
       ...(background ? { backgroundColor: background.backgroundColor } : {}),
       ...(background?.backgroundOpacity !== undefined ? { backgroundOpacity: background.backgroundOpacity } : {}),
+      ...(text.color ? { color: text.color } : {}),
+      align: text.align,
     });
   }
   return cells;
@@ -238,10 +263,23 @@ export interface CellStyling {
   headerColumn?: CellBackground;
   footer?: CellBackground;
   body?: CellBackground;
+  /** Positional default text styles (color + alignment), mirroring the fill defaults. */
+  textHeader?: CellTextStyle;
+  textHeaderColumn?: CellTextStyle;
+  textFooter?: CellTextStyle;
+  textBody?: CellTextStyle;
   headerRows: number;
   headerColumns: number;
   footerRows: number;
   rowCount: number;
+}
+
+/** A resolved cell text style: a hex color and/or a CSS text-alignment token. */
+export interface CellTextStyle {
+  /** `#RRGGBB`. */
+  color?: string;
+  /** CSS `text-align` token (`left`/`right`/`center`/`justify`). */
+  align?: "left" | "right" | "center" | "justify";
 }
 
 /**
@@ -302,11 +340,59 @@ function resolveStyling(model: TableModelArchive, registry: Registry): CellStyli
     headerColumn: backgroundOf(model.headerColumnStyle, registry),
     footer: backgroundOf(model.footerRowStyle, registry),
     body: backgroundOf(model.bodyCellStyle, registry),
+    textHeader: resolveTextStyle(model.headerRowTextStyle, registry),
+    textHeaderColumn: resolveTextStyle(model.headerColumnTextStyle, registry),
+    textFooter: resolveTextStyle(model.footerRowTextStyle, registry),
+    textBody: resolveTextStyle(model.bodyTextStyle, registry),
     headerRows: model.numberOfHeaderRows ?? 0,
     headerColumns: model.numberOfHeaderColumns ?? 0,
     footerRows: model.numberOfFooterRows ?? 0,
     rowCount: model.numberOfRows ?? 0,
   };
+}
+
+/**
+ * A node in a table text style's inheritance chain. The `*TextStyle` references on
+ * a `TableModelArchive` resolve to a `ParagraphStyleArchive`, whose run color lives
+ * in `charProperties.fontColor` and whose alignment lives in
+ * `paraProperties.alignment`. The library types `super` as a bare
+ * `TSS.StyleArchive`, but at runtime each link is paragraph-style-shaped, so we walk
+ * the chain structurally (matching the shape/cell-fill super-walk pattern).
+ */
+interface ParaStyleNode {
+  charProperties?: { fontColor?: Color };
+  paraProperties?: { alignment?: number };
+  super?: ParaStyleNode;
+}
+
+/**
+ * The effective font color + alignment for a paragraph style: the first of each
+ * found walking the `super` chain (resolved independently, since a link may carry
+ * one without the other). Empty links are skipped rather than stopping the walk.
+ */
+export function effectiveTextProps(style: ParagraphStyleArchive | undefined): { fontColor?: Color; alignment?: number } {
+  let node: ParaStyleNode | undefined = style as unknown as ParaStyleNode | undefined;
+  let fontColor: Color | undefined;
+  let alignment: number | undefined;
+  while (node) {
+    if (fontColor === undefined && node.charProperties?.fontColor) fontColor = node.charProperties.fontColor;
+    if (alignment === undefined && node.paraProperties?.alignment !== undefined) alignment = node.paraProperties.alignment;
+    if (fontColor !== undefined && alignment !== undefined) break;
+    node = node.super;
+  }
+  return { fontColor, alignment };
+}
+
+/** Resolves a text-style reference to its effective color/alignment, or undefined when neither resolves. */
+function resolveTextStyle(ref: Reference | undefined, registry: Registry): CellTextStyle | undefined {
+  const style = registry.resolve<ParagraphStyleArchive>(ref);
+  if (!style) return undefined;
+  const { fontColor, alignment } = effectiveTextProps(style);
+  const resolved: CellTextStyle = {};
+  if (hasRgb(fontColor)) resolved.color = colorToHex(fontColor);
+  const align = alignmentToken(alignment);
+  if (align) resolved.align = align;
+  return resolved.color !== undefined || resolved.align !== undefined ? resolved : undefined;
 }
 
 /**
@@ -386,4 +472,46 @@ function positionalBackground(styling: CellStyling, r: number, c: number): CellB
   if (styling.footerRows > 0 && r >= styling.rowCount - styling.footerRows) return styling.footer;
   if (c < styling.headerColumns) return styling.headerColumn;
   return styling.body;
+}
+
+/** The positional default text style for a cell, by row/column band (mirrors `positionalBackground`). */
+function positionalTextStyle(styling: CellStyling, r: number, c: number): CellTextStyle | undefined {
+  if (r < styling.headerRows) return styling.textHeader;
+  if (styling.footerRows > 0 && r >= styling.rowCount - styling.footerRows) return styling.textFooter;
+  if (c < styling.headerColumns) return styling.textHeaderColumn;
+  return styling.textBody;
+}
+
+/**
+ * The per-run text color for a rich-text cell, when its storage carried a solid
+ * `fontColor` (recorded in `tables.richColor`). Returns undefined for non-rich
+ * cells, an absent color, or an out-of-bounds read — callers then use the
+ * positional color.
+ */
+function richCellColor(buffer: Uint8Array, offset: number, tables: CellTables): string | undefined {
+  if (!tables.richColor || offset < 0 || offset + CELL_TYPE_OFFSET >= buffer.byteLength) return undefined;
+  if (buffer[offset + CELL_TYPE_OFFSET] !== CELL_TYPE_RICH) return undefined;
+  if (offset + KEY_OFFSET + 4 > buffer.byteLength) return undefined;
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  return tables.richColor.get(view.getUint32(offset + KEY_OFFSET, true));
+}
+
+/**
+ * The resolved text color + alignment for the cell at `(r, c)`. The color prefers
+ * a per-cell rich-text run color, falling back to the positional text style; it is
+ * omitted when neither resolves. The alignment defaults to `center` for every cell
+ * (this deck is uniformly centered), with an explicit positional alignment winning.
+ */
+export function cellText(
+  styling: CellStyling,
+  tables: CellTables,
+  buffer: Uint8Array,
+  offset: number,
+  r: number,
+  c: number,
+): { color?: string; align: string } {
+  const positional = positionalTextStyle(styling, r, c);
+  const color = richCellColor(buffer, offset, tables) ?? positional?.color;
+  const align = positional?.align ?? "center";
+  return color !== undefined ? { color, align } : { align };
 }

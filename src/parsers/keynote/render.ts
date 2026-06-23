@@ -439,9 +439,10 @@ function tableStyleBlock(slug: string): string {
  */
 export function renderTable(table: TableData): string {
   if (table.rows.every((row) => row.length === 0)) return "";
-  // GFM cannot express col/row spans or cell backgrounds, so either forces the
-  // raw-HTML form; only a span-free, background-free table stays markdown.
-  return isSpanless(table) && !hasCellBackground(table) ? renderMarkdownTable(table) : renderHtmlTable(table);
+  // GFM cannot express col/row spans, cell backgrounds, or per-cell text
+  // color/alignment, so any of those forces the raw-HTML form; only a span-free,
+  // style-free table stays markdown.
+  return isSpanless(table) && !hasCellStyle(table) ? renderMarkdownTable(table) : renderHtmlTable(table);
 }
 
 /** True when no cell in the table spans more than one column or row. */
@@ -449,9 +450,16 @@ function isSpanless(table: TableData): boolean {
   return table.rows.every((row) => row.every((cell) => cell.colSpan === 1 && cell.rowSpan === 1));
 }
 
-/** True when any cell carries a resolved background fill (forcing the HTML form). */
-function hasCellBackground(table: TableData): boolean {
-  return table.rows.some((row) => row.some((cell) => cell.backgroundColor !== undefined));
+/**
+ * True when any cell carries inline styling markdown cannot express: a background
+ * fill, a text color, or a text alignment (any one forces the HTML form). With a
+ * default `center` alignment on every extracted cell, this holds for every
+ * non-empty extracted table.
+ */
+function hasCellStyle(table: TableData): boolean {
+  return table.rows.some((row) =>
+    row.some((cell) => cell.backgroundColor !== undefined || cell.color !== undefined || cell.align !== undefined),
+  );
 }
 
 /**
@@ -491,13 +499,22 @@ function renderHtmlTable(table: TableData): string {
   return `<table>\n${body}\n</table>`;
 }
 
-/** A single `<td>` with span attributes (omitted when 1), an optional background style, and escaped text. */
+/**
+ * A single `<td>` with span attributes (omitted when 1), an optional inline style
+ * (background fill, text color, and text alignment), and escaped text. The style
+ * declarations are emitted in a stable order so output is deterministic.
+ */
 function renderCell(cell: TableCell): string {
   let attrs = "";
   if (cell.colSpan > 1) attrs += ` colSpan={${cell.colSpan}}`;
   if (cell.rowSpan > 1) attrs += ` rowSpan={${cell.rowSpan}}`;
+  const declarations: Declaration[] = [];
   const fill = cellFillStyle(cell);
-  if (fill) attrs += ` style={{ backgroundColor: "${fill}" }}`;
+  if (fill) declarations.push(["backgroundColor", fill]);
+  if (cell.color !== undefined) declarations.push(["color", cell.color]);
+  if (cell.align !== undefined) declarations.push(["textAlign", cell.align]);
+  const style = styleAttr(declarations);
+  if (style) attrs += ` ${style}`;
   return `<td${attrs}>${cellHtml(cell.text)}</td>`;
 }
 

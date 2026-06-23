@@ -146,6 +146,18 @@ export interface TableCell {
   backgroundColor?: string;
   /** Background-fill alpha (0–1, rounded to 3 decimals) when the fill is translucent. */
   backgroundOpacity?: number;
+  /**
+   * The cell's resolved text color as `#RRGGBB`, from a per-cell rich-text run
+   * color when present, else the positional header/footer/column/body text style.
+   * Absent when no text style resolves a solid color.
+   */
+  color?: string;
+  /**
+   * The cell's text alignment (`left`/`right`/`center`/`justify`). Defaults to
+   * `center` for every extracted cell, with an explicit paragraph alignment from
+   * the resolved text style taking precedence.
+   */
+  align?: string;
 }
 
 /**

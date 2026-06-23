@@ -346,6 +346,44 @@ test("presentationToMdx forces a spanless table to HTML when any cell has a back
   assert.equal(mdx.includes(`<td style={{ backgroundColor: "rgba(251, 139, 138, 0.249)" }}>Faded</td>`), true);
 });
 
+test("presentationToMdx forces a spanless table to HTML when a cell has text color/alignment, emitting them on <td>", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        tables: [
+          {
+            rows: [
+              [{ text: "Head", colSpan: 1, rowSpan: 1, color: "#ffffff", align: "center" }],
+              [{ text: "Body", colSpan: 1, rowSpan: 1, color: "#000000", align: "left" }],
+            ],
+          },
+        ],
+      }),
+    ]),
+  );
+
+  // Text color/alignment defeat the markdown path even though every cell is 1x1.
+  assert.match(mdx, /<table>/);
+  assert.doesNotMatch(mdx, /\| --- \|/);
+  assert.equal(mdx.includes(`<td style={{ color: "#ffffff", textAlign: "center" }}>Head</td>`), true);
+  assert.equal(mdx.includes(`<td style={{ color: "#000000", textAlign: "left" }}>Body</td>`), true);
+});
+
+test("presentationToMdx emits background, color, and alignment together on a <td> in a stable order", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        tables: [{ rows: [[{ text: "X", colSpan: 1, rowSpan: 1, backgroundColor: "#223274", color: "#ffffff", align: "center" }]] }],
+      }),
+    ]),
+  );
+
+  assert.equal(
+    mdx.includes(`<td style={{ backgroundColor: "#223274", color: "#ffffff", textAlign: "center" }}>X</td>`),
+    true,
+  );
+});
+
 test("presentationToMdx renders a spanless table as a GFM markdown table (header + separator), escaping pipes and newlines", () => {
   const mdx = presentationToMdx(
     deck([

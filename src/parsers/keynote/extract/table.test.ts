@@ -3,12 +3,14 @@ import { test } from "node:test";
 import type { CellStyleArchive, TableModelArchive } from "../types.ts";
 import { buildRegistry, mockObject, ref } from "../test_support.ts";
 import {
-  type CellTables,
   cellBackground,
   cellStyleId,
   type CellStyling,
+  type CellTables,
+  cellText,
   cellValue,
   effectiveCellFill,
+  effectiveTextProps,
   fillToBackground,
   tableData,
 } from "./table.ts";
@@ -112,12 +114,12 @@ test("tableData decodes a plain 2x2 table at stored row indices, every cell span
   assert.deepEqual(tableData(model, registry), {
     rows: [
       [
-        { text: "A", colSpan: 1, rowSpan: 1 },
-        { text: "B", colSpan: 1, rowSpan: 1 },
+        { text: "A", colSpan: 1, rowSpan: 1, align: "center" },
+        { text: "B", colSpan: 1, rowSpan: 1, align: "center" },
       ],
       [
-        { text: "C", colSpan: 1, rowSpan: 1 },
-        { text: "D", colSpan: 1, rowSpan: 1 },
+        { text: "C", colSpan: 1, rowSpan: 1, align: "center" },
+        { text: "D", colSpan: 1, rowSpan: 1, align: "center" },
       ],
     ],
   });
@@ -143,7 +145,7 @@ test("tableData resolves a rich-text cell through its payload storage", () => {
   ]);
 
   assert.deepEqual(tableData(model, registry), {
-    rows: [[{ text: "Multi\nline", colSpan: 1, rowSpan: 1 }]],
+    rows: [[{ text: "Multi\nline", colSpan: 1, rowSpan: 1, align: "center" }]],
   });
 });
 
@@ -207,9 +209,9 @@ test("tableData derives a rowspan from a vertical 0xFFFF run", () => {
 
   assert.deepEqual(tableData(model, registry), {
     rows: [
-      [{ text: "top", colSpan: 1, rowSpan: 2 }], // row 1 below is 0xFFFF → spans down
+      [{ text: "top", colSpan: 1, rowSpan: 2, align: "center" }], // row 1 below is 0xFFFF → spans down
       [], // covered row emits no anchor
-      [{ text: "bottom", colSpan: 1, rowSpan: 1 }],
+      [{ text: "bottom", colSpan: 1, rowSpan: 1, align: "center" }],
     ],
   });
 });
@@ -392,9 +394,98 @@ test("tableData applies per-cell styleTable fills and positional defaults to cel
   assert.deepEqual(tableData(model, registry), {
     rows: [
       [
-        { text: "A", colSpan: 1, rowSpan: 1, backgroundColor: "#223274", backgroundOpacity: 0.151 },
-        { text: "B", colSpan: 1, rowSpan: 1, backgroundColor: "#ffffff" },
+        { text: "A", colSpan: 1, rowSpan: 1, backgroundColor: "#223274", backgroundOpacity: 0.151, align: "center" },
+        { text: "B", colSpan: 1, rowSpan: 1, backgroundColor: "#ffffff", align: "center" },
       ],
+    ],
+  });
+});
+
+test("effectiveTextProps walks the super chain for the first font color and alignment", () => {
+  // Color sits on the outer link; alignment is inherited one level down its super.
+  const style = {
+    charProperties: { fontColor: { r: 1, g: 1, b: 1 } },
+    paraProperties: {},
+    super: { paraProperties: { alignment: 1 } },
+  };
+  assert.deepEqual(effectiveTextProps(style as unknown as Parameters<typeof effectiveTextProps>[0]), {
+    fontColor: { r: 1, g: 1, b: 1 },
+    alignment: 1,
+  });
+  assert.deepEqual(effectiveTextProps(undefined), { fontColor: undefined, alignment: undefined });
+});
+
+/** A `CellStyling` carrying only positional text styles (no fills), for `cellText` tests. */
+function textStyling(over: Partial<CellStyling>): CellStyling {
+  return {
+    byKey: new Map(),
+    headerRows: 0,
+    headerColumns: 0,
+    footerRows: 0,
+    rowCount: 3,
+    ...over,
+  };
+}
+
+test("cellText resolves a positional text color and defaults alignment to center", () => {
+  const styling = textStyling({ textBody: { color: "#000000" } });
+  // Body cell: positional color, default-center alignment.
+  assert.deepEqual(cellText(styling, noTables, textCell(1), 0, 1, 0), { color: "#000000", align: "center" });
+  // No positional style resolves → color omitted, alignment still defaults to center.
+  assert.deepEqual(cellText(textStyling({}), noTables, textCell(1), 0, 1, 0), { align: "center" });
+});
+
+test("cellText honors an explicit positional alignment and picks the band's text style", () => {
+  const styling = textStyling({
+    headerRows: 1,
+    textHeader: { color: "#ffffff", align: "left" },
+    textBody: { color: "#000000" },
+  });
+  // Header row: white text, explicit left alignment.
+  assert.deepEqual(cellText(styling, noTables, textCell(1), 0, 0, 0), { color: "#ffffff", align: "left" });
+  // Body row falls back to the body text style (center).
+  assert.deepEqual(cellText(styling, noTables, textCell(1), 0, 1, 0), { color: "#000000", align: "center" });
+});
+
+test("cellText lets a per-cell rich-text color override the positional color", () => {
+  const styling = textStyling({ textBody: { color: "#000000" } });
+  const tables: CellTables = { strings: new Map(), richText: new Map(), richColor: new Map([[5, "#fb8b8a"]]) };
+  // Rich cell (type 9) keyed 5 → its run color wins over the body default.
+  assert.deepEqual(cellText(styling, tables, cell(9, 5), 0, 1, 0), { color: "#fb8b8a", align: "center" });
+  // A rich cell with no recorded color falls back to the positional color.
+  assert.deepEqual(cellText(styling, tables, cell(9, 9), 0, 1, 0), { color: "#000000", align: "center" });
+});
+
+test("tableData resolves positional text color + alignment from the model's text styles", () => {
+  const model: TableModelArchive = {
+    numberOfRows: 2,
+    numberOfColumns: 1,
+    numberOfHeaderRows: 1,
+    headerRowTextStyle: ref(700n),
+    bodyTextStyle: ref(701n),
+    baseDataStore: {
+      stringTable: ref(200n),
+      tiles: { tileSize: 256, tiles: [{ tileid: 0, tile: ref(300n) }] },
+    },
+  } as unknown as TableModelArchive;
+
+  const registry = buildRegistry([
+    mockObject(200n, 6005, { listType: 1, entries: [{ key: 1, string: "Head" }, { key: 2, string: "Body" }] }),
+    // Header text style: white, center (alignment 2). Body: black, with no alignment → default center.
+    mockObject(700n, 2022, { charProperties: { fontColor: { r: 1, g: 1, b: 1, a: 1 } }, paraProperties: { alignment: 2 } }),
+    mockObject(701n, 2022, { charProperties: { fontColor: { r: 0, g: 0, b: 0, a: 1 } }, paraProperties: {} }),
+    mockObject(300n, 6002, {
+      rowInfos: [
+        { tileRowIndex: 0, cellStorageBuffer: textCell(1), cellOffsets: offsets([0]) },
+        { tileRowIndex: 1, cellStorageBuffer: textCell(2), cellOffsets: offsets([0]) },
+      ],
+    }),
+  ]);
+
+  assert.deepEqual(tableData(model, registry), {
+    rows: [
+      [{ text: "Head", colSpan: 1, rowSpan: 1, color: "#ffffff", align: "center" }],
+      [{ text: "Body", colSpan: 1, rowSpan: 1, color: "#000000", align: "center" }],
     ],
   });
 });
