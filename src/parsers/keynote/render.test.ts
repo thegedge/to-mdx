@@ -43,6 +43,70 @@ test("presentationToMdx escapes < > { } in titles, bullets, and prose text boxes
   assert.match(mdx, /a &lt;b&gt; &#123;c&#125;/);
 });
 
+test("presentationToMdx renders placeholder title/body as clean markdown while a free box stays positioned", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        title: "Takeaways",
+        body: [{ depth: 0, text: "First point" }],
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "99.9%" }],
+            box: { left: 10, top: 20, width: 30, height: 40 },
+            style: { color: "#fdd991" },
+          },
+        ],
+      }),
+    ]),
+  );
+  // Title/body are flow markdown with no inline style on them.
+  assert.match(mdx, /# Takeaways/);
+  assert.match(mdx, /- First point/);
+  assert.doesNotMatch(mdx, /# Takeaways[^\n]*style=\{\{/);
+  // The free label keeps its absolute positioning + color.
+  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*color: "#fdd991"[^}]*\}\}>/);
+  assert.match(mdx, /99\.9%/);
+});
+
+test("presentationToMdx emits a free text box's shape-fill background (with padding) on its div", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "user program" }],
+            box: { left: 5, top: 5, width: 20, height: 10 },
+            style: { color: "#253170", backgroundColor: "#f9db9a" },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /backgroundColor: "#f9db9a"/);
+  assert.match(mdx, /padding: "0\.2em 0\.4em"/);
+});
+
+test("presentationToMdx emits WebkitTextStroke for an outlined text box", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "REQUEST" }],
+            box: { left: 0, top: 8, width: 100, height: 20 },
+            style: { color: "#ffffff", textStroke: "5px #000000" },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /WebkitTextStroke: "5px #000000"/);
+  assert.match(mdx, /color: "#ffffff"/);
+});
+
 test("presentationToMdx emits a code text box verbatim, leaving < > { } unescaped inside the fence", () => {
   const mdx = presentationToMdx(
     deck([slide({ textBoxes: [{ kind: "code", language: "tsx", text: "const x = <T>{1}</T>" }] })]),

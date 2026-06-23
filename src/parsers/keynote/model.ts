@@ -103,6 +103,18 @@ export interface TextBoxStyle {
   /** 700 when the dominant run is bold; otherwise omitted. */
   fontWeight?: number;
   textAlign?: "left" | "right" | "center" | "justify";
+  /**
+   * The box's shape fill rendered as a CSS color (`#rrggbb`, or `rgba(...)` when
+   * translucent): a solid fill's color, or an image fill's `tint`. Present only
+   * for free (non-placeholder) text boxes whose shape carries a resolvable fill.
+   */
+  backgroundColor?: string;
+  /**
+   * A character outline as a CSS `-webkit-text-stroke` value (`"<width>px <color>"`,
+   * e.g. `"5px #000000"`), lifted from the run's `tsdStroke`. Present only when a
+   * real stroke is set (an explicit `tsdStrokeNull` yields none).
+   */
+  textStroke?: string;
 }
 
 /**

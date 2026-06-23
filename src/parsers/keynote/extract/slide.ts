@@ -16,10 +16,10 @@ import type {
   TableInfoArchive,
 } from "../types.ts";
 import { extractTable } from "./table.ts";
-import { svgPath } from "./shapes.ts";
+import { effectiveShapeProps, resolveFill, svgPath } from "./shapes.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
-import { boxPercent, colorToHex, textBoxStyle } from "./style.ts";
+import { boxPercent, colorToHex, fillColorCss, textBoxStyle } from "./style.ts";
 import { extractParagraphs, storageForShape } from "./text.ts";
 
 /** Title/body text inherited from a slide's master, treated as "empty" if unchanged. */
@@ -267,7 +267,10 @@ function processRef(
       collectShape(shape, registry, collected);
       return;
     }
-    collectText(role, paragraphs, shape, storage, registry, collected);
+    // A free shape-backed text box can carry its shape's fill as a background;
+    // placeholder boxes pass no style, so their flow text stays unstyled (#1).
+    const shapeStyle = registry.resolve<ShapeStyleArchive>(shape.super?.style);
+    collectText(role, paragraphs, shape, storage, registry, collected, shapeStyle);
     pushGeometry(shape, collected);
   }
 }
@@ -291,24 +294,33 @@ function collectText(
   storage: StorageArchive | undefined,
   registry: Registry,
   collected: Collected,
+  shapeStyle?: ShapeStyleArchive,
 ): void {
   if (bucketParagraphs(role, paragraphs, collected) || paragraphs.length === 0) return;
-  collected.textBoxes.push(freeTextBox(paragraphs, message, storage, registry, collected.slideSize));
+  collected.textBoxes.push(freeTextBox(paragraphs, message, storage, registry, collected.slideSize, shapeStyle));
 }
 
-/** Builds a free text box, attaching geometry/style only to prose (not code) boxes. */
+/**
+ * Builds a free text box, attaching geometry/style only to prose (not code)
+ * boxes. The visual style merges the text's own font/color/stroke with a
+ * `backgroundColor` resolved from the box's shape fill (a solid color, or an
+ * image fill's tint) via the same effective-props walk shapes use.
+ */
 function freeTextBox(
   paragraphs: Paragraph[],
   message: unknown,
   storage: StorageArchive | undefined,
   registry: Registry,
   slideSize: { width: number; height: number },
+  shapeStyle?: ShapeStyleArchive,
 ): TextBox {
   const textBox = asTextBox(paragraphs);
   if (textBox.kind !== "text") return textBox;
 
   const box = boxPercent(drawableGeometry(message), slideSize);
-  const style = textBoxStyle(storage, registry, slideSize.height);
+  const textStyle = textBoxStyle(storage, registry, slideSize.height);
+  const backgroundColor = fillColorCss(resolveFill(effectiveShapeProps(shapeStyle)?.fill));
+  const style = backgroundColor ? { ...textStyle, backgroundColor } : textStyle;
   return { ...textBox, ...(box ? { box } : {}), ...(style ? { style } : {}) };
 }
 

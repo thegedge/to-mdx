@@ -197,7 +197,7 @@ interface ResolvedStroke {
 }
 
 /** Fill resolved to a color (solid, or an image fill's tint approximation) and optional opacity. */
-interface ResolvedFill {
+export interface ResolvedFill {
   color: string;
   opacity?: number;
 }
@@ -269,7 +269,7 @@ export function strokeDasharray(pattern: StrokePatternArchive | undefined, width
 }
 
 /** Resolves a fill to a render color: a solid `fill.color`, else an image fill's `tint` (an approximation). */
-function resolveFill(fill: FillArchive | undefined): ResolvedFill | undefined {
+export function resolveFill(fill: FillArchive | undefined): ResolvedFill | undefined {
   const color = fill?.color ?? fill?.image?.tint;
   if (!hasRgb(color)) return undefined;
   const resolved: ResolvedFill = { color: colorToHex(color) };

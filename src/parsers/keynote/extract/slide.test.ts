@@ -397,3 +397,47 @@ test("extractSlide leaves backgroundColor unset when the slide style declares no
 
   assert.equal(buildPresentation(registry, "x").slides[0].backgroundColor, undefined);
 });
+
+/** A free (untagged) text shape whose shape style carries `fill` in its props. */
+function filledTextShape(id: bigint, storageId: bigint, text: string, styleId: bigint, fill: unknown) {
+  return [
+    mockObject(id, T.shapeInfoArchive, { ownedStorage: ref(storageId), super: { style: ref(styleId) } }),
+    mockObject(storageId, T.storageArchive, { text: [text] }),
+    mockObject(styleId, 0, { shapeProperties: { fill } }),
+  ];
+}
+
+function firstTextBoxStyle(registry: ReturnType<typeof buildRegistry>) {
+  const box = buildPresentation(registry, "x").slides[0].textBoxes[0];
+  return box.kind === "text" ? box.style : undefined;
+}
+
+test("extractSlide lifts a free text box's solid shape fill as its backgroundColor", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    ...filledTextShape(50n, 51n, "verifier", 52n, { color: { model: 1, r: 0.41, g: 0.737, b: 0.745, a: 1 } }),
+  ]);
+
+  assert.equal(firstTextBoxStyle(registry)?.backgroundColor, "#69bcbe");
+});
+
+test("extractSlide uses an image fill's tint (rgba when translucent) as the backgroundColor", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    ...filledTextShape(50n, 51n, "user program", 52n, { image: { tint: { model: 1, r: 0, g: 0, b: 1, a: 0.5 } } }),
+  ]);
+
+  assert.equal(firstTextBoxStyle(registry)?.backgroundColor, "rgba(0, 0, 255, 0.5)");
+});
+
+test("extractSlide leaves a free text box's backgroundColor unset when its shape has no fill color", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    ...filledTextShape(50n, 51n, "Userland", 52n, {}),
+  ]);
+
+  assert.equal(firstTextBoxStyle(registry)?.backgroundColor, undefined);
+});

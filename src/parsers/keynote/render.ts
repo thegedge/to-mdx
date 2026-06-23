@@ -1,5 +1,6 @@
 import { kebabCase } from "../../utils.ts";
 import { isFullBleed } from "./extract/layout.ts";
+import { rgba } from "./extract/style.ts";
 import type { ImageCrop, Paragraph, Presentation, Slide, SlideImage, SlideVideo, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
@@ -183,6 +184,14 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): Declarati
   if (style?.color) declarations.push(["color", style.color]);
   if (style?.fontWeight !== undefined) declarations.push(["fontWeight", style.fontWeight]);
   if (style?.textAlign) declarations.push(["textAlign", style.textAlign]);
+  // A character outline (white-on-black "REQUEST" style text); camelCase JSX key.
+  if (style?.textStroke) declarations.push(["WebkitTextStroke", style.textStroke]);
+  // A shape-fill background, with a little breathing room so text isn't flush to
+  // the box edge (matching the deck's filled diagram labels).
+  if (style?.backgroundColor) {
+    declarations.push(["backgroundColor", style.backgroundColor]);
+    declarations.push(["padding", "0.2em 0.4em"]);
+  }
 
   return declarations;
 }
@@ -476,14 +485,6 @@ function cellFillStyle(cell: TableCell): string | undefined {
   if (cell.backgroundColor === undefined) return undefined;
   if (cell.backgroundOpacity === undefined) return cell.backgroundColor;
   return rgba(cell.backgroundColor, cell.backgroundOpacity);
-}
-
-/** Composes an `rgba()` string from a `#RRGGBB` hex and a 0–1 alpha. */
-function rgba(hex: string, alpha: number): string {
-  const r = Number.parseInt(hex.slice(1, 3), 16);
-  const g = Number.parseInt(hex.slice(3, 5), 16);
-  const b = Number.parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 /** Escapes a cell's text for MDX flow content, rendering newlines as line breaks. */

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { alignmentToken, boxPercent, colorToHex, fontFamily, fontSizeToken } from "./style.ts";
+import { buildRegistry, mockObject, ref } from "../test_support.ts";
+import type { StorageArchive } from "../types.ts";
+import { alignmentToken, boxPercent, colorToHex, fillColorCss, fontFamily, fontSizeToken, rgba, textBoxStyle } from "./style.ts";
+
+/** A storage whose first character run resolves to the object at `charId`. */
+function storageWithCharRun(charId: bigint): StorageArchive {
+  return { text: ["x"], tableCharStyle: { entries: [{ object: ref(charId) }] } } as unknown as StorageArchive;
+}
 
 test("fontSizeToken maps a raw point size to the nearest --text-* token without a slide height", () => {
   assert.equal(fontSizeToken(36), "var(--text-4xl)");
@@ -73,4 +80,34 @@ test("boxPercent expresses a point-space box as slide-size percentages", () => {
 test("boxPercent returns undefined for a missing box or degenerate slide size", () => {
   assert.equal(boxPercent(undefined, { width: 1920, height: 1080 }), undefined);
   assert.equal(boxPercent({ x: 0, y: 0, width: 10, height: 10 }, { width: 0, height: 0 }), undefined);
+});
+
+test("fillColorCss renders an opaque fill as hex and a translucent fill as rgba", () => {
+  assert.equal(fillColorCss(undefined), undefined);
+  assert.equal(fillColorCss({ color: "#69bcbe" }), "#69bcbe");
+  assert.equal(fillColorCss({ color: "#0000ff", opacity: 0.5 }), "rgba(0, 0, 255, 0.5)");
+  assert.equal(rgba("#ff0000", 0.25), "rgba(255, 0, 0, 0.25)");
+});
+
+test("textBoxStyle emits WebkitTextStroke and the fill color for a run carrying tsdStroke", () => {
+  const registry = buildRegistry([
+    mockObject(700n, 0, {
+      charProperties: {
+        fontColor: { r: 1, g: 1, b: 1 },
+        tsdStroke: { color: { r: 0, g: 0, b: 0 }, width: 5 },
+      },
+    }),
+  ]);
+  const style = textBoxStyle(storageWithCharRun(700n), registry);
+  assert.equal(style?.textStroke, "5px #000000");
+  assert.equal(style?.color, "#ffffff");
+});
+
+test("textBoxStyle emits no stroke when the run explicitly clears it with tsdStrokeNull", () => {
+  const registry = buildRegistry([
+    mockObject(700n, 0, { charProperties: { fontColor: { r: 0, g: 0, b: 0 }, tsdStrokeNull: true } }),
+  ]);
+  const style = textBoxStyle(storageWithCharRun(700n), registry);
+  assert.equal(style?.textStroke, undefined);
+  assert.equal(style?.color, "#000000");
 });

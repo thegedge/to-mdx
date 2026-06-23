@@ -5,8 +5,10 @@ import type {
   Color,
   ParagraphStyleArchive,
   StorageArchive,
+  StrokeArchive,
 } from "../types.ts";
 import type { RawBox } from "./layout.ts";
+import type { ResolvedFill } from "./shapes.ts";
 
 /**
  * The zoom-relative `--text-*` font-size tokens used by the slides stylesheet,
@@ -71,6 +73,24 @@ function channelHex(value: number | undefined): string {
 /** Converts a TSP color's 0–1 RGB floats to a `#RRGGBB` string (missing channels are 0). */
 export function colorToHex(color: Pick<Color, "r" | "g" | "b">): string {
   return `#${channelHex(color.r)}${channelHex(color.g)}${channelHex(color.b)}`;
+}
+
+/** Composes a CSS `rgba()` string from a `#RRGGBB` hex and a 0–1 alpha. */
+export function rgba(hex: string, alpha: number): string {
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * A resolved fill as a CSS color string: the plain hex when opaque, an `rgba()`
+ * when translucent. Returns undefined when the fill is absent (so callers can
+ * simply omit the property).
+ */
+export function fillColorCss(fill: ResolvedFill | undefined): string | undefined {
+  if (!fill) return undefined;
+  return fill.opacity === undefined ? fill.color : rgba(fill.color, fill.opacity);
 }
 
 /**
@@ -169,8 +189,36 @@ export function textBoxStyle(
   if (charProps?.bold) style.fontWeight = 700;
   const align = alignmentToken(paraStyle?.paraProperties?.alignment);
   if (align) style.textAlign = align;
+  const stroke = textStroke(charStyle?.charProperties, charProps);
+  if (stroke) style.textStroke = stroke;
 
   return Object.keys(style).length > 0 ? style : undefined;
+}
+
+/**
+ * The character outline as a CSS `-webkit-text-stroke` value, resolved from the
+ * run's stroke `oneof`: a present `tsdStroke` (color + width in points) becomes
+ * `"<width>px <color>"`, while an explicit `tsdStrokeNull` means "no outline". The
+ * run-level (character) properties win over the paragraph-level ones, so a run
+ * that clears the stroke (`tsdStrokeNull`) suppresses a paragraph-default stroke.
+ */
+function textStroke(
+  charProps: CharacterStyleArchive["charProperties"] | undefined,
+  paraCharProps: ParagraphStyleArchive["charProperties"] | undefined,
+): string | undefined {
+  for (const props of [charProps, paraCharProps]) {
+    if (!props) continue;
+    if (props.tsdStrokeNull) return undefined;
+    if (props.tsdStroke) return strokeToCss(props.tsdStroke);
+  }
+  return undefined;
+}
+
+/** A stroke's CSS `"<width>px <color>"`; undefined when it carries no RGB color. */
+function strokeToCss(stroke: StrokeArchive): string | undefined {
+  if (!hasRgb(stroke.color)) return undefined;
+  const width = Number((stroke.width ?? 1).toFixed(2));
+  return `${width}px ${colorToHex(stroke.color)}`;
 }
 
 function hasRgb(color: Color | undefined): color is Color {
