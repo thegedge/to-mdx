@@ -234,6 +234,10 @@ function slideAttributes(slide: Slide): string {
 function slideBlocks(slide: Slide, slideSize: { width: number; height: number }): string[] {
   const blocks: string[] = [];
 
+  // A full-bleed tint over the background image (zIndex 0): above the cover
+  // background, below the figure (zIndex 1) and text (zIndex >= 2).
+  if (slide.backgroundTint) blocks.push(backgroundTintOverlay(slide.backgroundTint));
+
   if (slide.title) blocks.push(`# ${escapeMdxText(slide.title)}`);
   if (slide.body.length > 0) blocks.push(renderBullets(slide.body));
 
@@ -263,6 +267,27 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number })
   if (notes) blocks.push(notes);
 
   return blocks.filter((block) => block.length > 0);
+}
+
+/**
+ * A full-bleed `<div>` tint overlay laid over the slide's background image at
+ * zIndex 0 — above the `cover` background image, below the figure (zIndex 1) and
+ * text (zIndex >= 2). The tint is a CSS color (`#rrggbb` or `rgba(...)`).
+ */
+function backgroundTintOverlay(tint: string): string {
+  return `<div ${styleAttr(tintOverlayDeclarations(tint))} />`;
+}
+
+function tintOverlayDeclarations(tint: string): Declaration[] {
+  return [
+    ["position", "absolute"],
+    ["left", 0],
+    ["top", 0],
+    ["width", "100%"],
+    ["height", "100%"],
+    ["backgroundColor", tint],
+    ["zIndex", 0],
+  ];
 }
 
 /** The inline style placing the shape overlay edge-to-edge, below text (z-index 1). */

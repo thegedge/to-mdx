@@ -49,7 +49,7 @@ export function buildPresentation(
 
   const slides = orderedEntries.map((entry) => {
     const slide = entry.message as SlideArchive;
-    const extracted = extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id), layout);
+    const extracted = extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id), layout, dataFileNames);
     const promoted = promoteBackground(extracted, useHeuristics);
     return inheritMasterImages(promoted, masterImagesFor(slide), useHeuristics);
   });

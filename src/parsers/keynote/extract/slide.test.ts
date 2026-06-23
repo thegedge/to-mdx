@@ -398,6 +398,64 @@ test("extractSlide leaves backgroundColor unset when the slide style declares no
   assert.equal(buildPresentation(registry, "x").slides[0].backgroundColor, undefined);
 });
 
+test("extractSlide resolves an image-fill slide background to a file name and its tint as an rgba overlay", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { style: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    mockObject(60n, 700, {
+      slideProperties: {
+        fill: {
+          image: { imagedata: { identifier: 4713n }, tint: { model: 1, r: 0.13, g: 0.2, b: 0.45, a: 0.756 } },
+        },
+      },
+    }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/universe-1050036_1280-4713.jpg", new Uint8Array()]]);
+
+  const slide = buildPresentation(registry, "x", dataFiles).slides[0];
+  assert.equal(slide.background, "universe-1050036_1280.jpg");
+  assert.equal(slide.backgroundTint, "rgba(33, 51, 115, 0.756)");
+  assert.equal(slide.backgroundColor, undefined);
+});
+
+test("extractSlide omits backgroundTint when an image-fill slide background carries no tint", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { style: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    mockObject(60n, 700, { slideProperties: { fill: { image: { imagedata: { identifier: 4713n } } } } }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/universe-1050036_1280-4713.jpg", new Uint8Array()]]);
+
+  const slide = buildPresentation(registry, "x", dataFiles).slides[0];
+  assert.equal(slide.background, "universe-1050036_1280.jpg");
+  assert.equal(slide.backgroundTint, undefined);
+});
+
+test("extractSlide lets a promoted full-bleed drawable image win over the style image-fill background", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { style: ref(60n), ownedDrawables: [ref(70n)], drawablesZOrder: [] }),
+    // Style declares an image fill (would otherwise set the background)...
+    mockObject(60n, 700, { slideProperties: { fill: { image: { imagedata: { identifier: 4713n } } } } }),
+    // ...but the slide owns a full-bleed drawable image, which must win.
+    mockObject(70n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "hero",
+        parent: ref(10n),
+        super: { geometry: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } } },
+      },
+      data: ref(8001n),
+    }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/universe-1050036_1280-4713.jpg", new Uint8Array()],
+    ["Data/hero-8001.jpg", new Uint8Array()],
+  ]);
+
+  const slide = buildPresentation(registry, "x", dataFiles).slides[0];
+  assert.equal(slide.background, "hero.jpg");
+});
+
 /** A free (untagged) text shape whose shape style carries `fill` in its props. */
 function filledTextShape(id: bigint, storageId: bigint, text: string, styleId: bigint, fill: unknown) {
   return [

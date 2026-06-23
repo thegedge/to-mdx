@@ -172,6 +172,13 @@ export interface Slide {
    * slide. Absent when the style declares no solid fill (gradient/image ignored).
    */
   backgroundColor?: string;
+  /**
+   * A CSS color (`#rrggbb`, or `rgba(...)` when translucent) laid as a full-bleed
+   * overlay over the background image, from a style image fill's `tint`. Present
+   * only when the slide's `slideProperties.fill` is a tinted image fill; rendered
+   * above the background image and below content.
+   */
+  backgroundTint?: string;
   title?: string;
   body: Paragraph[];
   textBoxes: TextBox[];

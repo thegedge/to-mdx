@@ -674,6 +674,21 @@ test("presentationToMdx renders a slide carrying only a background color", () =>
   assert.match(mdx, /<Slide style=\{\{ backgroundColor: "#213373" \}\} \/>/);
 });
 
+test("presentationToMdx emits a zIndex-0 full-bleed tint overlay div when a slide has a backgroundTint", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ background: "universe.jpg", backgroundTint: "rgba(33, 51, 115, 0.756)", title: "Hi" })]),
+  );
+  assert.match(
+    mdx,
+    /<div style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", backgroundColor: "rgba\(33, 51, 115, 0\.756\)", zIndex: 0 \}\} \/>/,
+  );
+});
+
+test("presentationToMdx omits the tint overlay div when a slide has no backgroundTint", () => {
+  const mdx = presentationToMdx(deck([slide({ background: "universe.jpg", title: "Hi" })]));
+  assert.doesNotMatch(mdx, /zIndex: 0/);
+});
+
 test("assembleMdxDocument puts a blank line between the exports and the body, and ends with a newline", () => {
   const doc = assembleMdxDocument("export const title = 'Deck';", "<Slides>\n<Slide />\n</Slides>");
 

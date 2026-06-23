@@ -3,6 +3,8 @@ import type { Registry } from "../registry.ts";
 import { isType } from "../type_ids.ts";
 import { PlaceholderKind } from "../types.ts";
 import type {
+  Color,
+  FillArchive,
   GroupArchive,
   NoteArchive,
   PlaceholderArchive,
@@ -79,14 +81,15 @@ export function extractSlide(
   defaults: SlideDefaults = NO_DEFAULTS,
   placements: SlidePlacements = NO_PLACEMENTS,
   layout: LayoutContext = NO_LAYOUT,
+  dataFileNames: Map<number, string> = new Map(),
 ): Slide {
   const collected = collectFromSlide(slide, registry, layout.slideSize);
   const title = pickTitle(slide, collected, defaults.titles);
-  const backgroundColor = slideBackgroundColor(slide, registry);
+  const background = slideBackground(slide, registry, dataFileNames);
 
   return {
     className: layout.useHeuristics ? classifyLayout(slide, registry, collected, layout.slideSize, title) : undefined,
-    ...(backgroundColor ? { backgroundColor } : {}),
+    ...background,
     title,
     body: pickBody(collected.bodies, defaults.bodies),
     textBoxes: collected.textBoxes,
@@ -125,25 +128,58 @@ interface SlideStyleNode {
 }
 
 /**
- * The slide's solid background fill color (`#RRGGBB`), resolved from its style by
- * walking the `super` chain to the first `slideProperties.fill` that carries a
- * solid color. Gradient/image fills are ignored (solid color only); absent when
- * no style or solid fill resolves.
+ * A slide's resolved background, merged onto the `Slide`: either a solid
+ * `backgroundColor` (`#RRGGBB`), or a `background` image file name plus an optional
+ * `backgroundTint` overlay color. Empty (all absent) when nothing resolves.
  */
-function slideBackgroundColor(slide: SlideArchive, registry: Registry): string | undefined {
+interface SlideBackground {
+  backgroundColor?: string;
+  background?: string;
+  backgroundTint?: string;
+}
+
+/**
+ * The slide's background, resolved from its style by walking the `super` chain to
+ * the first `slideProperties.fill` that carries a usable fill:
+ *  - a solid color → `{ backgroundColor: #RRGGBB }` (unchanged behavior);
+ *  - an image fill whose `imagedata` resolves to a file name → `{ background, and
+ *    backgroundTint }` (the tint as `#rrggbb`/`rgba(...)`, omitted when absent).
+ * Gradients (and image fills that don't resolve to a file) are skipped, continuing
+ * up the chain; an empty result when nothing resolves.
+ */
+function slideBackground(
+  slide: SlideArchive,
+  registry: Registry,
+  dataFileNames: Map<number, string>,
+): SlideBackground {
   // `super` is typed as a bare `TSS.StyleArchive` but is slide-style-shaped at
   // runtime, so we reinterpret the resolved style as a `SlideStyleNode`.
   let node: SlideStyleNode | undefined = registry.resolve<SlideStyleArchive>(slide.style) as unknown as
     | SlideStyleNode
     | undefined;
   while (node) {
-    const color = node.slideProperties?.fill?.color;
-    if (color && (color.r !== undefined || color.g !== undefined || color.b !== undefined)) {
-      return colorToHex(color);
+    const fill = node.slideProperties?.fill;
+    if (fill) {
+      if (hasRgb(fill.color)) return { backgroundColor: colorToHex(fill.color) };
+      const fileName = imageFillFileName(fill, dataFileNames);
+      if (fileName) {
+        const tint = fillColorCss(resolveFill(fill));
+        return { background: fileName, ...(tint ? { backgroundTint: tint } : {}) };
+      }
     }
     node = node.super;
   }
-  return undefined;
+  return {};
+}
+
+/** Resolves an image fill's backing data file via `imagedata.identifier`; undefined when it can't. */
+function imageFillFileName(fill: FillArchive, dataFileNames: Map<number, string>): string | undefined {
+  const id = fill.image?.imagedata?.identifier;
+  return id === undefined ? undefined : dataFileNames.get(Number(id));
+}
+
+function hasRgb(color: Color | undefined): color is Color {
+  return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
 }
 
 /** The slide's master ("template") name, used to map to a layout class. */
