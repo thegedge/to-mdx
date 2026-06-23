@@ -236,6 +236,94 @@ test("presentationToMdx renders a maskless image as a plain <Image>, with no cli
   assert.doesNotMatch(mdx, /overflow: "hidden"/);
 });
 
+test("presentationToMdx emits a translucent image's opacity in its inline style", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ images: [{ fileName: "pic.png", altText: "alt", box: { left: 0, top: 0, width: 50, height: 50 }, opacity: 0.15 }] })]),
+  );
+
+  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: "0%", width: "50%", top: "0%", height: "50%", zIndex: 1, opacity: 0\.15 \}\} src=/);
+});
+
+test("presentationToMdx emits opacity on an unpositioned image, and none when opaque", () => {
+  const translucent = presentationToMdx(deck([slide({ images: [{ fileName: "pic.png", altText: "alt", opacity: 0.15 }] })]));
+  assert.match(translucent, /<Image style=\{\{ opacity: 0\.15 \}\} src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
+
+  const opaque = presentationToMdx(deck([slide({ images: [{ fileName: "pic.png", altText: "alt" }] })]));
+  assert.doesNotMatch(opaque, /opacity/);
+});
+
+test("presentationToMdx puts a cropped image's opacity on the inner <Image>", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        images: [
+          {
+            fileName: "pic.png",
+            altText: "alt",
+            box: { left: 0, top: 0, width: 100, height: 100 },
+            crop: { left: 10, top: 20, width: 30, height: 40, imgLeft: -50, imgTop: -25, imgWidth: 200, imgHeight: 150 },
+            opacity: 0.15,
+          },
+        ],
+      }),
+    ]),
+  );
+
+  // The opacity rides the inner image, not the clip container.
+  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: "-50%", top: "-25%", width: "200%", height: "150%", opacity: 0\.15 \}\} src=/);
+  assert.doesNotMatch(mdx, /overflow: "hidden", zIndex: 1, opacity/);
+});
+
+test("presentationToMdx sizes each paragraph of a mixed-size text box, dropping the box-level fontSize", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [
+              { depth: 0, text: "83k", fontSizeToken: "var(--text-8xl)" },
+              { depth: 0, text: "average requests per second", fontSizeToken: "var(--text-sm)" },
+            ],
+            box: { left: 10, top: 20, width: 30, height: 40 },
+            style: { fontSizeToken: "var(--text-8xl)", color: "#ffffff" },
+          },
+        ],
+      }),
+    ]),
+  );
+
+  // The box div keeps position/color but no fontSize; each paragraph carries its own.
+  assert.match(mdx, /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", zIndex: 2, color: "#ffffff" \}\}>/);
+  assert.doesNotMatch(mdx, /<div style=[^>]*fontSize/);
+  assert.match(mdx, /<p style=\{\{ fontSize: "var\(--text-8xl\)" \}\}>83k<\/p>/);
+  assert.match(mdx, /<p style=\{\{ fontSize: "var\(--text-sm\)" \}\}>average requests per second<\/p>/);
+});
+
+test("presentationToMdx keeps a single box-level fontSize for a uniform-size text box", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [
+              { depth: 0, text: "one", fontSizeToken: "var(--text-lg)" },
+              { depth: 0, text: "two", fontSizeToken: "var(--text-lg)" },
+            ],
+            box: { left: 10, top: 20, width: 30, height: 40 },
+            style: { fontSizeToken: "var(--text-lg)" },
+          },
+        ],
+      }),
+    ]),
+  );
+
+  // One box-level size, prose joined by a blank line, no per-paragraph <p> wrappers.
+  assert.match(mdx, /zIndex: 2, fontSize: "var\(--text-lg\)" \}\}>\n\s*one\n\n\s*two\n\s*<\/div>/);
+  assert.doesNotMatch(mdx, /<p style/);
+});
+
 test("isImageFile detects image extensions case-insensitively and rejects videos and extensionless names", () => {
   assert.equal(isImageFile("a.gif"), true);
   assert.equal(isImageFile("a.GIF"), true);

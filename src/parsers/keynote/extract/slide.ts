@@ -289,7 +289,9 @@ function processRef(
     const placeholder = entry.message as PlaceholderArchive;
     const resolvedRole = role ?? roleFromKind(placeholder.kind);
     const storage = storageForShape(placeholder.super, registry);
-    const paragraphs = extractParagraphs(storage, registry);
+    // A non-title/body placeholder can surface as a free positioned text box, so
+    // resolve per-paragraph sizes (slide-height-relative) for the mixed-size case.
+    const paragraphs = extractParagraphs(storage, registry, collected.slideSize.height);
     collectText(resolvedRole, paragraphs, placeholder, storage, registry, collected);
     if (paragraphs.length > 0) pushGeometry(placeholder, collected);
     return;
@@ -298,7 +300,9 @@ function processRef(
   if (isType(entry.type, "ShapeInfoArchive")) {
     const shape = entry.message as ShapeInfoArchive;
     const storage = storageForShape(shape, registry);
-    const paragraphs = extractParagraphs(storage, registry);
+    // Free shape-backed text boxes may mix paragraph sizes (e.g. a big stat over a
+    // small label), so resolve each paragraph's own slide-height-relative token.
+    const paragraphs = extractParagraphs(storage, registry, collected.slideSize.height);
     if (paragraphs.length === 0) {
       collectShape(shape, registry, collected);
       return;

@@ -3,6 +3,7 @@ import type { Registry } from "../registry.ts";
 import type {
   CharacterStyleArchive,
   Color,
+  MediaStyleArchive,
   ParagraphStyleArchive,
   StorageArchive,
   StrokeArchive,
@@ -107,6 +108,33 @@ export function fontFamily(name: string | undefined): string | undefined {
   const base = (dash > 0 ? name.slice(0, dash) : name).trim();
   if (!base) return undefined;
   return base.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+/**
+ * A node in a media style's inheritance chain. The instance may carry
+ * `mediaProperties` directly, or inherit it from its `super` (typed as a bare
+ * `TSS.StyleArchive` but media-style-shaped at runtime), so we model it
+ * structurally to walk it without casts — mirroring the slide-style walk.
+ */
+interface MediaStyleNode {
+  mediaProperties?: { opacity?: number };
+  super?: MediaStyleNode;
+}
+
+/**
+ * The effective image opacity (0–1) from a resolved `MediaStyleArchive`: walks
+ * the `super` chain for the first `mediaProperties.opacity`. Returns undefined
+ * when no opacity is set or it is fully opaque (`>= 1`), so callers can simply
+ * omit the property; a translucent value is rounded to 3 decimals.
+ */
+export function mediaOpacity(style: MediaStyleArchive | undefined): number | undefined {
+  let node = style as MediaStyleNode | undefined;
+  while (node) {
+    const opacity = node.mediaProperties?.opacity;
+    if (opacity !== undefined) return opacity < 1 ? Number(opacity.toFixed(3)) : undefined;
+    node = node.super;
+  }
+  return undefined;
 }
 
 /** iWork `TextAlignmentType` enum → CSS `text-align`; unknown values yield undefined. */

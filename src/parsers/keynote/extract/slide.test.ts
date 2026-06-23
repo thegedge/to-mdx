@@ -222,7 +222,9 @@ test("extractSlide captures a free text box's geometry and dominant paragraph st
 
   assert.deepEqual(buildPresentation(registry, "x").slides[0].textBoxes[0], {
     kind: "text",
-    paragraphs: [{ depth: 0, text: "99.9% uptime" }],
+    // The paragraph now carries its own slide-height-relative size token too; with a
+    // single paragraph it matches the box-level size, so rendering stays uniform.
+    paragraphs: [{ depth: 0, text: "99.9% uptime", fontSizeToken: "var(--text-lg)" }],
     box: { left: 10, top: 10, width: 50, height: 50 },
     style: { fontSizeToken: "var(--text-lg)", color: "#ff0000", fontWeight: 700, textAlign: "center" },
   });

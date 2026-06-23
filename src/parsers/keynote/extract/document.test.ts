@@ -311,6 +311,29 @@ test("buildPresentation derives crop geometry for a masked image and leaves a ma
   assert.equal(plain?.crop, undefined);
 });
 
+test("buildPresentation lifts an image's MediaStyle opacity and omits it when opaque", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] }, size: { width: 1000, height: 1000 } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n), ref(10n)], drawablesZOrder: [] }),
+    // Translucent image: its own MediaStyle carries mediaProperties.opacity = 0.15.
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "faded", parent: ref(4n) }, data: ref(100n), style: ref(900n) }),
+    // Type id is irrelevant; the registry resolves a MediaStyleArchive by reference.
+    mockObject(900n, 3900, { mediaProperties: { opacity: 0.15 } }),
+    // Opaque image: an explicit opacity of 1 yields no `opacity` on the model.
+    mockObject(10n, T.imageArchive, { super: { accessibilityDescription: "solid", parent: ref(4n) }, data: ref(200n), style: ref(901n) }),
+    mockObject(901n, 3900, { mediaProperties: { opacity: 1 } }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/faded-100.png", new Uint8Array()],
+    ["Data/solid-200.png", new Uint8Array()],
+  ]);
+
+  const images = buildPresentation(registry, "x", dataFiles).slides[0].images;
+  assert.equal(images.find((image) => image.fileName === "faded.png")?.opacity, 0.15);
+  assert.equal(images.find((image) => image.fileName === "solid.png")?.opacity, undefined);
+});
+
 test("buildPresentation inherits a master's positioned logo onto the content slide and out of unplacedImages", () => {
   const registry = buildRegistry([
     mockObject(1n, T.documentArchive, { show: ref(2n) }),

@@ -11,6 +11,14 @@ export interface Paragraph {
    * while prose/bullets keep using the fully-trimmed `text`.
    */
   raw?: string;
+  /**
+   * This paragraph's own `var(--text-*)` font-size token, resolved from its
+   * paragraph style's point size (slide-height-relative). Carried only for free
+   * positioned text boxes whose paragraphs mix sizes, so the renderer can size
+   * each line independently; absent for uniform boxes and flow content
+   * (headings/bullets/code), which keep a single box-level size.
+   */
+  fontSizeToken?: string;
 }
 
 export interface SlideImage {
@@ -29,6 +37,13 @@ export interface SlideImage {
    * `mask` with geometry; drives a clipping wrapper around the `<img>`.
    */
   crop?: ImageCrop;
+  /**
+   * The image's own opacity (0–1, rounded to 3 decimals) from its
+   * `MediaStyleArchive` (`mediaProperties.opacity`), i.e. Keynote's Style-tab
+   * opacity. Present only when set and translucent (`< 1`); a fully opaque image
+   * omits it so the renderer emits no `opacity`.
+   */
+  opacity?: number;
 }
 
 /**

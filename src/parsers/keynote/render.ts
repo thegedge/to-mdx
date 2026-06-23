@@ -178,8 +178,13 @@ function axisRules(near: string, far: string, sizeProp: string, start: number, s
   ];
 }
 
-/** The inline-style declarations for one free text box, in source order, skipping absent properties. */
-function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): Declaration[] {
+/**
+ * The inline-style declarations for one free text box, in source order, skipping
+ * absent properties. `omitFontSize` drops the box-level `fontSize` when the box's
+ * paragraphs are sized individually (see `renderProse`), so the single shared
+ * size doesn't fight the per-paragraph ones.
+ */
+function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSize = false): Declaration[] {
   const declarations: Declaration[] = [];
 
   if (textBox.box) {
@@ -191,7 +196,7 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): Declarati
 
   const style = textBox.style;
   if (style?.fontFamily) declarations.push(["fontFamily", style.fontFamily]);
-  if (style?.fontSizeToken) declarations.push(["fontSize", style.fontSizeToken]);
+  if (style?.fontSizeToken && !omitFontSize) declarations.push(["fontSize", style.fontSizeToken]);
   if (style?.color) declarations.push(["color", style.color]);
   if (style?.fontWeight !== undefined) declarations.push(["fontWeight", style.fontWeight]);
   if (style?.textAlign) declarations.push(["textAlign", style.textAlign]);
@@ -351,8 +356,10 @@ function renderPath(shape: SvgPath): string {
  * normal flow.
  */
 function renderImage(image: SlideImage): string {
-  if (image.crop) return renderCroppedImage(image.fileName, image.altText, image.crop);
-  const style = image.box ? `${styleAttr(imageDeclarations(image.box))} ` : "";
+  if (image.crop) return renderCroppedImage(image.fileName, image.altText, image.crop, image.opacity);
+  const declarations = image.box ? imageDeclarations(image.box) : [];
+  if (image.opacity !== undefined) declarations.push(["opacity", image.opacity]);
+  const style = declarations.length > 0 ? `${styleAttr(declarations)} ` : "";
   return `<Image ${style}${imageSrc(image.fileName)} role="presentation" alt="${escapeMdxText(image.altText)}" />`;
 }
 
@@ -384,9 +391,11 @@ function cropImageDeclarations(crop: ImageCrop): Declaration[] {
  * A masked image: an `overflow:"hidden"` container placed on the slide, wrapping
  * the full `<Image>` offset/sized so only the mask's sub-rectangle shows.
  */
-function renderCroppedImage(fileName: string, altText: string, crop: ImageCrop): string {
+function renderCroppedImage(fileName: string, altText: string, crop: ImageCrop, opacity?: number): string {
   const container = styleAttr(cropContainerDeclarations(crop));
-  const inner = `<Image ${styleAttr(cropImageDeclarations(crop))} ${imageSrc(fileName)} role="presentation" alt="${escapeMdxText(altText)}" />`;
+  const innerDeclarations = cropImageDeclarations(crop);
+  if (opacity !== undefined) innerDeclarations.push(["opacity", opacity]);
+  const inner = `<Image ${styleAttr(innerDeclarations)} ${imageSrc(fileName)} role="presentation" alt="${escapeMdxText(altText)}" />`;
   return `<div ${container}>\n${INDENT}${inner}\n</div>`;
 }
 
@@ -405,11 +414,39 @@ function renderTextBox(textBox: TextBox): string {
   if (textBox.kind === "code") {
     return `\`\`\`${textBox.language}\n${textBox.text}\n\`\`\``;
   }
-  const prose = textBox.paragraphs.map((paragraph) => escapeMdxText(paragraph.text)).join("\n\n");
+  const { content, perParagraphSizes } = renderProse(textBox.paragraphs, textBox.style?.fontSizeToken);
   // Positioned/styled boxes get an inline-style div; otherwise the prose stays in
-  // normal flow with no wrapper (there is nothing to style).
-  const style = styleAttr(boxDeclarations(textBox));
-  return style ? `<div ${style}>\n${prose}\n</div>` : prose;
+  // normal flow with no wrapper (there is nothing to style). When the paragraphs
+  // carry their own sizes, drop the box-level `fontSize` so it doesn't override them.
+  const style = styleAttr(boxDeclarations(textBox, perParagraphSizes));
+  return style ? `<div ${style}>\n${content}\n</div>` : content;
+}
+
+/**
+ * Renders a text box's prose. When the box's paragraphs resolve to more than one
+ * distinct font size (each line's own `fontSizeToken`, falling back to the
+ * box-level size), every paragraph is wrapped in a `<p>` carrying its own
+ * `fontSize` and `perParagraphSizes` is set so the caller drops the box-level
+ * size. A uniform (or single-paragraph) box keeps today's blank-line-joined prose
+ * and a single box-level size.
+ */
+function renderProse(
+  paragraphs: Paragraph[],
+  boxToken: string | undefined,
+): { content: string; perParagraphSizes: boolean } {
+  const tokens = paragraphs.map((paragraph) => paragraph.fontSizeToken ?? boxToken);
+  const distinct = new Set(tokens.filter((token): token is string => token !== undefined));
+  if (distinct.size <= 1) {
+    return { content: paragraphs.map((paragraph) => escapeMdxText(paragraph.text)).join("\n\n"), perParagraphSizes: false };
+  }
+  const content = paragraphs
+    .map((paragraph, index) => {
+      const token = tokens[index];
+      const attr = token ? ` ${styleAttr([["fontSize", token]])}` : "";
+      return `<p${attr}>${escapeMdxText(paragraph.text)}</p>`;
+    })
+    .join("\n");
+  return { content, perParagraphSizes: true };
 }
 
 /** Whether any slide carries a table with at least one cell (i.e. that renders). */

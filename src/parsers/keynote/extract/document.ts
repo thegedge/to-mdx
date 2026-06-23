@@ -6,6 +6,7 @@ import type {
   DocumentArchive,
   ImageArchive,
   MaskArchive,
+  MediaStyleArchive,
   MovieArchive,
   Reference,
   ShowArchive,
@@ -22,7 +23,7 @@ import {
 import { drawableGeometry, isFullBleed, normalizeLayoutClass } from "./layout.ts";
 import type { LayoutContext } from "./slide.ts";
 import { owningSlideId } from "./ownership.ts";
-import { boxPercent, maskCrop } from "./style.ts";
+import { boxPercent, maskCrop, mediaOpacity } from "./style.ts";
 import type { SlideDefaults, SlidePlacements } from "./slide.ts";
 import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
 
@@ -73,6 +74,16 @@ export function buildPresentation(
  * descend into (e.g. animation-build groups), so it — not the text pass — is
  * authoritative for images and movies. Deduped by archive id.
  */
+/**
+ * Sets a resolved image's `opacity` from its own `MediaStyleArchive`
+ * (`image.style` → `mediaProperties.opacity`, walked up the `super` chain), the
+ * Style-tab opacity. Left unset for an opaque image so no `opacity` is emitted.
+ */
+function applyImageOpacity(resolved: SlideImage, image: ImageArchive, registry: Registry): void {
+  const opacity = mediaOpacity(registry.resolve<MediaStyleArchive>(image.style));
+  if (opacity !== undefined) resolved.opacity = opacity;
+}
+
 function placeDrawables(
   registry: Registry,
   contentSlideIds: Set<bigint>,
@@ -106,6 +117,7 @@ function placeDrawables(
       const crop = maskCrop(imageGeometry, maskGeometry, slideSize);
       if (crop) resolved.crop = crop;
     }
+    applyImageOpacity(resolved, image, registry);
     placed.add(entry.id);
     slotFor(slideId).images.push(resolved);
   }
@@ -220,6 +232,7 @@ function collectMasterImages(
       const crop = maskCrop(imageGeometry, maskGeometry, slideSize);
       if (crop) resolved.crop = crop;
     }
+    applyImageOpacity(resolved, image, registry);
     images.push(resolved);
   }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Registry } from "../registry.ts";
+import { buildRegistry, mockObject, ref } from "../test_support.ts";
 import type { ShapeInfoArchive, StorageArchive } from "../types.ts";
 import { extractParagraphs, storageForShape } from "./text.ts";
 
@@ -55,6 +56,29 @@ test("extractParagraphs maps tableParaData character indices to bullet depth", (
     { depth: 1, text: "Child" },
     { depth: 2, text: "Grand" },
   ]);
+});
+
+test("extractParagraphs assigns each paragraph its own font-size token when given a slide height", () => {
+  // "83k\naverage..." — char 0 is 200pt, char 4 is 35pt; on a 1080-tall slide these
+  // resolve to different `--text-*` tokens so a mixed-size box can size each line.
+  const registry = buildRegistry([
+    mockObject(52n, 9000, { charProperties: { fontSize: 200 } }),
+    mockObject(53n, 9000, { charProperties: { fontSize: 35 } }),
+  ]);
+  const store = {
+    text: ["83k\naverage requests per second"],
+    tableParaStyle: { entries: [{ characterIndex: 0, object: ref(52n) }, { characterIndex: 4, object: ref(53n) }] },
+  } as unknown as StorageArchive;
+
+  const sized = extractParagraphs(store, registry, 1080);
+  assert.equal(sized[0].fontSizeToken, "var(--text-8xl)");
+  assert.equal(sized[1].fontSizeToken, "var(--text-base)");
+  assert.notEqual(sized[0].fontSizeToken, sized[1].fontSizeToken);
+
+  // Without a slide height (flow content), no per-paragraph token is attached.
+  const unsized = extractParagraphs(store, registry);
+  assert.equal(unsized[0].fontSizeToken, undefined);
+  assert.equal(unsized[1].fontSizeToken, undefined);
 });
 
 test("storageForShape prefers ownedStorage then textFlow", () => {
