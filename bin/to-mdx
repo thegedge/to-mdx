@@ -1,9 +1,58 @@
-#!/usr/bin/env -S node --experimental-strip-types --permission --allow-fs-read=* --allow-fs-write=*
+#!/usr/bin/env -S node --experimental-strip-types
+// Launcher: Node's permission model can only be configured at startup, never
+// granted at runtime, so we compute the exact filesystem scope the conversion
+// needs and re-exec the real entry (entry.ts) under `--permission` with just
+// those paths allowed. This shim runs un-sandboxed but only ever parses argv —
+// it never opens the (untrusted) input file — so its attack surface is nil.
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { main } from "../src/cli.ts";
+const binDir = dirname(fileURLToPath(import.meta.url));
+const packageRoot = dirname(binDir); // holds src/, node_modules/ (incl. mupdf wasm), bin/
+const args = process.argv.slice(2);
 
-(async () => {
-  const timeout = setTimeout(() => {}, 30_000); // keep process alive, but eventually time out
-  await main(process.argv.slice(2));
-  clearTimeout(timeout);
-})();
+/** Nearest ancestor of `start` containing `.git` (the output root), else `start`. */
+function gitRoot(start) {
+  let dir = start;
+  for (;;) {
+    if (existsSync(join(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return start;
+    dir = parent;
+  }
+}
+
+const outputRoot = gitRoot(process.cwd());
+
+// Inputs are the non-flag args (the file to convert). Resolve so the allow-list
+// entry is an absolute path the sandboxed child can match.
+const inputs = args.filter((arg) => !arg.startsWith("-")).map((arg) => resolve(arg));
+
+// Reads: the package (code + deps), the output tree (existsSync before copy),
+// and each input file. Writes: the output tree only.
+const reads = new Set([`${packageRoot}/*`, `${outputRoot}/*`, ...inputs]);
+const writes = new Set([`${outputRoot}/*`]);
+
+// Debug dumps may target an arbitrary path; widen the scope to its directory.
+for (const value of [process.env.KEYNOTE_DEBUG_DUMP, process.env.KEYNOTE_DEBUG_RAW]) {
+  if (!value) continue;
+  const dir = `${dirname(resolve(value))}/*`;
+  reads.add(dir);
+  writes.add(dir);
+}
+
+const flags = [
+  "--experimental-strip-types",
+  "--permission",
+  ...[...reads].map((path) => `--allow-fs-read=${path}`),
+  ...[...writes].map((path) => `--allow-fs-write=${path}`),
+];
+
+const result = spawnSync(process.execPath, [...flags, join(packageRoot, "src", "entry.ts"), ...args], {
+  stdio: "inherit",
+  env: { ...process.env, TO_MDX_OUTPUT_ROOT: outputRoot },
+});
+
+process.exit(result.status ?? 1);

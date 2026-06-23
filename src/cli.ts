@@ -24,6 +24,11 @@ function gitToplevel(): string {
  * is injectable so tests can exercise the fallback without touching the disk.
  */
 export function resolveProjectRoot(runGit: () => string = gitToplevel): string {
+  // The launcher resolves the root un-sandboxed and passes it down, so the
+  // sandboxed child needn't stat ancestor directories (which its read scope
+  // excludes). Falls through to the walk when run directly (e.g. tests).
+  const fromLauncher = process.env.TO_MDX_OUTPUT_ROOT;
+  if (fromLauncher) return fromLauncher;
   try {
     const root = runGit().trim();
     if (root) return root;

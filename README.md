@@ -23,10 +23,19 @@ pnpm install
 ./bin/to-mdx [options] path/to/file/to/convert.{odp,key}
 ```
 
-The bin runs sandboxed via `node --permission`: filesystem read/write are allowed
-(it reads an arbitrary input file and writes output under the discovered project
-root), but spawning child processes, loading native addons, workers, and WASI are
-all denied — the converter needs none of them.
+The bin runs sandboxed via Node's permission model. `bin/to-mdx` is a thin
+launcher that resolves the paths a conversion needs, then re-execs the real entry
+under `--permission` with a tailored allow-list:
+
+- **reads**: the package directory (code + dependencies), the input file, and the
+  output project root;
+- **writes**: the output project root only (the nearest ancestor with `.git`, else
+  the current directory);
+- **denied**: everything else — out-of-scope files, spawning child processes,
+  native addons, workers, and WASI (the converter needs none of them).
+
+The launcher only parses argv (never the untrusted input file), so it is safe to
+run un-sandboxed.
 
 ### Options
 
