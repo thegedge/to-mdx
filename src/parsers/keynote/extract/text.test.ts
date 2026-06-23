@@ -21,6 +21,16 @@ test("extractParagraphs splits joined text on newlines and trims", () => {
   ]);
 });
 
+test("extractParagraphs keeps leading whitespace in raw, trimming it from text", () => {
+  const paragraphs = extractParagraphs(storage(["foo() {\n    bar();  \n}"]), new Registry());
+
+  assert.deepEqual(paragraphs, [
+    { depth: 0, text: "foo() {" },
+    { depth: 0, text: "bar();", raw: "    bar();" },
+    { depth: 0, text: "}" },
+  ]);
+});
+
 test("extractParagraphs returns empty for missing or blank storage", () => {
   assert.deepEqual(extractParagraphs(undefined, new Registry()), []);
   assert.deepEqual(extractParagraphs(storage(["   \n  "]), new Registry()), []);

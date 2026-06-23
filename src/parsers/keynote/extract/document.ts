@@ -349,7 +349,9 @@ function slideReferences(show: ShowArchive, registry: Registry): Array<bigint> {
     seen.add(nodeRef.identifier);
     const node = registry.resolve<SlideNodeArchive>(nodeRef);
     if (!node) return;
-    ordered.push(nodeRef.identifier);
+    // Skip hidden ("skipped") slides, mirroring the flat-list path; still recurse
+    // into children, which are independent slides in the show tree.
+    if (!node.isHidden) ordered.push(nodeRef.identifier);
     for (const child of node.children) walk(child);
   };
   walk(tree.rootSlideNode);
@@ -363,8 +365,11 @@ function slideEntryForNode(id: bigint, registry: Registry): RegistryEntry | unde
   if (isType(entry.type, "SlideArchive")) return entry;
 
   if (isType(entry.type, "SlideNodeArchive")) {
-    const slideRef = (entry.message as SlideNodeArchive).slide;
-    return slideRef ? registry.get(slideRef.identifier) : undefined;
+    const node = entry.message as SlideNodeArchive;
+    // Keynote marks "skipped" slides hidden on their tree node; exclude them
+    // entirely so they don't render and visible slide numbers stay aligned.
+    if (node.isHidden) return undefined;
+    return node.slide ? registry.get(node.slide.identifier) : undefined;
   }
 
   return undefined;

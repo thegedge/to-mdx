@@ -30,7 +30,10 @@ export function extractParagraphs(storage: StorageArchive | undefined, _registry
   for (const segment of full.split("\n")) {
     const text = segment.trim();
     if (text) {
-      paragraphs.push({ depth: depthAt(charIndex), text });
+      // Keep leading whitespace (trailing trimmed) so a fenced-code box can
+      // preserve indentation; `raw` is omitted when the line isn't indented.
+      const raw = segment.trimEnd();
+      paragraphs.push({ depth: depthAt(charIndex), text, ...(raw === text ? {} : { raw }) });
     }
     charIndex += segment.length + 1; // +1 for the consumed newline
   }

@@ -91,6 +91,35 @@ test("buildPresentation preserves slide order from the slide tree", () => {
   assert.deepEqual(titles, ["Alpha", "Beta", "Gamma"]);
 });
 
+test("buildPresentation drops slides whose tree node is hidden (skipped)", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(11n), ref(12n), ref(13n)] } }),
+    ...nodeWithTitle(11n, 111n, "Alpha", []),
+    mockObject(12n, T.slideNodeArchive, { slide: ref(512n), children: [], isHidden: true }),
+    ...slideWithTitle(512n, 112n, "Hidden"),
+    ...nodeWithTitle(13n, 113n, "Gamma", []),
+  ]);
+
+  const titles = buildPresentation(registry, "x").slides.map((s) => s.title);
+  assert.deepEqual(titles, ["Alpha", "Gamma"]);
+});
+
+test("buildPresentation drops hidden nodes when walking rootSlideNode children", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [], rootSlideNode: ref(11n) } }),
+    mockObject(11n, T.slideNodeArchive, { slide: ref(511n), children: [ref(12n), ref(13n)], isHidden: false }),
+    ...slideWithTitle(511n, 111n, "Alpha"),
+    mockObject(12n, T.slideNodeArchive, { slide: ref(512n), children: [], isHidden: true }),
+    ...slideWithTitle(512n, 112n, "Hidden"),
+    ...nodeWithTitle(13n, 113n, "Gamma", []),
+  ]);
+
+  const titles = buildPresentation(registry, "x").slides.map((s) => s.title);
+  assert.deepEqual(titles, ["Alpha", "Gamma"]);
+});
+
 test("buildPresentation walks rootSlideNode children when no flat slide list exists", () => {
   const registry = buildRegistry([
     mockObject(1n, T.documentArchive, { show: ref(2n) }),

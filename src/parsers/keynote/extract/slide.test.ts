@@ -224,7 +224,7 @@ test("extractSlide captures a free text box's geometry and dominant paragraph st
     kind: "text",
     paragraphs: [{ depth: 0, text: "99.9% uptime" }],
     box: { left: 10, top: 10, width: 50, height: 50 },
-    style: { fontSizeToken: "var(--text-4xl)", color: "#ff0000", fontWeight: 700, textAlign: "center" },
+    style: { fontSizeToken: "var(--text-lg)", color: "#ff0000", fontWeight: 700, textAlign: "center" },
   });
 });
 
@@ -276,7 +276,7 @@ test("extractSlide emits a fenced code block for a code-like text box", () => {
   ]);
 
   assert.deepEqual(buildPresentation(registry, "x").slides[0].textBoxes, [
-    { kind: "code", language: "", text: "kprobe:vfs_read {\n@bytes = sum(arg2);\n}" },
+    { kind: "code", language: "", text: "kprobe:vfs_read {\n  @bytes = sum(arg2);\n}" },
   ]);
 });
 

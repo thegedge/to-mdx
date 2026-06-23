@@ -11,7 +11,9 @@ import type { Paragraph, TextBox } from "../model.ts";
  * the BPF slide) without flagging ordinary bullet prose.
  */
 export function asTextBox(paragraphs: Paragraph[]): TextBox {
-  const text = paragraphs.map((paragraph) => paragraph.text).join("\n");
+  // Use `raw` (leading whitespace preserved) so indentation survives inside the
+  // fence; fall back to the trimmed `text` for un-indented lines.
+  const text = paragraphs.map((paragraph) => paragraph.raw ?? paragraph.text).join("\n");
   const language = LanguageDetector.detect(text) ?? (isEbpfCode(text) ? "c" : null);
 
   if (language || looksLikeCode(paragraphs)) {

@@ -4,6 +4,13 @@ export interface Paragraph {
   /** List/indent depth; 0 = top level. */
   depth: number;
   text: string;
+  /**
+   * The paragraph with its leading whitespace preserved (trailing whitespace
+   * still trimmed). Carried only when it differs from `text` (i.e. the line is
+   * indented), so literal contexts like fenced code can keep their indentation
+   * while prose/bullets keep using the fully-trimmed `text`.
+   */
+  raw?: string;
 }
 
 export interface SlideImage {

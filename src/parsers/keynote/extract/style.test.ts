@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { alignmentToken, boxPercent, colorToHex, fontFamily, fontSizeToken } from "./style.ts";
 
-test("fontSizeToken maps a point size to the nearest --text-* token", () => {
+test("fontSizeToken maps a raw point size to the nearest --text-* token without a slide height", () => {
   assert.equal(fontSizeToken(36), "var(--text-4xl)");
   assert.equal(fontSizeToken(16), "var(--text-base)");
   assert.equal(fontSizeToken(17), "var(--text-base)");
@@ -17,6 +17,20 @@ test("fontSizeToken maps the large display sizes onto the extended token scale",
 test("fontSizeToken caps at the ends of the scale", () => {
   assert.equal(fontSizeToken(150), "var(--text-9xl)");
   assert.equal(fontSizeToken(1), "var(--text-4xs)");
+});
+
+test("fontSizeToken scales by the font's fraction of slide height", () => {
+  // ~36pt body text on a 1080-tall slide reads as ordinary body copy, not --text-4xl.
+  assert.equal(fontSizeToken(36, 1080), "var(--text-lg)");
+  // A giant 200pt emoji tops out below the extreme token.
+  assert.equal(fontSizeToken(200, 1080), "var(--text-8xl)");
+  // The same point size is smaller on a taller slide.
+  assert.equal(fontSizeToken(72, 1080), "var(--text-4xl)");
+  assert.equal(fontSizeToken(72, 2160), "var(--text-lg)");
+});
+
+test("fontSizeToken falls back to the raw point size for a degenerate slide height", () => {
+  assert.equal(fontSizeToken(36, 0), "var(--text-4xl)");
 });
 
 test("colorToHex converts 0–1 RGB floats to #RRGGBB", () => {

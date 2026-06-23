@@ -33,11 +33,29 @@ const FONT_SIZE_TOKENS: ReadonlyArray<{ token: string; px: number }> = [
   { token: "9xl", px: 128 },
 ];
 
-/** Maps a point size to the `var(--text-*)` token nearest it (capped at the ends of the scale). */
-export function fontSizeToken(pt: number): string {
+/**
+ * Reference height (px) that a font's *fraction of the slide height* is scaled
+ * against before picking a token. Keynote point sizes are absolute to the deck's
+ * (large) canvas, so a raw 36pt body line maps to a huge token; instead we treat
+ * the font as a fraction of slide height and render it as if the slide were this
+ * many px tall. Tuned on the reference deck (1920×1080): typical body text (~36pt)
+ * lands on `--text-lg`, titles climb to `--text-4xl`, and a giant 200pt emoji tops
+ * out around `--text-8xl` rather than `--text-9xl`.
+ */
+const SLIDE_FONT_REFERENCE_PX = 512;
+
+/**
+ * Maps a Keynote point size to the `var(--text-*)` token nearest it (capped at the
+ * ends of the scale). When a slide height is supplied the size is first rescaled by
+ * its fraction of the slide height (see `SLIDE_FONT_REFERENCE_PX`), so a font's
+ * token reflects how large it reads on the slide rather than its raw point value; a
+ * missing/degenerate slide height falls back to the raw point size.
+ */
+export function fontSizeToken(pt: number, slideHeightPt?: number): string {
+  const px = slideHeightPt && slideHeightPt > 0 ? (pt / slideHeightPt) * SLIDE_FONT_REFERENCE_PX : pt;
   let best = FONT_SIZE_TOKENS[0];
   for (const candidate of FONT_SIZE_TOKENS) {
-    if (Math.abs(candidate.px - pt) < Math.abs(best.px - pt)) best = candidate;
+    if (Math.abs(candidate.px - px) < Math.abs(best.px - px)) best = candidate;
   }
   return `var(--text-${best.token})`;
 }
@@ -130,7 +148,11 @@ export function maskCrop(
  * first-pass read of the first paragraph/run — no full style inheritance — so any
  * property the archive omits is dropped, and an empty result returns undefined.
  */
-export function textBoxStyle(storage: StorageArchive | undefined, registry: Registry): TextBoxStyle | undefined {
+export function textBoxStyle(
+  storage: StorageArchive | undefined,
+  registry: Registry,
+  slideHeightPt?: number,
+): TextBoxStyle | undefined {
   if (!storage) return undefined;
 
   const paraStyle = registry.resolve<ParagraphStyleArchive>(storage.tableParaStyle?.entries[0]?.object);
@@ -141,7 +163,7 @@ export function textBoxStyle(storage: StorageArchive | undefined, registry: Regi
   const family = fontFamily(charStyle?.charProperties?.fontName ?? charProps?.fontName);
 
   const style: TextBoxStyle = {};
-  if (charProps?.fontSize !== undefined) style.fontSizeToken = fontSizeToken(charProps.fontSize);
+  if (charProps?.fontSize !== undefined) style.fontSizeToken = fontSizeToken(charProps.fontSize, slideHeightPt);
   if (family) style.fontFamily = family;
   if (hasRgb(fontColor)) style.color = colorToHex(fontColor);
   if (charProps?.bold) style.fontWeight = 700;

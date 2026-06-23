@@ -308,7 +308,7 @@ function freeTextBox(
   if (textBox.kind !== "text") return textBox;
 
   const box = boxPercent(drawableGeometry(message), slideSize);
-  const style = textBoxStyle(storage, registry);
+  const style = textBoxStyle(storage, registry, slideSize.height);
   return { ...textBox, ...(box ? { box } : {}), ...(style ? { style } : {}) };
 }
 
