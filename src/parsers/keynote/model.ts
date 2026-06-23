@@ -44,6 +44,18 @@ export interface ImageCrop {
 }
 
 /**
+ * A movie/video placed on a slide: its resolved `Data/`-relative file name plus
+ * its bounding box (when geometry resolved), mirroring `SlideImage.box`. The box
+ * lets the renderer distinguish a full-bleed cover video from a positioned one.
+ */
+export interface SlideVideo {
+  /** Resolved `Data/`-relative file name as stored in the zip. */
+  fileName: string;
+  /** The video's bounding box as slide-size percentages; present only when geometry resolved. */
+  box?: TextBoxGeometry;
+}
+
+/**
  * A vector shape (line, arrow, icon path) baked into absolute slide-point
  * coordinates, ready to render as one SVG `<path>`. `markerStart`/`markerEnd`
  * flag a resolved line-end arrowhead.
@@ -125,8 +137,8 @@ export interface Slide {
   /** Vector shapes (lines/arrows/icons) drawn as one overlaid SVG; absent when none. */
   shapes?: SvgPath[];
   images: SlideImage[];
-  /** Resolved `Data/`-relative file names of movies/videos placed on the slide. */
-  videos: string[];
+  /** Movies/videos placed on the slide, with optional geometry for full-bleed detection. */
+  videos: SlideVideo[];
   /** Tables whose cell text we extracted, in slide (drawable) order. */
   tables: TableData[];
   /** Count of tables we detected but could not extract (missing/lost refs). */

@@ -347,7 +347,7 @@ test("extractSlide resolves movies to a video data file", () => {
     mockObject(80n, T.packageMetadata, { datas: [{ identifier: 700n, fileName: "demo.mov" }] }),
   ]);
 
-  assert.deepEqual(buildPresentation(registry, "x").slides[0].videos, ["demo.mov"]);
+  assert.deepEqual(buildPresentation(registry, "x").slides[0].videos, [{ fileName: "demo.mov" }]);
 });
 
 test("extractSlide resolves an image via the Data/ filename map keyed by data id", () => {
@@ -359,7 +359,7 @@ test("extractSlide resolves an image via the Data/ filename map keyed by data id
   const dataFiles = new Map<string, Uint8Array>([["Data/unite-cardreader-small-479.jpg", new Uint8Array()]]);
 
   assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].images, [
-    { fileName: "unite-cardreader-small-479.jpg", altText: "card" },
+    { fileName: "unite-cardreader-small.jpg", altText: "card" },
   ]);
 });
 
@@ -371,5 +371,5 @@ test("extractSlide resolves a movie via the Data/ filename map keyed by movie da
   ]);
   const dataFiles = new Map<string, Uint8Array>([["Data/black_friday-5855.mp4", new Uint8Array()]]);
 
-  assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].videos, ["black_friday-5855.mp4"]);
+  assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].videos, [{ fileName: "black_friday.mp4" }]);
 });

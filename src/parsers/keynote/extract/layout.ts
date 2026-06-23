@@ -41,10 +41,10 @@ export function drawableGeometry(message: unknown): RawBox | undefined {
 
 /**
  * Slide-size-percentage thresholds for treating an image as a full-bleed
- * background: either it covers ≳95% of both axes, or it sits flush to the
+ * background: either it covers ≳90% of both axes, or it sits flush to the
  * top-left (inset ≤2%) and spans ≳98% of both axes (i.e. bleeds off the edge).
  */
-const FULL_BLEED = { minCoverage: 95, maxInset: 2, minExtent: 98 } as const;
+const FULL_BLEED = { minCoverage: 90, maxInset: 2, minExtent: 98 } as const;
 
 /** Whether an image box is large enough to serve as the slide's background. */
 export function isFullBleed(box: TextBoxGeometry): boolean {

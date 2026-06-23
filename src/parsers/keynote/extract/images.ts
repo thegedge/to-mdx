@@ -66,26 +66,78 @@ function datasOf(entry: RegistryEntry): DataInfo[] {
 }
 
 /**
+ * A single `Data/` asset, split into its on-disk source name and the cleaner
+ * display name we expose downstream.
+ */
+interface DataAsset {
+  /** The `DataReference.identifier` parsed from the trailing `-<id>` group. */
+  id: number;
+  /** The `Data/`-relative name actually present in the zip (`img_percy-4113.jpg`). */
+  source: string;
+  /** Display name with the `-<id>` suffix stripped (`img_percy.jpg`), deduped on collision. */
+  fileName: string;
+}
+
+/**
+ * SINGLE pure parser of the zip's `Data/` assets, the shared source of truth for
+ * both id→filename resolution and filename→bytes extraction. Every asset is named
+ * `<base>-<id>.<ext>`, where the trailing number group before the extension is
+ * exactly the `DataReference.identifier` referenced by image/movie drawables — so
+ * the id is parsed from the *source* name (suffix intact) before we strip it.
+ *
+ * The exposed `fileName` drops that `-<id>` suffix (`img_percy-4113.jpg` →
+ * `img_percy.jpg`) for cleaner MDX `src`s. When two distinct ids would strip to
+ * the same display name, BOTH keep their unambiguous `source` name (which carries
+ * the unique id) so no asset is silently overwritten or lost. Deterministic:
+ * independent of iteration order.
+ */
+function buildDataAssets(dataFiles: Map<string, Uint8Array>): DataAsset[] {
+  const parsed: Array<{ id: number; source: string; display: string }> = [];
+  for (const fullName of dataFiles.keys()) {
+    if (!fullName.startsWith("Data/")) continue;
+    const source = fullName.slice("Data/".length);
+    const match = /-(\d+)\.[^.]+$/.exec(source);
+    if (!match) continue;
+    const display = source.slice(0, match.index) + source.slice(match.index + match[1].length + 1);
+    parsed.push({ id: Number(match[1]), source, display });
+  }
+
+  const displayCounts = new Map<string, number>();
+  for (const asset of parsed) displayCounts.set(asset.display, (displayCounts.get(asset.display) ?? 0) + 1);
+
+  return parsed.map((asset) => ({
+    id: asset.id,
+    source: asset.source,
+    fileName: (displayCounts.get(asset.display) ?? 0) > 1 ? asset.source : asset.display,
+  }));
+}
+
+/**
  * PRIMARY data→filename resolver, built straight from the zip's non-IWA entries.
- * Every `Data/` asset is named `<originalname>-<id>.<ext>`, where the trailing
- * number group before the extension is exactly the `DataReference.identifier`
- * referenced by image/movie drawables. We key by that id so resolution never
- * depends on the `PackageMetadata` object, which the decoder routinely drops.
+ * Keys each asset's `DataReference.identifier` to its (deduped) display file name,
+ * so resolution never depends on the `PackageMetadata` object the decoder
+ * routinely drops. Thumbnails (`-small-<id>`) and render previews
+ * (`st-`/`mt-<uuid>-<id>`) follow the same rule; drawables only ever look up their
+ * full-asset `data.identifier`.
  *
  * Keyed by `number` (the id fits comfortably): callers convert the bigint
- * `identifier` explicitly. Thumbnails (`-small-<id>`) and render previews
- * (`st-`/`mt-<uuid>-<id>`) follow the same rule, so the map simply contains
- * every asset; drawables only ever look up their full-asset `data.identifier`.
+ * `identifier` explicitly.
  */
 export function buildDataFileNameMap(dataFiles: Map<string, Uint8Array>): Map<number, string> {
   const map = new Map<number, string>();
-  for (const fullName of dataFiles.keys()) {
-    if (!fullName.startsWith("Data/")) continue;
-    const baseName = fullName.slice("Data/".length);
-    const match = /-(\d+)\.[^.]+$/.exec(baseName);
-    if (!match) continue;
-    map.set(Number(match[1]), baseName);
-  }
+  for (const asset of buildDataAssets(dataFiles)) map.set(asset.id, asset.fileName);
+  return map;
+}
+
+/**
+ * Maps each exposed display file name back to its `Data/`-relative source name, so
+ * extraction copies the right bytes under the same name the MDX `src` references.
+ * Built from the SAME deduped parse as `buildDataFileNameMap`, guaranteeing the
+ * referenced name and the copied file always agree.
+ */
+export function buildDataSourceMap(dataFiles: Map<string, Uint8Array>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const asset of buildDataAssets(dataFiles)) map.set(asset.fileName, asset.source);
   return map;
 }
 

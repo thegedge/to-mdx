@@ -1,4 +1,4 @@
-import type { Presentation, Slide, SlideImage } from "../model.ts";
+import type { Presentation, Slide, SlideImage, SlideVideo } from "../model.ts";
 import type { Registry, RegistryEntry } from "../registry.ts";
 import { isType, typeIds } from "../type_ids.ts";
 import { cls } from "../../../utils.ts";
@@ -114,10 +114,14 @@ function placeDrawables(
     if (placed.has(entry.id)) continue;
     const slideId = owningSlideId(entry, registry, contentSlideIds);
     if (slideId === undefined) continue;
-    const fileName = videoFileFromArchive(entry.message as MovieArchive, dataFileNames, dataInfo);
+    const movie = entry.message as MovieArchive;
+    const fileName = videoFileFromArchive(movie, dataFileNames, dataInfo);
     if (!fileName) continue;
+    const video: SlideVideo = { fileName };
+    const box = boxPercent(drawableGeometry(movie), slideSize);
+    if (box) video.box = box;
     placed.add(entry.id);
-    slotFor(slideId).videos.push(fileName);
+    slotFor(slideId).videos.push(video);
   }
 
   return placements;

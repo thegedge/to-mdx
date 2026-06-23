@@ -6,29 +6,66 @@ import type { ImageArchive } from "../types.ts";
 import {
   buildDataFileNameMap,
   buildDataInfoMap,
+  buildDataSourceMap,
   distinctImageFileNames,
   imageCoverageWarning,
   imageFromArchive,
 } from "./images.ts";
 
-test("buildDataFileNameMap keys each Data/ asset by its trailing id (last number wins)", () => {
+test("buildDataFileNameMap keys each Data/ asset by its id, stripping the -<id> display suffix", () => {
   const empty = new Uint8Array();
   const dataFiles = new Map<string, Uint8Array>([
-    ["Data/name-479.jpg", empty],
+    ["Data/img_percy-4113.jpg", empty],
     ["Data/name-small-480.jpg", empty],
     ["Data/alex-238098-2103.jpg", empty],
-    ["Data/black_friday-5855.mp4", empty],
+    ["Data/pasted-image-3754.svg", empty],
     ["Documents/index.iwa", empty],
     ["Data/no-id-here.png", empty],
   ]);
 
   const map = buildDataFileNameMap(dataFiles);
-  assert.equal(map.get(479), "name-479.jpg");
-  assert.equal(map.get(480), "name-small-480.jpg");
-  assert.equal(map.get(2103), "alex-238098-2103.jpg");
-  assert.equal(map.get(5855), "black_friday-5855.mp4");
+  assert.equal(map.get(4113), "img_percy.jpg");
+  assert.equal(map.get(480), "name-small.jpg");
+  assert.equal(map.get(2103), "alex-238098.jpg");
+  assert.equal(map.get(3754), "pasted-image.svg");
   // Non-Data entries and id-less names are ignored.
   assert.equal(map.size, 4);
+});
+
+test("buildDataFileNameMap keeps distinct names when two ids strip to the same base", () => {
+  const empty = new Uint8Array();
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/shot-10.png", empty],
+    ["Data/shot-20.png", empty],
+  ]);
+
+  const map = buildDataFileNameMap(dataFiles);
+  // Both keep their unambiguous source name, so neither image is lost.
+  assert.equal(map.get(10), "shot-10.png");
+  assert.equal(map.get(20), "shot-20.png");
+});
+
+test("buildDataSourceMap maps each display name back to its Data/ source (copy == reference)", () => {
+  const empty = new Uint8Array();
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/img_percy-4113.jpg", empty],
+    ["Data/shot-10.png", empty],
+    ["Data/shot-20.png", empty],
+  ]);
+
+  const sources = buildDataSourceMap(dataFiles);
+  // The stripped display name resolves back to the suffixed source bytes.
+  assert.equal(sources.get("img_percy.jpg"), "img_percy-4113.jpg");
+  // Colliding assets resolve to themselves (source == display), so each is copied.
+  assert.equal(sources.get("shot-10.png"), "shot-10.png");
+  assert.equal(sources.get("shot-20.png"), "shot-20.png");
+
+  // The name referenced in the MDX (via buildDataFileNameMap) is exactly the key
+  // that buildDataSourceMap resolves, so the copied file always matches the src.
+  const referenced = buildDataFileNameMap(dataFiles);
+  for (const fileName of referenced.values()) {
+    assert.ok(sources.has(fileName), `${fileName} should resolve to a source`);
+  }
 });
 
 test("buildDataInfoMap reads datas from a PackageMetadata object resolved by name", () => {
@@ -101,7 +138,7 @@ test("distinctImageFileNames collapses reused occurrences to unique file names",
   ]);
 
   const names = distinctImageFileNames(registry, dataFiles);
-  assert.deepEqual([...names].sort(), ["chart-10.png", "logo-20.png"]);
+  assert.deepEqual([...names].sort(), ["chart.png", "logo.png"]);
 });
 
 test("imageCoverageWarning reports occurrence + distinct coverage and appends the unlinked clause", () => {

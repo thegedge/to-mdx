@@ -1,4 +1,4 @@
-import type { Paragraph, Slide, SlideImage, SvgPath, TableData, TextBox } from "../model.ts";
+import type { Paragraph, Slide, SlideImage, SlideVideo, SvgPath, TableData, TextBox } from "../model.ts";
 import type { Registry } from "../registry.ts";
 import { isType } from "../type_ids.ts";
 import { PlaceholderKind } from "../types.ts";
@@ -31,7 +31,7 @@ export const NO_DEFAULTS: SlideDefaults = { titles: new Set(), bodies: new Set()
 /** Images/movies resolved for a slide bottom-up (by owner), supplied to extraction. */
 export interface SlidePlacements {
   images: SlideImage[];
-  videos: string[];
+  videos: SlideVideo[];
 }
 
 const NO_PLACEMENTS: SlidePlacements = { images: [], videos: [] };

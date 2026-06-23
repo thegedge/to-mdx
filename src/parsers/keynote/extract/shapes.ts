@@ -20,6 +20,7 @@ interface Frame {
 
 /** `TSP.Path.ElementType` discriminators used to translate a path to SVG commands. */
 const ELEMENT_MOVE_TO = 1;
+const ELEMENT_CURVE_TO = 4;
 const ELEMENT_CLOSE = 5;
 
 /** `TSD.StrokePatternArchive.StrokePatternType.TSDEmptyPattern` — an explicit "no line". */
@@ -52,8 +53,10 @@ export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | unde
  * slide coordinates: scale the path's own bounding box to the frame size, rotate
  * around the frame centre by the frame's angle, then translate by the frame
  * origin. (Keynote's `naturalSize` mirrors the frame size, not the path's
- * coordinate space, so the path bounds are the right reference.) Curves are
- * approximated as straight segments to their endpoint (fine for diagram lines/icons).
+ * coordinate space, so the path bounds are the right reference.) A cubic-bezier
+ * element (type 4) carries its two control points and endpoint as `[c1, c2, end]`,
+ * all baked through the same pipeline and emitted as an SVG `C`; a malformed curve
+ * with fewer than three points falls back to a straight segment to its last point.
  */
 export function buildPathData(elements: PathElement[], frame: Frame): string {
   const bounds = pathBounds(elements);
@@ -62,6 +65,14 @@ export function buildPathData(elements: PathElement[], frame: Frame): string {
   for (const element of elements) {
     if (element.type === ELEMENT_CLOSE) {
       commands.push("Z");
+      continue;
+    }
+    if (element.type === ELEMENT_CURVE_TO && element.points.length >= 3) {
+      const [c1, c2, end] = element.points;
+      const [c1x, c1y] = toSlidePoint(c1.x, c1.y, bounds, frame);
+      const [c2x, c2y] = toSlidePoint(c2.x, c2.y, bounds, frame);
+      const [ex, ey] = toSlidePoint(end.x, end.y, bounds, frame);
+      commands.push(`C ${round(c1x)} ${round(c1y)} ${round(c2x)} ${round(c2y)} ${round(ex)} ${round(ey)}`);
       continue;
     }
     const point = element.points.at(-1);

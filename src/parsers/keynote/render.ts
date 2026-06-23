@@ -1,5 +1,6 @@
 import { kebabCase } from "../../utils.ts";
-import type { ImageCrop, Paragraph, Presentation, Slide, SlideImage, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
+import { isFullBleed } from "./extract/layout.ts";
+import type { ImageCrop, Paragraph, Presentation, Slide, SlideImage, SlideVideo, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
 
@@ -96,6 +97,45 @@ export function presentationToMdx(presentation: Presentation): string {
 /** Absolute-positioning declarations for a placed image, layered below text. */
 function imageDeclarations(box: TextBoxGeometry): Declaration[] {
   return [["position", "absolute"], ...positionRules(box), ["zIndex", 1]];
+}
+
+/**
+ * Edge-to-edge `cover` declarations for a full-bleed video, layered at the very
+ * back (zIndex 0) so the slide's text boxes (zIndex ≥ 2) overlay it as attribution.
+ */
+function videoCoverDeclarations(): Declaration[] {
+  return [
+    ["position", "absolute"],
+    ["left", 0],
+    ["top", 0],
+    ["width", "100%"],
+    ["height", "100%"],
+    ["objectFit", "cover"],
+    ["zIndex", 0],
+  ];
+}
+
+/**
+ * Renders a placed movie. A full-bleed video becomes an edge-to-edge `cover`
+ * layer behind the slide's content; a video carrying a smaller box is positioned
+ * absolutely (below text, like an image); a video with no geometry stays a plain
+ * `<video controls>`. A "movie" that is really an animated image (gif/apng/…)
+ * can't play in a `<video>`, so it renders as an `<Image>` under the same rules.
+ */
+function renderVideo(video: SlideVideo): string {
+  const declarations = video.box
+    ? isFullBleed(video.box)
+      ? videoCoverDeclarations()
+      : imageDeclarations(video.box)
+    : [];
+  const style = declarations.length > 0 ? `${styleAttr(declarations)} ` : "";
+
+  if (isImageFile(video.fileName)) {
+    return `<Image ${style}${imageSrc(video.fileName)} role="presentation" alt="" />`;
+  }
+  return style
+    ? `<video controls ${styleAttr(declarations)} ${imageSrc(video.fileName)} />`
+    : `<video controls ${imageSrc(video.fileName)}></video>`;
 }
 
 /** A box dimension at or below this percentage is treated as "auto" (Keynote reports 0). */
@@ -196,12 +236,7 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number })
   }
 
   for (const video of slide.videos) {
-    // A "movie" that is really an animated image won't render in a <video> tag.
-    blocks.push(
-      isImageFile(video)
-        ? `<Image ${imageSrc(video)} role="presentation" alt="" />`
-        : `<video controls ${imageSrc(video)}></video>`,
-    );
+    blocks.push(renderVideo(video));
   }
 
   for (const table of slide.tables) {

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { buildRegistry, mockObject, ref } from "../test_support.ts";
 import { KeynoteType } from "../types.ts";
 import { buildPresentation } from "./document.ts";
-import { contentBoxPercent, normalizeLayoutClass, slideLayoutClass } from "./layout.ts";
+import { contentBoxPercent, isFullBleed, normalizeLayoutClass, slideLayoutClass } from "./layout.ts";
 
 const T = KeynoteType;
 
@@ -51,6 +51,17 @@ test("contentBoxPercent boxes drawables as slide-size percentages", () => {
 test("contentBoxPercent returns null with no geometries or a degenerate slide size", () => {
   assert.equal(contentBoxPercent([], { width: 1920, height: 1080 }), null);
   assert.equal(contentBoxPercent([{ x: 0, y: 0, width: 10, height: 10 }], { width: 0, height: 0 }), null);
+});
+
+test("isFullBleed treats a near-covering box (90% coverage) as full-bleed", () => {
+  // A screenshot box with a small gap above: top 7.7%, height 93%, full width.
+  assert.equal(isFullBleed({ left: 0, top: 7.7, width: 100, height: 93 }), true);
+  // Exactly at the loosened 90% coverage threshold on both axes.
+  assert.equal(isFullBleed({ left: 5, top: 5, width: 90, height: 90 }), true);
+});
+
+test("isFullBleed rejects a clearly-inset small box", () => {
+  assert.equal(isFullBleed({ left: 20, top: 20, width: 50, height: 50 }), false);
 });
 
 function deckWithMaster(masterName: string, useHeuristics: boolean) {

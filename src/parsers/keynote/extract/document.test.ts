@@ -63,7 +63,7 @@ test("buildPresentation resolves images through the Data/ filenames when given d
   const dataFiles = new Map<string, Uint8Array>([["Data/flamegraph-4235.png", new Uint8Array()]]);
 
   assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].images, [
-    { fileName: "flamegraph-4235.png", altText: "a pic" },
+    { fileName: "flamegraph.png", altText: "a pic" },
   ]);
 });
 
@@ -130,7 +130,7 @@ test("buildPresentation places an image nested in a group under its content slid
   const dataFiles = new Map<string, Uint8Array>([["Data/pic-100.png", new Uint8Array()]]);
 
   assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].images, [
-    { fileName: "pic-100.png", altText: "nested" },
+    { fileName: "pic.png", altText: "nested" },
   ]);
 });
 
@@ -147,8 +147,8 @@ test("buildPresentation places duplicate image objects on their respective conte
   const dataFiles = new Map<string, Uint8Array>([["Data/pic-100.png", new Uint8Array()]]);
 
   const slides = buildPresentation(registry, "x", dataFiles).slides;
-  assert.deepEqual(slides[0].images, [{ fileName: "pic-100.png", altText: "a" }]);
-  assert.deepEqual(slides[1].images, [{ fileName: "pic-100.png", altText: "b" }]);
+  assert.deepEqual(slides[0].images, [{ fileName: "pic.png", altText: "a" }]);
+  assert.deepEqual(slides[1].images, [{ fileName: "pic.png", altText: "b" }]);
 });
 
 test("buildPresentation counts an image reachable both top-down and bottom-up only once", () => {
@@ -163,7 +163,7 @@ test("buildPresentation counts an image reachable both top-down and bottom-up on
   const dataFiles = new Map<string, Uint8Array>([["Data/pic-100.png", new Uint8Array()]]);
 
   assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].images, [
-    { fileName: "pic-100.png", altText: "once" },
+    { fileName: "pic.png", altText: "once" },
   ]);
 });
 
@@ -186,9 +186,9 @@ test("buildPresentation collects resolvable but unlinkable images into unplacedI
 
   const presentation = buildPresentation(registry, "x", dataFiles);
 
-  assert.deepEqual(presentation.slides[0].images, [{ fileName: "placed-100.png", altText: "ok" }]);
-  assert.deepEqual(presentation.unplacedImages, ["lost-200.png"]);
-  assert.ok(!presentation.unplacedImages.includes("placed-100.png"));
+  assert.deepEqual(presentation.slides[0].images, [{ fileName: "placed.png", altText: "ok" }]);
+  assert.deepEqual(presentation.unplacedImages, ["lost.png"]);
+  assert.ok(!presentation.unplacedImages.includes("placed.png"));
 });
 
 test("buildPresentation promotes a full-bleed image to the slide background and keeps small ones inline", () => {
@@ -223,12 +223,12 @@ test("buildPresentation promotes a full-bleed image to the slide background and 
   const presentation = buildPresentation(registry, "x", dataFiles);
   const slide = presentation.slides[0];
 
-  assert.equal(slide.background, "bg-100.png");
+  assert.equal(slide.background, "bg.png");
   assert.deepEqual(slide.images, [
-    { fileName: "diagram-200.png", altText: "diagram", box: { left: 10, top: 10, width: 20, height: 20 } },
+    { fileName: "diagram.png", altText: "diagram", box: { left: 10, top: 10, width: 20, height: 20 } },
   ]);
   // The promoted background must not leak into the unplaced-images appendix.
-  assert.ok(!presentation.unplacedImages.includes("bg-100.png"));
+  assert.ok(!presentation.unplacedImages.includes("bg.png"));
 });
 
 test("buildPresentation derives crop geometry for a masked image and leaves a maskless one uncropped", () => {
@@ -266,8 +266,8 @@ test("buildPresentation derives crop geometry for a masked image and leaves a ma
   ]);
 
   const images = buildPresentation(registry, "x", dataFiles).slides[0].images;
-  const masked = images.find((image) => image.fileName === "masked-100.png");
-  const plain = images.find((image) => image.fileName === "plain-200.png");
+  const masked = images.find((image) => image.fileName === "masked.png");
+  const plain = images.find((image) => image.fileName === "plain.png");
 
   assert.deepEqual(masked?.crop, {
     left: 15,
@@ -307,10 +307,10 @@ test("buildPresentation inherits a master's positioned logo onto the content sli
   const slide = presentation.slides[0];
 
   assert.deepEqual(slide.images, [
-    { fileName: "logo-100.png", altText: "logo", box: { left: 10, top: 10, width: 10, height: 10 } },
+    { fileName: "logo.png", altText: "logo", box: { left: 10, top: 10, width: 10, height: 10 } },
   ]);
   assert.equal(slide.background, undefined);
-  assert.ok(!presentation.unplacedImages.includes("logo-100.png"));
+  assert.ok(!presentation.unplacedImages.includes("logo.png"));
 });
 
 test("buildPresentation skips a master's sage-tagged image placeholder (e.g. a Media slot), inheriting only untagged decorations", () => {
@@ -352,10 +352,10 @@ test("buildPresentation skips a master's sage-tagged image placeholder (e.g. a M
   // The untagged logo is inherited; the tagged placeholder photo is not used anywhere.
   assert.deepEqual(
     slide.images.map((image) => image.fileName),
-    ["logo-100.png"],
+    ["logo.png"],
   );
   assert.equal(slide.background, undefined);
-  assert.ok(!presentation.unplacedImages.includes("logo-100.png"));
+  assert.ok(!presentation.unplacedImages.includes("logo.png"));
 });
 
 test("buildPresentation uses a master full-bleed image as background only when the slide has none of its own", () => {
@@ -393,12 +393,12 @@ test("buildPresentation uses a master full-bleed image as background only when t
   const presentation = buildPresentation(registry, "x", dataFiles);
 
   // Slide A inherits the master full-bleed as its background.
-  assert.equal(presentation.slides[0].background, "masterbg-100.png");
+  assert.equal(presentation.slides[0].background, "masterbg.png");
   assert.deepEqual(presentation.slides[0].images, []);
   // Slide B keeps its own; the master's full-bleed is not used and not added inline.
-  assert.equal(presentation.slides[1].background, "ownbg-200.png");
+  assert.equal(presentation.slides[1].background, "ownbg.png");
   assert.deepEqual(presentation.slides[1].images, []);
-  assert.ok(!presentation.unplacedImages.includes("masterbg-100.png"));
+  assert.ok(!presentation.unplacedImages.includes("masterbg.png"));
 });
 
 test("buildPresentation leaves a slide without a master unchanged", () => {
@@ -411,7 +411,7 @@ test("buildPresentation leaves a slide without a master unchanged", () => {
   const dataFiles = new Map<string, Uint8Array>([["Data/own-100.png", new Uint8Array()]]);
 
   const slide = buildPresentation(registry, "x", dataFiles).slides[0];
-  assert.deepEqual(slide.images, [{ fileName: "own-100.png", altText: "own" }]);
+  assert.deepEqual(slide.images, [{ fileName: "own.png", altText: "own" }]);
   assert.equal(slide.background, undefined);
 });
 
@@ -435,8 +435,8 @@ test("buildPresentation inherits a shared master's image onto every slide that u
 
   const slides = buildPresentation(registry, "x", dataFiles).slides;
   const box = { left: 10, top: 10, width: 10, height: 10 };
-  assert.deepEqual(slides[0].images, [{ fileName: "logo-100.png", altText: "logo", box }]);
-  assert.deepEqual(slides[1].images, [{ fileName: "logo-100.png", altText: "logo", box }]);
+  assert.deepEqual(slides[0].images, [{ fileName: "logo.png", altText: "logo", box }]);
+  assert.deepEqual(slides[1].images, [{ fileName: "logo.png", altText: "logo", box }]);
 });
 
 function slideWithTitle(slideId: bigint, storageId: bigint, title: string) {

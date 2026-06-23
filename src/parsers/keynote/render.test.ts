@@ -128,7 +128,7 @@ test("presentationToMdx renders speaker notes as a nested unordered list inside 
 
 test("presentationToMdx embeds images as <Image>, videos as <video>, and a table comment inside the slide", () => {
   const mdx = presentationToMdx(
-    deck([slide({ images: [{ fileName: "pic.png", altText: "alt" }], videos: ["clip.mov"], tableCount: 2 })]),
+    deck([slide({ images: [{ fileName: "pic.png", altText: "alt" }], videos: [{ fileName: "clip.mov" }], tableCount: 2 })]),
   );
 
   assert.match(mdx, /<Image src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
@@ -181,15 +181,43 @@ test("isImageFile detects image extensions case-insensitively and rejects videos
 });
 
 test("presentationToMdx renders an animated-image 'video' as an <Image>, not a <video>", () => {
-  const mdx = presentationToMdx(deck([slide({ videos: ["clip.gif"] })]));
+  const mdx = presentationToMdx(deck([slide({ videos: [{ fileName: "clip.gif" }] })]));
   assert.match(mdx, /<Image src=\{`\$\{imageRoot\}\/clip\.gif`\} role="presentation" alt="" \/>/);
   assert.doesNotMatch(mdx, /<video/);
 });
 
 test("presentationToMdx still renders a real movie 'video' as a <video controls>", () => {
-  const mdx = presentationToMdx(deck([slide({ videos: ["clip.mp4"] })]));
+  const mdx = presentationToMdx(deck([slide({ videos: [{ fileName: "clip.mp4" }] })]));
   assert.match(mdx, /<video controls src=\{`\$\{imageRoot\}\/clip\.mp4`\}><\/video>/);
   assert.doesNotMatch(mdx, /<Image/);
+});
+
+test("presentationToMdx renders a full-bleed video as an objectFit:cover layer at zIndex 0", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ videos: [{ fileName: "clip.mp4", box: { left: 0, top: 0, width: 100, height: 100 } }] })]),
+  );
+  assert.match(
+    mdx,
+    /<video controls style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
+  );
+});
+
+test("presentationToMdx positions a non-full-bleed video via its box (absolute, zIndex 1)", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ videos: [{ fileName: "clip.mp4", box: { left: 10, top: 20, width: 30, height: 40 } }] })]),
+  );
+  assert.match(
+    mdx,
+    /<video controls style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", zIndex: 1 \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
+  );
+  assert.doesNotMatch(mdx, /objectFit/);
+});
+
+test("presentationToMdx renders a full-bleed animated image 'video' as an <Image> cover layer", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ videos: [{ fileName: "clip.gif", box: { left: 0, top: 0, width: 100, height: 100 } }] })]),
+  );
+  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 \}\} src=\{`\$\{imageRoot\}\/clip\.gif`\}/);
 });
 
 function cell(text: string, colSpan = 1, rowSpan = 1) {

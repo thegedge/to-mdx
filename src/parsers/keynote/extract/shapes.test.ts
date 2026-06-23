@@ -60,7 +60,7 @@ test("buildPathData rotates a 90deg line to near-vertical", () => {
   assert.ok(Math.abs(Math.abs(b.y - a.y) - 716) < 0.01, `y's should differ by ~716: got ${Math.abs(b.y - a.y)}`);
 });
 
-test("buildPathData approximates a curve element (type 4) as a lineTo to its endpoint", () => {
+test("buildPathData emits a cubic bezier (C) for a curve element (type 4), baking all three points", () => {
   const d = buildPathData(
     [
       { type: 1, points: [{ x: 0, y: 0 }] },
@@ -76,7 +76,39 @@ test("buildPathData approximates a curve element (type 4) as a lineTo to its end
     { x: 0, y: 0, width: 100, height: 100, angle: 0 },
   );
 
+  assert.equal(d, "M 0 0 C 10 50 90 50 100 100");
+});
+
+test("buildPathData falls back to a lineTo when a curve element has fewer than three points", () => {
+  const d = buildPathData(
+    [
+      { type: 1, points: [{ x: 0, y: 0 }] },
+      { type: 4, points: [{ x: 100, y: 100 }] },
+    ],
+    { x: 0, y: 0, width: 100, height: 100, angle: 0 },
+  );
+
   assert.equal(d, "M 0 0 L 100 100");
+});
+
+test("buildPathData renders a closed four-curve circle as cubic beziers, not straight segments", () => {
+  // A circle approximated by four cubic beziers (one per quadrant) around a
+  // 100x100 box: each curve's points are [control1, control2, endpoint].
+  const d = buildPathData(
+    [
+      { type: 1, points: [{ x: 50, y: 0 }] },
+      { type: 4, points: [{ x: 78, y: 0 }, { x: 100, y: 22 }, { x: 100, y: 50 }] },
+      { type: 4, points: [{ x: 100, y: 78 }, { x: 78, y: 100 }, { x: 50, y: 100 }] },
+      { type: 4, points: [{ x: 22, y: 100 }, { x: 0, y: 78 }, { x: 0, y: 50 }] },
+      { type: 4, points: [{ x: 0, y: 22 }, { x: 22, y: 0 }, { x: 50, y: 0 }] },
+      { type: 5, points: [] },
+    ],
+    { x: 0, y: 0, width: 100, height: 100, angle: 0 },
+  );
+
+  assert.equal((d.match(/C /g) ?? []).length, 4);
+  assert.doesNotMatch(d, / L /);
+  assert.match(d, /Z$/);
 });
 
 test("buildPathData emits Z for a close element", () => {

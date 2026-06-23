@@ -7,7 +7,7 @@ import { decodeKeynote, partialEntriesWarning } from "./decode.ts";
 import { writeDebugDump, writeRawDump } from "./debug.ts";
 import { buildPresentation } from "./extract/document.ts";
 import { convertPdfDataFiles } from "./extract/pdf.ts";
-import { distinctImageFileNames, imageCoverageWarning } from "./extract/images.ts";
+import { buildDataSourceMap, distinctImageFileNames, imageCoverageWarning } from "./extract/images.ts";
 import type { Presentation } from "./model.ts";
 import { formatDate, generateFilename, sanitizeFilename, titleFromPath } from "./metadata.ts";
 import { typeIds } from "./type_ids.ts";
@@ -94,15 +94,20 @@ async function copyImages(
   const fileNames = new Set<string>();
   for (const slide of presentation.slides) {
     for (const image of slide.images) fileNames.add(image.fileName);
-    for (const video of slide.videos) fileNames.add(video);
+    for (const video of slide.videos) fileNames.add(video.fileName);
     if (slide.background) fileNames.add(slide.background);
   }
   if (fileNames.size === 0) return;
 
   await mkdir(imagesDir, { recursive: true });
 
+  // The `src` names exposed in the MDX have the `-<id>` suffix stripped; map each
+  // back to its `Data/` source so the copied file's name matches the reference.
+  const sources = buildDataSourceMap(dataFiles);
+
   for (const fileName of fileNames) {
-    const bytes = dataFiles.get(`Data/${fileName}`) ?? dataFiles.get(fileName);
+    const source = sources.get(fileName) ?? fileName;
+    const bytes = dataFiles.get(`Data/${source}`) ?? dataFiles.get(source) ?? dataFiles.get(fileName);
     if (!bytes) {
       console.warn(`⚠️  Image data not found in archive: ${fileName}`);
       continue;
