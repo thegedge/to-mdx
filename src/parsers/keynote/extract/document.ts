@@ -43,13 +43,15 @@ export function buildPresentation(
   const contentSlideIds = new Set(orderedEntries.map((entry) => entry.id));
   const slideSize = resolveSlideSize(registry);
   const placements = placeDrawables(registry, contentSlideIds, dataFileNames, dataInfo, slideSize);
+  const masterImagesFor = makeMasterImagesResolver(registry, dataFileNames, dataInfo, slideSize);
 
   const layout: LayoutContext = { useHeuristics, slideSize };
 
   const slides = orderedEntries.map((entry) => {
     const slide = entry.message as SlideArchive;
     const extracted = extractSlide(slide, registry, defaultsFor(slide), placements.get(entry.id), layout);
-    return promoteBackground(extracted, useHeuristics);
+    const promoted = promoteBackground(extracted, useHeuristics);
+    return inheritMasterImages(promoted, masterImagesFor(slide), useHeuristics);
   });
 
   // A promoted background image stays "placed" even though it left `slide.images`.
@@ -144,6 +146,113 @@ function promoteBackground(slide: Slide, useHeuristics: boolean): Slide {
   const images = slide.images.filter((image) => image !== background);
   const className = useHeuristics ? normalizeLayoutClass(cls(slide.className, "blank") ?? "") || undefined : slide.className;
   return { ...slide, className, background: background.fileName, images };
+}
+
+/**
+ * Resolves the inheritable images carried by each slide's master ("template")
+ * slide, cached per master id because one master is shared by many content
+ * slides (so its single image archive must be re-placed on every slide that uses
+ * it — it deliberately bypasses the per-archive-id dedup in `placeDrawables`).
+ * Only IMAGE drawables are inherited; master title/body shapes are dropped by
+ * `makeDefaultsResolver` and ignored here.
+ */
+function makeMasterImagesResolver(
+  registry: Registry,
+  dataFileNames: Map<number, string>,
+  dataInfo: Map<bigint, string>,
+  slideSize: { width: number; height: number },
+): (slide: SlideArchive) => SlideImage[] {
+  const cache = new Map<bigint, SlideImage[]>();
+
+  return (slide) => {
+    const templateRef = slide.templateSlide;
+    if (!templateRef) return [];
+
+    const cached = cache.get(templateRef.identifier);
+    if (cached) return cached;
+
+    const master = registry.resolve<SlideArchive>(templateRef);
+    const images = master ? collectMasterImages(master, registry, dataFileNames, dataInfo, slideSize) : [];
+    cache.set(templateRef.identifier, images);
+    return images;
+  };
+}
+
+/**
+ * Resolves a master slide's image drawables to `SlideImage[]`, reusing the exact
+ * image/geometry/crop pipeline `placeDrawables` runs for content images. Walks
+ * the master's z-ordered drawables (falling back to `ownedDrawables`) and skips
+ * any non-image drawable (shapes) as well as sage-tagged image *placeholders*
+ * (e.g. a "Media" photo slot the content slide fills with its own image) — only
+ * untagged decorations like logos and backgrounds are inherited.
+ */
+function collectMasterImages(
+  master: SlideArchive,
+  registry: Registry,
+  dataFileNames: Map<number, string>,
+  dataInfo: Map<bigint, string>,
+  slideSize: { width: number; height: number },
+): SlideImage[] {
+  const images: SlideImage[] = [];
+  const drawables = master.drawablesZOrder.length > 0 ? master.drawablesZOrder : master.ownedDrawables;
+  const placeholderIds = new Set(
+    (master.sageTagToInfoMap ?? []).flatMap((tag) => (tag.info ? [tag.info.identifier] : [])),
+  );
+
+  for (const ref of drawables) {
+    if (placeholderIds.has(ref.identifier)) continue;
+    const entry = registry.get(ref.identifier);
+    if (!entry || !isType(entry.type, "ImageArchive")) continue;
+
+    const image = entry.message as ImageArchive;
+    const resolved = imageFromArchive(image, dataFileNames, dataInfo, image.super?.accessibilityDescription ?? "");
+    if (!resolved) continue;
+
+    const imageGeometry = drawableGeometry(image);
+    const box = boxPercent(imageGeometry, slideSize);
+    if (box) resolved.box = box;
+    const maskGeometry = drawableGeometry(registry.resolve<MaskArchive>(image.mask));
+    if (imageGeometry && maskGeometry) {
+      const crop = maskCrop(imageGeometry, maskGeometry, slideSize);
+      if (crop) resolved.crop = crop;
+    }
+    images.push(resolved);
+  }
+
+  return images;
+}
+
+/**
+ * Layers a master slide's inherited images onto a content slide. A full-bleed
+ * (uncropped) master image fills the slide background only when the slide has no
+ * background of its own (the slide's own promoted background always wins);
+ * everything else is appended as a positioned inline image. Images whose file
+ * name already appears as the slide's background or among its images are skipped,
+ * so re-running is idempotent and an image owned by the slide is never doubled.
+ */
+function inheritMasterImages(slide: Slide, masterImages: SlideImage[], useHeuristics: boolean): Slide {
+  if (masterImages.length === 0) return slide;
+
+  let result = slide;
+  for (const image of masterImages) {
+    if (result.background === image.fileName) continue;
+    if (result.images.some((existing) => existing.fileName === image.fileName)) continue;
+
+    const fullBleed = image.crop === undefined && image.box !== undefined && isFullBleed(image.box);
+    if (fullBleed) {
+      // Own background wins; a full-bleed decoration would clobber content, so
+      // skip it entirely when the slide already has one.
+      if (result.background) continue;
+      const className = useHeuristics
+        ? normalizeLayoutClass(cls(result.className, "blank") ?? "") || undefined
+        : result.className;
+      result = { ...result, className, background: image.fileName };
+    } else {
+      result = { ...result, images: [...result.images, { ...image }] };
+    }
+  }
+
+  return result;
 }
 
 function presentationTitle(slides: Slide[], fallbackTitle: string): string {

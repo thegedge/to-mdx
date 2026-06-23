@@ -282,6 +282,163 @@ test("buildPresentation derives crop geometry for a masked image and leaves a ma
   assert.equal(plain?.crop, undefined);
 });
 
+test("buildPresentation inherits a master's positioned logo onto the content slide and out of unplacedImages", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] }, size: { width: 1920, height: 1080 } }),
+    // Content slide referencing the master via templateSlide; it owns nothing.
+    mockObject(4n, T.slideArchive, { templateSlide: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    // Master with a small logo image plus a title shape that must be ignored.
+    mockObject(60n, T.slideArchive, { ownedDrawables: [], drawablesZOrder: [ref(61n), ref(63n)] }),
+    mockObject(61n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "logo",
+        parent: ref(60n),
+        geometry: { position: { x: 192, y: 108 }, size: { width: 192, height: 108 } },
+      },
+      data: ref(100n),
+    }),
+    mockObject(63n, T.shapeInfoArchive, { ownedStorage: ref(64n) }),
+    mockObject(64n, T.storageArchive, { text: ["Title placeholder"] }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/logo-100.png", new Uint8Array()]]);
+
+  const presentation = buildPresentation(registry, "x", dataFiles);
+  const slide = presentation.slides[0];
+
+  assert.deepEqual(slide.images, [
+    { fileName: "logo-100.png", altText: "logo", box: { left: 10, top: 10, width: 10, height: 10 } },
+  ]);
+  assert.equal(slide.background, undefined);
+  assert.ok(!presentation.unplacedImages.includes("logo-100.png"));
+});
+
+test("buildPresentation skips a master's sage-tagged image placeholder (e.g. a Media slot), inheriting only untagged decorations", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] }, size: { width: 1920, height: 1080 } }),
+    mockObject(4n, T.slideArchive, { templateSlide: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    // Master with a tagged "Media" photo placeholder (62) and an untagged logo (61).
+    mockObject(60n, T.slideArchive, {
+      ownedDrawables: [],
+      drawablesZOrder: [ref(61n), ref(62n)],
+      sageTagToInfoMap: [{ tag: "Media", info: ref(62n) }],
+    }),
+    mockObject(61n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "logo",
+        parent: ref(60n),
+        geometry: { position: { x: 192, y: 108 }, size: { width: 192, height: 108 } },
+      },
+      data: ref(100n),
+    }),
+    mockObject(62n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "sample photo",
+        parent: ref(60n),
+        geometry: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } },
+      },
+      data: ref(200n),
+    }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/logo-100.png", new Uint8Array()],
+    ["Data/sample-200.png", new Uint8Array()],
+  ]);
+
+  const presentation = buildPresentation(registry, "x", dataFiles);
+  const slide = presentation.slides[0];
+
+  // The untagged logo is inherited; the tagged placeholder photo is not used anywhere.
+  assert.deepEqual(
+    slide.images.map((image) => image.fileName),
+    ["logo-100.png"],
+  );
+  assert.equal(slide.background, undefined);
+  assert.ok(!presentation.unplacedImages.includes("logo-100.png"));
+});
+
+test("buildPresentation uses a master full-bleed image as background only when the slide has none of its own", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n), ref(5n)] }, size: { width: 1920, height: 1080 } }),
+    // Slide A: no own background — inherits the master full-bleed image.
+    mockObject(4n, T.slideArchive, { templateSlide: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    // Slide B: promotes its OWN full-bleed background — keeps it.
+    mockObject(5n, T.slideArchive, { templateSlide: ref(60n), ownedDrawables: [ref(70n)], drawablesZOrder: [] }),
+    mockObject(70n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "own-bg",
+        parent: ref(5n),
+        geometry: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } },
+      },
+      data: ref(200n),
+    }),
+    // Master with one full-bleed background image.
+    mockObject(60n, T.slideArchive, { ownedDrawables: [], drawablesZOrder: [ref(61n)] }),
+    mockObject(61n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "master-bg",
+        parent: ref(60n),
+        geometry: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } },
+      },
+      data: ref(100n),
+    }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/masterbg-100.png", new Uint8Array()],
+    ["Data/ownbg-200.png", new Uint8Array()],
+  ]);
+
+  const presentation = buildPresentation(registry, "x", dataFiles);
+
+  // Slide A inherits the master full-bleed as its background.
+  assert.equal(presentation.slides[0].background, "masterbg-100.png");
+  assert.deepEqual(presentation.slides[0].images, []);
+  // Slide B keeps its own; the master's full-bleed is not used and not added inline.
+  assert.equal(presentation.slides[1].background, "ownbg-200.png");
+  assert.deepEqual(presentation.slides[1].images, []);
+  assert.ok(!presentation.unplacedImages.includes("masterbg-100.png"));
+});
+
+test("buildPresentation leaves a slide without a master unchanged", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n)], drawablesZOrder: [] }),
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "own", parent: ref(4n) }, data: ref(100n) }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/own-100.png", new Uint8Array()]]);
+
+  const slide = buildPresentation(registry, "x", dataFiles).slides[0];
+  assert.deepEqual(slide.images, [{ fileName: "own-100.png", altText: "own" }]);
+  assert.equal(slide.background, undefined);
+});
+
+test("buildPresentation inherits a shared master's image onto every slide that uses it", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n), ref(5n)] }, size: { width: 1920, height: 1080 } }),
+    mockObject(4n, T.slideArchive, { templateSlide: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    mockObject(5n, T.slideArchive, { templateSlide: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    mockObject(60n, T.slideArchive, { ownedDrawables: [], drawablesZOrder: [ref(61n)] }),
+    mockObject(61n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "logo",
+        parent: ref(60n),
+        geometry: { position: { x: 192, y: 108 }, size: { width: 192, height: 108 } },
+      },
+      data: ref(100n),
+    }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([["Data/logo-100.png", new Uint8Array()]]);
+
+  const slides = buildPresentation(registry, "x", dataFiles).slides;
+  const box = { left: 10, top: 10, width: 10, height: 10 };
+  assert.deepEqual(slides[0].images, [{ fileName: "logo-100.png", altText: "logo", box }]);
+  assert.deepEqual(slides[1].images, [{ fileName: "logo-100.png", altText: "logo", box }]);
+});
+
 function slideWithTitle(slideId: bigint, storageId: bigint, title: string) {
   return [
     mockObject(slideId, T.slideArchive, { titlePlaceholder: ref(storageId + 1000n), ownedDrawables: [], drawablesZOrder: [] }),
