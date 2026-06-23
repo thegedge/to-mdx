@@ -18,6 +18,20 @@ export interface SlideImage {
   box?: TextBoxGeometry;
 }
 
+/**
+ * A vector shape (line, arrow, icon path) baked into absolute slide-point
+ * coordinates, ready to render as one SVG `<path>`. `markerStart`/`markerEnd`
+ * flag a resolved line-end arrowhead.
+ */
+export interface SvgPath {
+  d: string;
+  stroke: string;
+  strokeWidth: number;
+  fill?: string;
+  markerStart?: boolean;
+  markerEnd?: boolean;
+}
+
 /** A free text box's bounding box, expressed as percentages of the slide size. */
 export interface TextBoxGeometry {
   left: number;
@@ -81,6 +95,8 @@ export interface Slide {
   title?: string;
   body: Paragraph[];
   textBoxes: TextBox[];
+  /** Vector shapes (lines/arrows/icons) drawn as one overlaid SVG; absent when none. */
+  shapes?: SvgPath[];
   images: SlideImage[];
   /** Resolved `Data/`-relative file names of movies/videos placed on the slide. */
   videos: string[];
@@ -94,6 +110,8 @@ export interface Slide {
 export interface Presentation {
   title: string;
   slides: Slide[];
+  /** Slide size in points; sets the SVG `viewBox` for overlaid vector shapes. */
+  slideSize?: { width: number; height: number };
   /**
    * Distinct `Data/`-relative file names of images that resolve to a file but
    * could not be linked to any slide (their container was lost to a partially

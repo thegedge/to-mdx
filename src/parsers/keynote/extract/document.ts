@@ -60,7 +60,7 @@ export function buildPresentation(
     .filter((fileName) => !placed.has(fileName))
     .sort();
 
-  return { title: presentationTitle(slides, fallbackTitle), slides, unplacedImages };
+  return { title: presentationTitle(slides, fallbackTitle), slides, unplacedImages, slideSize };
 }
 
 /**

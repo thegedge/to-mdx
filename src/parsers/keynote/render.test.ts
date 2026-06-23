@@ -426,6 +426,43 @@ test("presentationToMdx anchors a positioned auto-size box without emitting widt
   assert.doesNotMatch(mdx, /top:/);
 });
 
+test("presentationToMdx renders vector shapes as one <svg> overlay sized to the slide", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ shapes: [{ d: "M 100 200 L 816 200", stroke: "#000000", strokeWidth: 2 }] })]),
+  );
+
+  assert.match(mdx, /<svg viewBox="0 0 1920 1080"/);
+  assert.match(mdx, /<path d="M 100 200 L 816 200" fill="none" stroke="#000000" strokeWidth=\{2\} \/>/);
+  assert.match(mdx, /zIndex: 1/);
+  assert.match(mdx, /pointerEvents: "none"/);
+  assert.doesNotMatch(mdx, /kn-arrow/);
+});
+
+test("presentationToMdx uses the deck slideSize for the shape viewBox", () => {
+  const mdx = presentationToMdx({
+    title: "Deck",
+    slides: [slide({ shapes: [{ d: "M 0 0 L 10 10", stroke: "currentColor", strokeWidth: 2 }] })],
+    unplacedImages: [],
+    slideSize: { width: 1280, height: 720 },
+  });
+
+  assert.match(mdx, /<svg viewBox="0 0 1280 720"/);
+});
+
+test("presentationToMdx emits the shared arrow marker and wires markerEnd for arrow shapes", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ shapes: [{ d: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, markerEnd: true }] })]),
+  );
+
+  assert.match(mdx, /<marker id="kn-arrow"/);
+  assert.match(mdx, /markerEnd="url\(#kn-arrow\)"/);
+});
+
+test("presentationToMdx omits the shape overlay when a slide has no shapes", () => {
+  const mdx = presentationToMdx(deck([slide({ title: "Plain" })]));
+  assert.doesNotMatch(mdx, /<svg/);
+});
+
 test("assembleMdxDocument puts a blank line between the exports and the body, and ends with a newline", () => {
   const doc = assembleMdxDocument("export const title = 'Deck';", "<Slides>\n<Slide />\n</Slides>");
 

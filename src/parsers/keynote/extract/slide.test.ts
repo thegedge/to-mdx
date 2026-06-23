@@ -224,6 +224,60 @@ test("extractSlide emits a fenced code block for a code-like text box", () => {
   ]);
 });
 
+test("extractSlide collects a no-text stroked shape as a vector path and not a text box", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    mockObject(50n, T.shapeInfoArchive, {
+      super: {
+        style: ref(55n),
+        super: { geometry: { position: { x: 100, y: 200 }, size: { width: 716, height: 0 }, angle: 0 } },
+        pathsource: {
+          bezierPathSource: {
+            naturalSize: { width: 100, height: 0 },
+            path: {
+              elements: [
+                { type: 1, points: [{ x: 0, y: 0 }] },
+                { type: 2, points: [{ x: 100, y: 0 }] },
+              ],
+            },
+          },
+        },
+      },
+    }),
+    mockObject(55n, T.shapeArchive, { shapeProperties: { stroke: { color: { r: 0, g: 0, b: 0 }, width: 2 } } }),
+  ]);
+
+  const slide = buildPresentation(registry, "x").slides[0];
+  assert.deepEqual(slide.textBoxes, []);
+  assert.ok(slide.shapes);
+  assert.equal(slide.shapes.length, 1);
+  assert.equal(slide.shapes[0].stroke, "#000000");
+  assert.match(slide.shapes[0].d, /^M 100 200 L 816 200$/);
+});
+
+test("extractSlide leaves shapes undefined when a no-text frame has no visible stroke or fill", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    mockObject(50n, T.shapeInfoArchive, {
+      super: {
+        style: ref(55n),
+        super: { geometry: { position: { x: 0, y: 0 }, size: { width: 100, height: 0 }, angle: 0 } },
+        pathsource: {
+          bezierPathSource: {
+            naturalSize: { width: 100, height: 0 },
+            path: { elements: [{ type: 1, points: [{ x: 0, y: 0 }] }, { type: 2, points: [{ x: 100, y: 0 }] }] },
+          },
+        },
+      },
+    }),
+    mockObject(55n, T.shapeArchive, { shapeProperties: {} }),
+  ]);
+
+  assert.equal(buildPresentation(registry, "x").slides[0].shapes, undefined);
+});
+
 test("extractSlide resolves movies to a video data file", () => {
   const registry = buildRegistry([
     ...show(10n),

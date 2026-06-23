@@ -1,4 +1,4 @@
-import type { Paragraph, Slide, SlideImage, TableData, TextBox } from "../model.ts";
+import type { Paragraph, Slide, SlideImage, SvgPath, TableData, TextBox } from "../model.ts";
 import type { Registry } from "../registry.ts";
 import { isType } from "../type_ids.ts";
 import { PlaceholderKind } from "../types.ts";
@@ -8,11 +8,13 @@ import type {
   PlaceholderArchive,
   Reference,
   ShapeInfoArchive,
+  ShapeStyleArchive,
   SlideArchive,
   StorageArchive,
   TableInfoArchive,
 } from "../types.ts";
 import { extractTable } from "./table.ts";
+import { svgPath } from "./shapes.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
 import { boxPercent, textBoxStyle } from "./style.ts";
@@ -53,6 +55,8 @@ interface Collected {
   sageTitle: Paragraph[];
   bodies: Paragraph[][];
   textBoxes: TextBox[];
+  /** No-text vector shapes (lines/arrows/icons), baked into absolute slide coords. */
+  shapes: SvgPath[];
   tables: TableData[];
   tableCount: number;
   /** Geometry of contentful drawables, in slide (point) coordinates, for layout heuristics. */
@@ -76,6 +80,7 @@ export function extractSlide(
     title,
     body: pickBody(collected.bodies, defaults.bodies),
     textBoxes: collected.textBoxes,
+    ...(collected.shapes.length > 0 ? { shapes: collected.shapes } : {}),
     images: placements.images,
     videos: placements.videos,
     tables: collected.tables,
@@ -127,6 +132,7 @@ function collectFromSlide(
     sageTitle: [],
     bodies: [],
     textBoxes: [],
+    shapes: [],
     tables: [],
     tableCount: 0,
     geometries: [],
@@ -206,9 +212,20 @@ function processRef(
     const shape = entry.message as ShapeInfoArchive;
     const storage = storageForShape(shape, registry);
     const paragraphs = extractParagraphs(storage, registry);
+    if (paragraphs.length === 0) {
+      collectShape(shape, registry, collected);
+      return;
+    }
     collectText(role, paragraphs, shape, storage, registry, collected);
-    if (paragraphs.length > 0) pushGeometry(shape, collected);
+    pushGeometry(shape, collected);
   }
+}
+
+/** Collects a no-text shape's vector path (a line/arrow/icon) when it has visible stroke or fill. */
+function collectShape(shape: ShapeInfoArchive, registry: Registry, collected: Collected): void {
+  const style = registry.resolve<ShapeStyleArchive>(shape.super?.style);
+  const path = svgPath(shape, style);
+  if (path) collected.shapes.push(path);
 }
 
 /**

@@ -1,7 +1,10 @@
 import { kebabCase } from "../../utils.ts";
-import type { Paragraph, Presentation, Slide, SlideImage, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
+import type { Paragraph, Presentation, Slide, SlideImage, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
+
+/** Fallback slide size (16:9 at 1080p) when a deck declares none, for the SVG viewBox. */
+const DEFAULT_SLIDE_SIZE = { width: 1920, height: 1080 };
 
 /**
  * A JSX attribute that resolves a file against the exported `imageRoot` const,
@@ -75,7 +78,8 @@ export function assembleMdxDocument(metadataExports: string, content: string): s
 }
 
 export function presentationToMdx(presentation: Presentation): string {
-  const slides = presentation.slides.map((slide) => renderSlide(slide)).join("\n\n");
+  const slideSize = presentation.slideSize ?? DEFAULT_SLIDE_SIZE;
+  const slides = presentation.slides.map((slide) => renderSlide(slide, slideSize)).join("\n\n");
 
   // `backgroundRoot={imageRoot}` references the exported `imageRoot` const (a JSX
   // expression), not a string literal.
@@ -166,9 +170,9 @@ function renderUnplacedImages(fileNames: string[]): string {
   return blocks.join("\n\n");
 }
 
-function renderSlide(slide: Slide): string {
+function renderSlide(slide: Slide, slideSize: { width: number; height: number }): string {
   const attributes = slideAttributes(slide);
-  const blocks = slideBlocks(slide);
+  const blocks = slideBlocks(slide, slideSize);
   if (blocks.length === 0) return attributes ? `<Slide ${attributes} />` : "<Slide />";
 
   const open = attributes ? `<Slide ${attributes}>` : "<Slide>";
@@ -193,11 +197,13 @@ function slideAttributes(slide: Slide): string {
   return parts.join(" ");
 }
 
-function slideBlocks(slide: Slide): string[] {
+function slideBlocks(slide: Slide, slideSize: { width: number; height: number }): string[] {
   const blocks: string[] = [];
 
   if (slide.title) blocks.push(`# ${escapeMdxText(slide.title)}`);
   if (slide.body.length > 0) blocks.push(renderBullets(slide.body));
+
+  if (slide.shapes?.length) blocks.push(renderShapes(slide.shapes, slideSize));
 
   for (const textBox of slide.textBoxes) {
     blocks.push(renderTextBox(textBox));
@@ -228,6 +234,44 @@ function slideBlocks(slide: Slide): string[] {
   if (notes) blocks.push(notes);
 
   return blocks.filter((block) => block.length > 0);
+}
+
+/** The inline style placing the shape overlay edge-to-edge, below text (z-index 1). */
+function shapeOverlayDeclarations(): Declaration[] {
+  return [
+    ["position", "absolute"],
+    ["left", 0],
+    ["top", 0],
+    ["width", "100%"],
+    ["height", "100%"],
+    ["overflow", "visible"],
+    ["zIndex", 1],
+    ["pointerEvents", "none"],
+  ];
+}
+
+/** The shared arrowhead marker, emitted once per slide when any shape uses an arrow. */
+const ARROW_MARKER =
+  '<defs><marker id="kn-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" ' +
+  'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker></defs>';
+
+/**
+ * One absolutely-positioned `<svg>` overlay holding the slide's vector shapes as
+ * `<path>`s, in baked slide-point coordinates matched by the `viewBox`. Layered
+ * below text (z-index 1); arrowheads reference a shared marker emitted once.
+ */
+function renderShapes(shapes: SvgPath[], slideSize: { width: number; height: number }): string {
+  const defs = shapes.some((shape) => shape.markerStart || shape.markerEnd) ? `\n${INDENT}${ARROW_MARKER}` : "";
+  const paths = shapes.map((shape) => `${INDENT}${renderPath(shape)}`).join("\n");
+  const open = `<svg viewBox="0 0 ${percent(slideSize.width)} ${percent(slideSize.height)}" ${styleAttr(shapeOverlayDeclarations())}>`;
+  return `${open}${defs}\n${paths}\n</svg>`;
+}
+
+/** A single `<path>` for one vector shape, wiring up any resolved arrowheads. */
+function renderPath(shape: SvgPath): string {
+  const markers =
+    (shape.markerStart ? ' markerStart="url(#kn-arrow)"' : "") + (shape.markerEnd ? ' markerEnd="url(#kn-arrow)"' : "");
+  return `<path d="${shape.d}" fill="${shape.fill ?? "none"}" stroke="${shape.stroke}" strokeWidth={${shape.strokeWidth}}${markers} />`;
 }
 
 /**
