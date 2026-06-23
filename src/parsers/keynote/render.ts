@@ -143,6 +143,15 @@ function renderVideo(video: SlideVideo): string {
 const SIZE_EPSILON = 0.5;
 
 /**
+ * For auto-sized boxes, the start position past which we anchor by the far edge
+ * (`right`/`bottom`) instead of the near edge. Only boxes genuinely hugging the
+ * far edge flip; boxes in the bulk of the slide stay near-anchored at their true
+ * position, so evenly-placed labels (e.g. a vertical column of emoji) render
+ * evenly spaced rather than mixing top- and bottom-anchoring.
+ */
+const FAR_EDGE_ANCHOR = 85;
+
+/**
  * The placement declarations for a box, one axis at a time. Auto-sizing Keynote
  * text boxes report a zero width/height, which would collapse the element and
  * push it off-screen; for those we omit the size and anchor by the near edge
@@ -159,7 +168,9 @@ export function positionRules(box: TextBoxGeometry): Declaration[] {
 
 function axisRules(near: string, far: string, sizeProp: string, start: number, size: number): Declaration[] {
   if (size <= SIZE_EPSILON) {
-    return start <= 50 ? [[near, `${percent(start)}%`]] : [[far, `${percent(100 - start)}%`]];
+    // Anchor by the box's true top/left so evenly-placed boxes stay evenly spaced;
+    // only a box hugging the far edge flips to the far edge to stay on-screen.
+    return start <= FAR_EDGE_ANCHOR ? [[near, `${percent(start)}%`]] : [[far, `${percent(100 - start)}%`]];
   }
   return [
     [near, `${percent(start)}%`],
@@ -196,9 +207,9 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): Declarati
   return declarations;
 }
 
-/** Rounds a percentage to two decimals and drops trailing zeros (e.g. 10, 33.33). */
+/** Rounds a percentage to a single decimal, dropping a trailing zero (e.g. 10, 33.3). */
 function percent(value: number): number {
-  return Number(value.toFixed(2));
+  return Number(value.toFixed(1));
 }
 
 function renderSlide(slide: Slide, slideSize: { width: number; height: number }): string {
