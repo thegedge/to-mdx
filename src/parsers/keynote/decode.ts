@@ -52,17 +52,25 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
       }
 
       try {
+        // An `.iwa` is a Snappy stream split into ≤64 KB blocks; the DECOMPRESSED
+        // blocks concatenate into one protobuf object stream, and objects routinely
+        // straddle block boundaries. Decoding each block independently (as the
+        // library's own splitter does) therefore aborts mid-object at every
+        // boundary, dropping the rest of the block — which is what lost whole
+        // stylesheets/tables. Concatenate first, then split the full stream.
+        const blocks: Uint8Array[] = [];
         for await (const snappyChunk of dechunk(entry.data)) {
-          const chunk = await uncompress(snappyChunk.data);
-          totalChunks += 1;
-          chunkFailed = false;
-          for await (const object of splitObjectsAs(chunk, KeynoteArchives)) {
-            registry.add(object);
-          }
-          if (chunkFailed) {
-            partialChunks += 1;
-            partialEntryNames.add(entry.name);
-          }
+          blocks.push(await uncompress(snappyChunk.data));
+        }
+
+        totalChunks += 1;
+        chunkFailed = false;
+        for await (const object of splitObjectsAs(concatChunks(blocks), KeynoteArchives)) {
+          registry.add(object);
+        }
+        if (chunkFailed) {
+          partialChunks += 1;
+          partialEntryNames.add(entry.name);
         }
       } catch (error) {
         warnings.push(`Failed to decode ${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -79,6 +87,19 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
   const partialEntries = sortPartialEntries(partialEntryNames);
 
   return { registry, dataFiles, warnings, partialEntries };
+}
+
+/** Concatenates an `.iwa`'s decompressed Snappy blocks into one object stream. */
+function concatChunks(blocks: Uint8Array[]): Uint8Array {
+  if (blocks.length === 1) return blocks[0];
+  const total = blocks.reduce((sum, block) => sum + block.length, 0);
+  const full = new Uint8Array(total);
+  let offset = 0;
+  for (const block of blocks) {
+    full.set(block, offset);
+    offset += block.length;
+  }
+  return full;
 }
 
 /** Sorted, de-duplicated `.iwa` entry names that had at least one partial chunk. */
