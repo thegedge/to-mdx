@@ -16,6 +16,22 @@ function imageSrc(fileName: string): string {
   return rootedAttr("src", fileName);
 }
 
+/** Extensions that are images even when carried as a Keynote "movie" (e.g. an animated GIF). */
+const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set([
+  "gif", "png", "jpg", "jpeg", "webp", "avif", "apng", "heic", "heif", "svg", "bmp", "tiff",
+]);
+
+/**
+ * True when `name`'s lowercased extension is a known image type. Used to redirect
+ * "videos" that are really animated images (a `<video>` tag can't render them) to
+ * an `<Image>` instead. A name with no extension is not an image.
+ */
+export function isImageFile(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return false;
+  return IMAGE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
+}
+
 /**
  * One JSX inline-style entry: a camelCase property and its value. String values
  * are emitted quoted (`"10%"`); number values are emitted bare (`700`), matching
@@ -192,7 +208,12 @@ function slideBlocks(slide: Slide): string[] {
   }
 
   for (const video of slide.videos) {
-    blocks.push(`<video controls ${imageSrc(video)}></video>`);
+    // A "movie" that is really an animated image won't render in a <video> tag.
+    blocks.push(
+      isImageFile(video)
+        ? `<Image ${imageSrc(video)} role="presentation" alt="" />`
+        : `<video controls ${imageSrc(video)}></video>`,
+    );
   }
 
   for (const table of slide.tables) {

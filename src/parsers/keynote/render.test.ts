@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Presentation, Slide } from "./model.ts";
-import { assembleMdxDocument, escapeMdxText, positionRules, presentationToMdx, styleAttr } from "./render.ts";
+import { assembleMdxDocument, escapeMdxText, isImageFile, positionRules, presentationToMdx, styleAttr } from "./render.ts";
 
 function slide(overrides: Partial<Slide> = {}): Slide {
   return { body: [], textBoxes: [], images: [], videos: [], tables: [], tableCount: 0, notes: [], ...overrides };
@@ -134,6 +134,26 @@ test("presentationToMdx embeds images as <Image>, videos as <video>, and a table
   assert.match(mdx, /<Image src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
   assert.match(mdx, /<video controls src=\{`\$\{imageRoot\}\/clip\.mov`\}><\/video>/);
   assert.match(mdx, /\{\/\* 2 table\(s\) on this slide could not be extracted \*\/\}/);
+});
+
+test("isImageFile detects image extensions case-insensitively and rejects videos and extensionless names", () => {
+  assert.equal(isImageFile("a.gif"), true);
+  assert.equal(isImageFile("a.GIF"), true);
+  assert.equal(isImageFile("a.mp4"), false);
+  assert.equal(isImageFile("a.mov"), false);
+  assert.equal(isImageFile("noext"), false);
+});
+
+test("presentationToMdx renders an animated-image 'video' as an <Image>, not a <video>", () => {
+  const mdx = presentationToMdx(deck([slide({ videos: ["clip.gif"] })]));
+  assert.match(mdx, /<Image src=\{`\$\{imageRoot\}\/clip\.gif`\} role="presentation" alt="" \/>/);
+  assert.doesNotMatch(mdx, /<video/);
+});
+
+test("presentationToMdx still renders a real movie 'video' as a <video controls>", () => {
+  const mdx = presentationToMdx(deck([slide({ videos: ["clip.mp4"] })]));
+  assert.match(mdx, /<video controls src=\{`\$\{imageRoot\}\/clip\.mp4`\}><\/video>/);
+  assert.doesNotMatch(mdx, /<Image/);
 });
 
 function cell(text: string, colSpan = 1, rowSpan = 1) {
