@@ -6,6 +6,7 @@ import type { Options } from "../../parsers.ts";
 import { decodeKeynote, partialEntriesWarning } from "./decode.ts";
 import { writeDebugDump, writeRawDump } from "./debug.ts";
 import { buildPresentation } from "./extract/document.ts";
+import { convertPdfDataFiles } from "./extract/pdf.ts";
 import { distinctImageFileNames, imageCoverageWarning } from "./extract/images.ts";
 import type { Presentation } from "./model.ts";
 import { formatDate, generateFilename, sanitizeFilename, titleFromPath } from "./metadata.ts";
@@ -13,8 +14,12 @@ import { typeIds } from "./type_ids.ts";
 import { assembleMdxDocument, presentationToMdx } from "./render.ts";
 
 export async function parse(outputRoot: string, presentationFile: string, options: Options = {}): Promise<void> {
-  const { registry, dataFiles, warnings, partialEntries } = await decodeKeynote(presentationFile);
+  const { registry, dataFiles: rawDataFiles, warnings, partialEntries } = await decodeKeynote(presentationFile);
   console.log(`🔍 Decoded ${registry.size} Keynote objects`);
+
+  // PDF assets (pasted vector art) can't render in `<img>`, so convert them to
+  // SVG up front; everything downstream then sees the `.svg` name.
+  const dataFiles = convertPdfDataFiles(rawDataFiles);
 
   const fallbackTitle = titleFromPath(presentationFile);
   const presentation = buildPresentation(registry, fallbackTitle, dataFiles, options.useHeuristics ?? false);
