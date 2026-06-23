@@ -1,16 +1,27 @@
-import { execSync } from "child_process";
 import * as fs from "fs";
+import * as path from "path";
 import type { Options } from "./parsers.ts";
 import { parse } from "./parsers.ts";
 
+/**
+ * Walks up from the cwd to the directory containing `.git`, the repo top-level.
+ * A pure filesystem walk (no `git` subprocess) so the CLI can run under Node's
+ * permission model with child processes denied. Throws when no repo is found.
+ */
 function gitToplevel(): string {
-  return execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
+  let dir = process.cwd();
+  for (;;) {
+    if (fs.existsSync(path.join(dir, ".git"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) throw new Error("not a git repository");
+    dir = parent;
+  }
 }
 
 /**
  * Output root: the git repo top-level when available, else the current working
- * directory. Outside a repo we warn and degrade rather than exiting. The git
- * runner is injectable so tests can exercise the fallback without spawning git.
+ * directory. Outside a repo we warn and degrade rather than exiting. The lookup
+ * is injectable so tests can exercise the fallback without touching the disk.
  */
 export function resolveProjectRoot(runGit: () => string = gitToplevel): string {
   try {

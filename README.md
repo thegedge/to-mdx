@@ -8,7 +8,7 @@ A tool for converting things to MDX (Markdown + React).
 
 ## Requirements
 
-- Node.js 22+
+- Node.js 23.5+ (the bin runs under Node's [Permission Model](https://nodejs.org/api/permissions.html), stabilized in 23.5; 24 LTS recommended)
 - pnpm
 
 ## Installation
@@ -22,6 +22,11 @@ pnpm install
 ```bash
 ./bin/to-mdx [options] path/to/file/to/convert.{odp,key}
 ```
+
+The bin runs sandboxed via `node --permission`: filesystem read/write are allowed
+(it reads an arbitrary input file and writes output under the discovered project
+root), but spawning child processes, loading native addons, workers, and WASI are
+all denied — the converter needs none of them.
 
 ### Options
 
