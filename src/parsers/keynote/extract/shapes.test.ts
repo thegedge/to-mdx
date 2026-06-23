@@ -108,16 +108,23 @@ test("svgPath defaults to currentColor width 2 when no style resolves", () => {
   assert.equal(path.strokeWidth, 2);
 });
 
-test("svgPath skips a shape whose style has neither a visible stroke nor a fill", () => {
+test("svgPath renders a currentColor outline when the style resolves to nothing visible", () => {
   const emptyFrame: ShapeStyleArchive = { shapeProperties: {} } as unknown as ShapeStyleArchive;
-  assert.equal(svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), emptyFrame), undefined);
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), emptyFrame);
+  assert.ok(path);
+  assert.equal(path.stroke, "currentColor");
+  assert.equal(path.strokeWidth, 2);
+  assert.equal(path.fill, "none");
 });
 
-test("svgPath skips a shape whose stroke pattern is the empty pattern", () => {
+test("svgPath renders a currentColor outline when the stroke pattern is the empty pattern and there is no fill", () => {
   const noStroke: ShapeStyleArchive = {
     shapeProperties: { stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 1, pattern: { type: 2 } } },
   } as unknown as ShapeStyleArchive;
-  assert.equal(svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), noStroke), undefined);
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), noStroke);
+  assert.ok(path);
+  assert.equal(path.stroke, "currentColor");
+  assert.equal(path.fill, "none");
 });
 
 test("svgPath emits a fill-only path when the style has a fill but no stroke", () => {

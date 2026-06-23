@@ -142,6 +142,7 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>): Declarati
   }
 
   const style = textBox.style;
+  if (style?.fontFamily) declarations.push(["fontFamily", style.fontFamily]);
   if (style?.fontSizeToken) declarations.push(["fontSize", style.fontSizeToken]);
   if (style?.color) declarations.push(["color", style.color]);
   if (style?.fontWeight !== undefined) declarations.push(["fontWeight", style.fontWeight]);

@@ -55,6 +55,22 @@ export function colorToHex(color: Pick<Color, "r" | "g" | "b">): string {
   return `#${channelHex(color.r)}${channelHex(color.g)}${channelHex(color.b)}`;
 }
 
+/**
+ * Maps a PostScript-ish font name to a usable CSS family: drops a trailing
+ * weight/style suffix after the last `-` (e.g. `ShopifySans-Light` → `ShopifySans`,
+ * `Helvetica-Bold` → `Helvetica`), then splits a camelCase family into words
+ * (`ShopifySans` → `Shopify Sans`). `Impact` stays `Impact`. Blank names yield
+ * undefined. (We can't recover the registered display name, so this is a best
+ * effort at a human-readable family.)
+ */
+export function fontFamily(name: string | undefined): string | undefined {
+  if (!name) return undefined;
+  const dash = name.lastIndexOf("-");
+  const base = (dash > 0 ? name.slice(0, dash) : name).trim();
+  if (!base) return undefined;
+  return base.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
 /** iWork `TextAlignmentType` enum → CSS `text-align`; unknown values yield undefined. */
 const ALIGNMENTS: Record<number, TextBoxStyle["textAlign"]> = {
   0: "left",
@@ -96,9 +112,11 @@ export function textBoxStyle(storage: StorageArchive | undefined, registry: Regi
 
   const charProps = paraStyle?.charProperties;
   const fontColor = charStyle?.charProperties?.fontColor ?? charProps?.fontColor;
+  const family = fontFamily(charStyle?.charProperties?.fontName ?? charProps?.fontName);
 
   const style: TextBoxStyle = {};
   if (charProps?.fontSize !== undefined) style.fontSizeToken = fontSizeToken(charProps.fontSize);
+  if (family) style.fontFamily = family;
   if (hasRgb(fontColor)) style.color = colorToHex(fontColor);
   if (charProps?.bold) style.fontWeight = 700;
   const align = alignmentToken(paraStyle?.paraProperties?.alignment);

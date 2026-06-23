@@ -320,6 +320,24 @@ test("presentationToMdx renders a positioned, styled text box as an inline-style
   );
 });
 
+test("presentationToMdx emits fontFamily in a text box's inline style when present", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "Impact" }],
+            style: { fontFamily: "Impact" },
+          },
+        ],
+      }),
+    ]),
+  );
+
+  assert.match(mdx, /<div style=\{\{ fontFamily: "Impact" \}\}>\n\s*Impact\n\s*<\/div>/);
+});
+
 test("presentationToMdx renders a promoted full-bleed image as a bare-filename background (cover, no contain)", () => {
   const mdx = presentationToMdx(deck([slide({ title: "Bg", background: "x.png", className: "blank" })]));
 

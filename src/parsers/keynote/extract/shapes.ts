@@ -31,8 +31,9 @@ const DEFAULT_STROKE_WIDTH = 2;
 
 /**
  * Turns a no-text shape into one SVG path baked into absolute slide coordinates.
- * Returns undefined when the shape carries no drawable path, or when its style
- * resolves to neither a visible stroke nor a fill (e.g. an empty text-box frame).
+ * A shape with a drawable path ALWAYS renders: when its style is missing or
+ * resolves to nothing visible we fall back to a plain outline (see resolveStyle).
+ * Returns undefined only when the shape carries no drawable path at all.
  */
 export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | undefined): SvgPath | undefined {
   const bezier = bezierSource(shape);
@@ -43,10 +44,7 @@ export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | unde
   const d = buildPathData(elements, frame);
   if (!d) return undefined;
 
-  const visual = resolveStyle(style);
-  if (!visual) return undefined;
-
-  return { d, ...visual, ...arrowFlags(style) };
+  return { d, ...resolveStyle(style), ...arrowFlags(style) };
 }
 
 /**
@@ -132,14 +130,21 @@ function bezierSource(shape: ShapeInfoArchive): BezierPathSourceArchive | undefi
   return source?.bezierPathSource ?? source?.connectionLinePathSource?.super;
 }
 
-/** Resolves stroke/fill from the shape style, returning undefined when nothing is visible. */
-function resolveStyle(style: ShapeStyleArchive | undefined): Pick<SvgPath, "stroke" | "strokeWidth" | "fill"> | undefined {
+/**
+ * Resolves stroke/fill from the shape style. Always returns a drawable result:
+ * when the style is missing, has no shapeProperties, or resolves to neither a
+ * visible stroke nor a fill, it falls back to a plain currentColor outline
+ * (width 2, fill none) so a shape with a path stays visible.
+ *
+ * NOTE: a shape's real stroke/fill COLORS are unrecoverable here — they can live
+ * in a style archive lost to a dropped .iwa chunk — so this fallback is an
+ * outline a human can recolor, not the shape's original styling.
+ */
+function resolveStyle(style: ShapeStyleArchive | undefined): Pick<SvgPath, "stroke" | "strokeWidth" | "fill"> {
   const properties = style?.shapeProperties;
-  if (!properties) return { stroke: DEFAULT_STROKE, strokeWidth: DEFAULT_STROKE_WIDTH };
-
-  const stroke = visibleStroke(properties.stroke);
-  const fill = fillColor(properties.fill?.color);
-  if (!stroke && !fill) return undefined;
+  const stroke = properties ? visibleStroke(properties.stroke) : undefined;
+  const fill = properties ? fillColor(properties.fill?.color) : undefined;
+  if (!stroke && !fill) return { stroke: DEFAULT_STROKE, strokeWidth: DEFAULT_STROKE_WIDTH, fill: "none" };
 
   return {
     stroke: stroke?.color ?? (fill ? "none" : DEFAULT_STROKE),

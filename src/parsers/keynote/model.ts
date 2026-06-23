@@ -44,6 +44,8 @@ export interface TextBoxGeometry {
 export interface TextBoxStyle {
   /** A `var(--text-*)` token nearest the box's point size. */
   fontSizeToken?: string;
+  /** CSS font family lifted from the run's PostScript font name (e.g. "Shopify Sans"). */
+  fontFamily?: string;
   /** Text color as `#RRGGBB`. */
   color?: string;
   /** 700 when the dominant run is bold; otherwise omitted. */

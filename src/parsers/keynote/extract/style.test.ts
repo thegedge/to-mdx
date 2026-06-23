@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { alignmentToken, boxPercent, colorToHex, fontSizeToken } from "./style.ts";
+import { alignmentToken, boxPercent, colorToHex, fontFamily, fontSizeToken } from "./style.ts";
 
 test("fontSizeToken maps a point size to the nearest --text-* token", () => {
   assert.equal(fontSizeToken(36), "var(--text-4xl)");
@@ -28,6 +28,14 @@ test("colorToHex converts 0–1 RGB floats to #RRGGBB", () => {
 test("colorToHex clamps out-of-range channels and treats missing ones as 0", () => {
   assert.equal(colorToHex({ r: 2, g: -1, b: 0.5 }), "#ff0080");
   assert.equal(colorToHex({ r: 1 }), "#ff0000");
+});
+
+test("fontFamily strips a trailing weight suffix and splits camelCase into words", () => {
+  assert.equal(fontFamily("ShopifySans-Light"), "Shopify Sans");
+  assert.equal(fontFamily("Impact"), "Impact");
+  assert.equal(fontFamily("Helvetica-Bold"), "Helvetica");
+  assert.equal(fontFamily(undefined), undefined);
+  assert.equal(fontFamily(""), undefined);
 });
 
 test("alignmentToken maps the iWork alignment enum to CSS text-align", () => {

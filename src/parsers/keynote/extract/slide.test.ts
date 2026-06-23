@@ -256,7 +256,7 @@ test("extractSlide collects a no-text stroked shape as a vector path and not a t
   assert.match(slide.shapes[0].d, /^M 100 200 L 816 200$/);
 });
 
-test("extractSlide leaves shapes undefined when a no-text frame has no visible stroke or fill", () => {
+test("extractSlide renders a no-text frame with a path as a currentColor outline when its style resolves to nothing visible", () => {
   const registry = buildRegistry([
     ...show(10n),
     mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
@@ -275,7 +275,12 @@ test("extractSlide leaves shapes undefined when a no-text frame has no visible s
     mockObject(55n, T.shapeArchive, { shapeProperties: {} }),
   ]);
 
-  assert.equal(buildPresentation(registry, "x").slides[0].shapes, undefined);
+  const slide = buildPresentation(registry, "x").slides[0];
+  assert.ok(slide.shapes);
+  assert.equal(slide.shapes.length, 1);
+  assert.equal(slide.shapes[0].stroke, "currentColor");
+  assert.equal(slide.shapes[0].strokeWidth, 2);
+  assert.equal(slide.shapes[0].fill, "none");
 });
 
 test("extractSlide resolves movies to a video data file", () => {

@@ -221,7 +221,7 @@ function processRef(
   }
 }
 
-/** Collects a no-text shape's vector path (a line/arrow/icon) when it has visible stroke or fill. */
+/** Collects a no-text shape's vector path (a line/arrow/icon); any shape with a drawable path renders. */
 function collectShape(shape: ShapeInfoArchive, registry: Registry, collected: Collected): void {
   const style = registry.resolve<ShapeStyleArchive>(shape.super?.style);
   const path = svgPath(shape, style);

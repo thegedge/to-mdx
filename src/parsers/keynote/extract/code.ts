@@ -12,12 +12,22 @@ import type { Paragraph, TextBox } from "../model.ts";
  */
 export function asTextBox(paragraphs: Paragraph[]): TextBox {
   const text = paragraphs.map((paragraph) => paragraph.text).join("\n");
-  const language = LanguageDetector.detect(text);
+  const language = LanguageDetector.detect(text) ?? (isEbpfCode(text) ? "c" : null);
 
   if (language || looksLikeCode(paragraphs)) {
     return { kind: "code", language: language ?? "", text };
   }
   return { kind: "text", paragraphs };
+}
+
+/**
+ * True when the text is an eBPF program. eBPF is written in C but uses BPF-specific
+ * helpers/macros; starry-night (linguist) has no "eBPF" grammar, so we fence such
+ * snippets as plain `c`. Keyed off BPF map macros (`BPF_HASH`), kprobe entrypoint
+ * names (`kprobe__...`), and `bpf_*` helper calls.
+ */
+export function isEbpfCode(text: string): boolean {
+  return /\bBPF_HASH\b|\bkprobe__|\bbpf_[a-z_]+\(/.test(text);
 }
 
 // A line that carries code-ish syntax at all...
