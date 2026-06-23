@@ -231,6 +231,57 @@ test("buildPresentation promotes a full-bleed image to the slide background and 
   assert.ok(!presentation.unplacedImages.includes("bg-100.png"));
 });
 
+test("buildPresentation derives crop geometry for a masked image and leaves a maskless one uncropped", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] }, size: { width: 1000, height: 1000 } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [ref(9n), ref(10n)], drawablesZOrder: [] }),
+    // Masked image: frame (x=100,y=100,w=400,h=400); mask frame (mx=50,my=100,mw=200,mh=100)
+    // in the image's local space. Visible region = (150,200,200,100).
+    mockObject(9n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "masked",
+        parent: ref(4n),
+        geometry: { position: { x: 100, y: 100 }, size: { width: 400, height: 400 } },
+      },
+      data: ref(100n),
+      mask: ref(900n),
+    }),
+    mockObject(900n, T.maskArchive, {
+      super: { parent: ref(9n), geometry: { position: { x: 50, y: 100 }, size: { width: 200, height: 100 } } },
+    }),
+    // Maskless image on the same slide: stays uncropped.
+    mockObject(10n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "plain",
+        parent: ref(4n),
+        geometry: { position: { x: 0, y: 0 }, size: { width: 200, height: 200 } },
+      },
+      data: ref(200n),
+    }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/masked-100.png", new Uint8Array()],
+    ["Data/plain-200.png", new Uint8Array()],
+  ]);
+
+  const images = buildPresentation(registry, "x", dataFiles).slides[0].images;
+  const masked = images.find((image) => image.fileName === "masked-100.png");
+  const plain = images.find((image) => image.fileName === "plain-200.png");
+
+  assert.deepEqual(masked?.crop, {
+    left: 15,
+    top: 20,
+    width: 20,
+    height: 10,
+    imgLeft: -25,
+    imgTop: -100,
+    imgWidth: 200,
+    imgHeight: 400,
+  });
+  assert.equal(plain?.crop, undefined);
+});
+
 function slideWithTitle(slideId: bigint, storageId: bigint, title: string) {
   return [
     mockObject(slideId, T.slideArchive, { titlePlaceholder: ref(storageId + 1000n), ownedDrawables: [], drawablesZOrder: [] }),

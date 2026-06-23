@@ -136,6 +136,42 @@ test("presentationToMdx embeds images as <Image>, videos as <video>, and a table
   assert.match(mdx, /\{\/\* 2 table\(s\) on this slide could not be extracted \*\/\}/);
 });
 
+test("presentationToMdx wraps a masked image in an overflow:hidden clip wrapper with an inner <Image>", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        images: [
+          {
+            fileName: "pic.png",
+            altText: "alt",
+            box: { left: 0, top: 0, width: 100, height: 100 },
+            crop: { left: 10, top: 20, width: 30, height: 40, imgLeft: -50, imgTop: -25, imgWidth: 200, imgHeight: 150 },
+          },
+        ],
+      }),
+    ]),
+  );
+
+  assert.match(
+    mdx,
+    /<div style=\{\{ position: "absolute", left: "10%", top: "20%", width: "30%", height: "40%", overflow: "hidden", zIndex: 1 \}\}>/,
+  );
+  assert.match(
+    mdx,
+    /<Image style=\{\{ position: "absolute", left: "-50%", top: "-25%", width: "200%", height: "150%" \}\} src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/,
+  );
+  assert.match(mdx, /<\/div>/);
+});
+
+test("presentationToMdx renders a maskless image as a plain <Image>, with no clip wrapper", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ images: [{ fileName: "pic.png", altText: "alt", box: { left: 0, top: 0, width: 50, height: 50 } }] })]),
+  );
+
+  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: "0%", width: "50%", top: "0%", height: "50%", zIndex: 1 \}\} src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
+  assert.doesNotMatch(mdx, /overflow: "hidden"/);
+});
+
 test("isImageFile detects image extensions case-insensitively and rejects videos and extensionless names", () => {
   assert.equal(isImageFile("a.gif"), true);
   assert.equal(isImageFile("a.GIF"), true);

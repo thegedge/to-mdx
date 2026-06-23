@@ -1,4 +1,4 @@
-import type { TextBoxGeometry, TextBoxStyle } from "../model.ts";
+import type { ImageCrop, TextBoxGeometry, TextBoxStyle } from "../model.ts";
 import type { Registry } from "../registry.ts";
 import type {
   CharacterStyleArchive,
@@ -94,6 +94,32 @@ export function boxPercent(
     top: (box.y / slideSize.height) * 100,
     width: (box.width / slideSize.width) * 100,
     height: (box.height / slideSize.height) * 100,
+  };
+}
+
+/**
+ * Crop geometry for a masked image. The mask frame `(mx,my,mw,mh)` is in the
+ * image's local space (mask.parent = image), so the visible region on the slide
+ * is `(x+mx, y+my, mw, mh)` showing the full image clipped to it. The container
+ * is expressed in slide-size percentages; the inner `<img>` is sized/offset in
+ * percentages of the container. Returns undefined when the slide or mask is
+ * degenerate (zero-sized), so callers fall back to the plain image box.
+ */
+export function maskCrop(
+  image: RawBox,
+  mask: RawBox,
+  slideSize: { width: number; height: number },
+): ImageCrop | undefined {
+  if (slideSize.width <= 0 || slideSize.height <= 0 || mask.width <= 0 || mask.height <= 0) return undefined;
+  return {
+    left: ((image.x + mask.x) / slideSize.width) * 100,
+    top: ((image.y + mask.y) / slideSize.height) * 100,
+    width: (mask.width / slideSize.width) * 100,
+    height: (mask.height / slideSize.height) * 100,
+    imgLeft: (-mask.x / mask.width) * 100,
+    imgTop: (-mask.y / mask.height) * 100,
+    imgWidth: (image.width / mask.width) * 100,
+    imgHeight: (image.height / mask.height) * 100,
   };
 }
 

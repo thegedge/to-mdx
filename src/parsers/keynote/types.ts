@@ -26,6 +26,7 @@ export const KeynoteType = {
   shapeInfoArchive: 2011,
   shapeArchive: 3004,
   imageArchive: 3005,
+  maskArchive: 3006,
   movieArchive: 3007,
   groupArchive: 3008,
   tableInfoArchive: 6000,
@@ -54,6 +55,7 @@ export type ParagraphStyleArchive = TSWPArchives.ParagraphStyleArchive;
 export type CharacterStyleArchive = TSWPArchives.CharacterStyleArchive;
 export type Color = TSPMessages.Color;
 export type ImageArchive = TSDArchives.ImageArchive;
+export type MaskArchive = TSDArchives.MaskArchive;
 export type MovieArchive = TSDArchives.MovieArchive;
 export type GroupArchive = TSDArchives.GroupArchive;
 export type TableInfoArchive = TSTArchives.TableInfoArchive;

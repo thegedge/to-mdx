@@ -5,6 +5,7 @@ import { cls } from "../../../utils.ts";
 import type {
   DocumentArchive,
   ImageArchive,
+  MaskArchive,
   MovieArchive,
   Reference,
   ShowArchive,
@@ -21,7 +22,7 @@ import {
 import { drawableGeometry, isFullBleed } from "./layout.ts";
 import type { LayoutContext } from "./slide.ts";
 import { owningSlideId } from "./ownership.ts";
-import { boxPercent } from "./style.ts";
+import { boxPercent, maskCrop } from "./style.ts";
 import type { SlideDefaults, SlidePlacements } from "./slide.ts";
 import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
 
@@ -95,8 +96,14 @@ function placeDrawables(
     const image = entry.message as ImageArchive;
     const resolved = imageFromArchive(image, dataFileNames, dataInfo, image.super?.accessibilityDescription ?? "");
     if (!resolved) continue;
-    const box = boxPercent(drawableGeometry(image), slideSize);
+    const imageGeometry = drawableGeometry(image);
+    const box = boxPercent(imageGeometry, slideSize);
     if (box) resolved.box = box;
+    const maskGeometry = drawableGeometry(registry.resolve<MaskArchive>(image.mask));
+    if (imageGeometry && maskGeometry) {
+      const crop = maskCrop(imageGeometry, maskGeometry, slideSize);
+      if (crop) resolved.crop = crop;
+    }
     placed.add(entry.id);
     slotFor(slideId).images.push(resolved);
   }
@@ -124,7 +131,9 @@ function placeDrawables(
  */
 function promoteBackground(slide: Slide, useHeuristics: boolean): Slide {
   const candidates = slide.images.filter((image): image is SlideImage & { box: NonNullable<SlideImage["box"]> } => {
-    return image.box !== undefined && isFullBleed(image.box);
+    // A cropped (masked) image only shows a sub-rectangle, so it must not be
+    // promoted to a `cover` background (which would drop the crop).
+    return image.crop === undefined && image.box !== undefined && isFullBleed(image.box);
   });
   if (candidates.length === 0) return slide;
 

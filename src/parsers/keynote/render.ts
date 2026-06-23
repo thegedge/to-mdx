@@ -1,5 +1,5 @@
 import { kebabCase } from "../../utils.ts";
-import type { Paragraph, Presentation, Slide, SlideImage, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
+import type { ImageCrop, Paragraph, Presentation, Slide, SlideImage, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
 
@@ -276,12 +276,49 @@ function renderPath(shape: SvgPath): string {
 }
 
 /**
- * An `<Image>` block. Images carrying geometry get an inline `style` placing them
- * absolutely (layered below text); un-positioned images stay in normal flow.
+ * An `<Image>` block. A masked image becomes a clipping wrapper showing only the
+ * mask's sub-rectangle; otherwise images carrying geometry get an inline `style`
+ * placing them absolutely (layered below text), and un-positioned images stay in
+ * normal flow.
  */
 function renderImage(image: SlideImage): string {
+  if (image.crop) return renderCroppedImage(image.fileName, image.altText, image.crop);
   const style = image.box ? `${styleAttr(imageDeclarations(image.box))} ` : "";
   return `<Image ${style}${imageSrc(image.fileName)} role="presentation" alt="${escapeMdxText(image.altText)}" />`;
+}
+
+/** The container-rectangle declarations for a masked image's clipping wrapper. */
+function cropContainerDeclarations(crop: ImageCrop): Declaration[] {
+  return [
+    ["position", "absolute"],
+    ["left", `${percent(crop.left)}%`],
+    ["top", `${percent(crop.top)}%`],
+    ["width", `${percent(crop.width)}%`],
+    ["height", `${percent(crop.height)}%`],
+    ["overflow", "hidden"],
+    ["zIndex", 1],
+  ];
+}
+
+/** The inner-`<img>` declarations placing the full image inside the clipping wrapper. */
+function cropImageDeclarations(crop: ImageCrop): Declaration[] {
+  return [
+    ["position", "absolute"],
+    ["left", `${percent(crop.imgLeft)}%`],
+    ["top", `${percent(crop.imgTop)}%`],
+    ["width", `${percent(crop.imgWidth)}%`],
+    ["height", `${percent(crop.imgHeight)}%`],
+  ];
+}
+
+/**
+ * A masked image: an `overflow:"hidden"` container placed on the slide, wrapping
+ * the full `<Image>` offset/sized so only the mask's sub-rectangle shows.
+ */
+function renderCroppedImage(fileName: string, altText: string, crop: ImageCrop): string {
+  const container = styleAttr(cropContainerDeclarations(crop));
+  const inner = `<Image ${styleAttr(cropImageDeclarations(crop))} ${imageSrc(fileName)} role="presentation" alt="${escapeMdxText(altText)}" />`;
+  return `<div ${container}>\n${INDENT}${inner}\n</div>`;
 }
 
 function renderSpeakerNotes(notes: Paragraph[]): string {

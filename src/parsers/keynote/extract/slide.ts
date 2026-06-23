@@ -46,8 +46,14 @@ export const NO_LAYOUT: LayoutContext = { useHeuristics: false, slideSize: { wid
 
 type Role = "title" | "body" | undefined;
 
-/** The `sageTagToInfoMap` tag whose drawable holds a modern slide's real title. */
-const SAGE_TITLE_TAG = "Title";
+/**
+ * `sageTagToInfoMap` tags whose drawable holds a modern slide's title, in
+ * preference order: an explicit `Title` wins, else a `Subheading` stands in.
+ */
+const SAGE_TITLE_TAGS = ["Title", "Subheading"] as const;
+
+/** `sageTagToInfoMap` tags whose drawable holds modern slide body content. */
+const SAGE_BODY_TAGS = new Set(["Bullets", "Body"]);
 
 interface Collected {
   titles: Paragraph[][];
@@ -140,14 +146,22 @@ function collectFromSlide(
   };
   const handled = new Set<bigint>();
 
-  // Modern decks keep a content slide's real title in the Sage-tagged "Title"
-  // drawable (the title placeholder is empty). Consume it first and mark it
-  // handled so it doesn't also surface as a free text box.
-  const sageTitleId = sageTitleDrawableId(slide);
-  if (sageTitleId !== undefined) {
-    handled.add(sageTitleId);
-    collected.sageTitle = drawableParagraphs(sageTitleId, registry);
-    if (collected.sageTitle.length > 0) pushGeometry(registry.get(sageTitleId)?.message, collected);
+  // Modern decks express a content slide's title/body through Sage-tagged free
+  // text boxes (the title/body placeholders are empty). Consume those first and
+  // mark every tagged drawable handled so none also surfaces as a free text box.
+  const sage = collectSageTags(slide);
+  for (const id of sage.handledIds) handled.add(id);
+
+  if (sage.titleId !== undefined) {
+    collected.sageTitle = drawableParagraphs(sage.titleId, registry);
+    if (collected.sageTitle.length > 0) pushGeometry(registry.get(sage.titleId)?.message, collected);
+  }
+  for (const bodyId of sage.bodyIds) {
+    const paragraphs = drawableParagraphs(bodyId, registry);
+    if (paragraphs.length > 0) {
+      collected.bodies.push(paragraphs);
+      pushGeometry(registry.get(bodyId)?.message, collected);
+    }
   }
 
   // Process the explicit title/body refs first: their role is authoritative even
@@ -286,10 +300,49 @@ function roleFromKind(kind: number | undefined): Role {
   return undefined;
 }
 
-/** Identifier of the `sageTagToInfoMap` entry tagged "Title", if present. */
-function sageTitleDrawableId(slide: SlideArchive): bigint | undefined {
-  const entry = slide.sageTagToInfoMap?.find((mapEntry) => mapEntry.tag === SAGE_TITLE_TAG);
-  return entry?.info?.identifier;
+/** The drawable ids a slide's `sageTagToInfoMap` assigns to title/body roles. */
+interface SageRoles {
+  /** The chosen title drawable (a `Title` tag, else a `Subheading` tag). */
+  titleId?: bigint;
+  /** Drawables tagged as body content (`Bullets`/`Body`), in map order. */
+  bodyIds: bigint[];
+  /**
+   * Every title-candidate or body drawable id, even the title candidate not
+   * chosen — all are excluded from the positioned free text boxes.
+   */
+  handledIds: bigint[];
+}
+
+/**
+ * Resolves a slide's `sageTagToInfoMap` to title/body drawable ids. Title and
+ * body tagged boxes are pulled out of the positioned text-box flow (their ids go
+ * in `handledIds`); other tags (Stat*, Speaker, Media, labels, …) are left to
+ * surface as ordinary positioned text boxes.
+ */
+function collectSageTags(slide: SlideArchive): SageRoles {
+  const map = slide.sageTagToInfoMap;
+  const roles: SageRoles = { bodyIds: [], handledIds: [] };
+  if (!map?.length) return roles;
+
+  const idForTag = (tag: string): bigint | undefined =>
+    map.find((mapEntry) => mapEntry.tag === tag)?.info?.identifier;
+
+  for (const tag of SAGE_TITLE_TAGS) {
+    const id = idForTag(tag);
+    if (id === undefined) continue;
+    roles.handledIds.push(id);
+    roles.titleId ??= id;
+  }
+
+  for (const mapEntry of map) {
+    const id = mapEntry.info?.identifier;
+    if (id !== undefined && SAGE_BODY_TAGS.has(mapEntry.tag)) {
+      roles.bodyIds.push(id);
+      roles.handledIds.push(id);
+    }
+  }
+
+  return roles;
 }
 
 /** Text of a drawable referenced by id, whether a shape or a title placeholder. */

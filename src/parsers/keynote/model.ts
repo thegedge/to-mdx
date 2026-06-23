@@ -16,6 +16,31 @@ export interface SlideImage {
    * positioning (`.kn-img-*`) and full-bleed-background detection.
    */
   box?: TextBoxGeometry;
+  /**
+   * Cropping geometry for a masked image: the mask exposes only a sub-rectangle
+   * of the full image. Present only when the `ImageArchive` carries a resolvable
+   * `mask` with geometry; drives a clipping wrapper around the `<img>`.
+   */
+  crop?: ImageCrop;
+}
+
+/**
+ * A masked image's crop, split into the visible container rectangle (placed on
+ * the slide) and the inner `<img>` placement inside it. The container is
+ * positioned in slide-size percentages; the inner image is sized/offset in
+ * percentages of the container, so the full image shows clipped to the mask.
+ */
+export interface ImageCrop {
+  /** Visible container rectangle on the slide, in slide-size percentages. */
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** Inner `<img>` placement, as percentages of the container. */
+  imgLeft: number;
+  imgTop: number;
+  imgWidth: number;
+  imgHeight: number;
 }
 
 /**

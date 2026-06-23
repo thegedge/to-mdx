@@ -131,6 +131,62 @@ test("extractSlide drops a Sage Title equal to the master's Sage Title", () => {
   assert.deepEqual(slide.textBoxes, []);
 });
 
+function sageShape(id: bigint, storageId: bigint, text: string) {
+  return [
+    mockObject(id, T.shapeInfoArchive, { ownedStorage: ref(storageId) }),
+    mockObject(storageId, T.storageArchive, { text: [text] }),
+  ];
+}
+
+test("extractSlide promotes a Subheading title + Bullets body and keeps both out of textBoxes", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, {
+      sageTagToInfoMap: [
+        { tag: "Subheading", info: ref(30n) },
+        { tag: "Bullets", info: ref(40n) },
+        { tag: "Stat", info: ref(50n) },
+      ],
+      ownedDrawables: [ref(30n), ref(40n), ref(50n)],
+      drawablesZOrder: [],
+    }),
+    ...sageShape(30n, 31n, "Takeaways"),
+    ...sageShape(40n, 41n, "How TCP works\nWhat eBPF is"),
+    ...sageShape(50n, 51n, "99.9%"),
+  ]);
+
+  const slide = buildPresentation(registry, "x").slides[0];
+
+  assert.equal(slide.title, "Takeaways");
+  assert.deepEqual(slide.body, [
+    { depth: 0, text: "How TCP works" },
+    { depth: 0, text: "What eBPF is" },
+  ]);
+  // The Stat-tagged box stays a positioned free text box; title/body do not.
+  assert.deepEqual(slide.textBoxes, [{ kind: "text", paragraphs: [{ depth: 0, text: "99.9%" }] }]);
+});
+
+test("extractSlide keeps the Title tag as the title when both Title and Subheading exist", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, {
+      sageTagToInfoMap: [
+        { tag: "Subheading", info: ref(30n) },
+        { tag: "Title", info: ref(35n) },
+      ],
+      ownedDrawables: [ref(30n), ref(35n)],
+      drawablesZOrder: [],
+    }),
+    ...sageShape(30n, 31n, "A subheading"),
+    ...sageShape(35n, 36n, "The Real Title"),
+  ]);
+
+  const slide = buildPresentation(registry, "x").slides[0];
+  assert.equal(slide.title, "The Real Title");
+  // Neither title candidate leaks into the positioned text boxes.
+  assert.deepEqual(slide.textBoxes, []);
+});
+
 test("extractSlide falls back to the title placeholder when no Sage Title tag exists", () => {
   const registry = buildRegistry([
     ...show(10n),
