@@ -373,3 +373,27 @@ test("extractSlide resolves a movie via the Data/ filename map keyed by movie da
 
   assert.deepEqual(buildPresentation(registry, "x", dataFiles).slides[0].videos, [{ fileName: "black_friday.mp4" }]);
 });
+
+test("extractSlide resolves the slide background color from a nested super slideProperties fill", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { style: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    // The real slideProperties live one level down the inherited super chain.
+    mockObject(60n, 700, {
+      slideProperties: {},
+      super: { slideProperties: { fill: { color: { model: 1, r: 0.13, g: 0.2, b: 0.45, a: 1 } } } },
+    }),
+  ]);
+
+  assert.equal(buildPresentation(registry, "x").slides[0].backgroundColor, "#213373");
+});
+
+test("extractSlide leaves backgroundColor unset when the slide style declares no solid fill", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { style: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    mockObject(60n, 700, { slideProperties: { fill: { gradient: {} } } }),
+  ]);
+
+  assert.equal(buildPresentation(registry, "x").slides[0].backgroundColor, undefined);
+});

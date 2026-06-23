@@ -550,6 +550,42 @@ test("presentationToMdx omits the shape overlay when a slide has no shapes", () 
   assert.doesNotMatch(mdx, /<svg/);
 });
 
+test("presentationToMdx emits dash, linecap, and opacity attrs on a shape path when present", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        shapes: [
+          {
+            d: "M 0 0 L 100 0",
+            stroke: "#213373",
+            strokeWidth: 5,
+            strokeDasharray: "0.005,10",
+            strokeLinecap: "round",
+            strokeOpacity: 0.5,
+            fill: "#00ff00",
+            fillOpacity: 0.25,
+          },
+        ],
+      }),
+    ]),
+  );
+
+  assert.match(mdx, /strokeDasharray="0.005,10"/);
+  assert.match(mdx, /strokeLinecap="round"/);
+  assert.match(mdx, /strokeOpacity=\{0.5\}/);
+  assert.match(mdx, /fillOpacity=\{0.25\}/);
+});
+
+test("presentationToMdx emits the slide background color as an inline style on <Slide>", () => {
+  const mdx = presentationToMdx(deck([slide({ backgroundColor: "#213373", title: "Hi" })]));
+  assert.match(mdx, /<Slide style=\{\{ backgroundColor: "#213373" \}\}>/);
+});
+
+test("presentationToMdx renders a slide carrying only a background color", () => {
+  const mdx = presentationToMdx(deck([slide({ backgroundColor: "#213373" })]));
+  assert.match(mdx, /<Slide style=\{\{ backgroundColor: "#213373" \}\} \/>/);
+});
+
 test("assembleMdxDocument puts a blank line between the exports and the body, and ends with a newline", () => {
   const doc = assembleMdxDocument("export const title = 'Deck';", "<Slides>\n<Slide />\n</Slides>");
 

@@ -10,6 +10,8 @@ import type {
   ShapeInfoArchive,
   ShapeStyleArchive,
   SlideArchive,
+  SlideStyleArchive,
+  SlideStylePropertiesArchive,
   StorageArchive,
   TableInfoArchive,
 } from "../types.ts";
@@ -17,7 +19,7 @@ import { extractTable } from "./table.ts";
 import { svgPath } from "./shapes.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
-import { boxPercent, textBoxStyle } from "./style.ts";
+import { boxPercent, colorToHex, textBoxStyle } from "./style.ts";
 import { extractParagraphs, storageForShape } from "./text.ts";
 
 /** Title/body text inherited from a slide's master, treated as "empty" if unchanged. */
@@ -80,9 +82,11 @@ export function extractSlide(
 ): Slide {
   const collected = collectFromSlide(slide, registry, layout.slideSize);
   const title = pickTitle(slide, collected, defaults.titles);
+  const backgroundColor = slideBackgroundColor(slide, registry);
 
   return {
     className: layout.useHeuristics ? classifyLayout(slide, registry, collected, layout.slideSize, title) : undefined,
+    ...(backgroundColor ? { backgroundColor } : {}),
     title,
     body: pickBody(collected.bodies, defaults.bodies),
     textBoxes: collected.textBoxes,
@@ -107,6 +111,39 @@ function classifyLayout(
     title,
     contentBox: contentBoxPercent(collected.geometries, slideSize),
   });
+}
+
+/**
+ * A node in a slide style's inheritance chain. As with shape styles, the real
+ * `slideProperties` may sit one level down the inherited `super` (typed as a bare
+ * `TSS.StyleArchive` but slide-style-shaped at runtime), so we model it
+ * structurally to walk it without casts.
+ */
+interface SlideStyleNode {
+  slideProperties?: SlideStylePropertiesArchive;
+  super?: SlideStyleNode;
+}
+
+/**
+ * The slide's solid background fill color (`#RRGGBB`), resolved from its style by
+ * walking the `super` chain to the first `slideProperties.fill` that carries a
+ * solid color. Gradient/image fills are ignored (solid color only); absent when
+ * no style or solid fill resolves.
+ */
+function slideBackgroundColor(slide: SlideArchive, registry: Registry): string | undefined {
+  // `super` is typed as a bare `TSS.StyleArchive` but is slide-style-shaped at
+  // runtime, so we reinterpret the resolved style as a `SlideStyleNode`.
+  let node: SlideStyleNode | undefined = registry.resolve<SlideStyleArchive>(slide.style) as unknown as
+    | SlideStyleNode
+    | undefined;
+  while (node) {
+    const color = node.slideProperties?.fill?.color;
+    if (color && (color.r !== undefined || color.g !== undefined || color.b !== undefined)) {
+      return colorToHex(color);
+    }
+    node = node.super;
+  }
+  return undefined;
 }
 
 /** The slide's master ("template") name, used to map to a layout class. */

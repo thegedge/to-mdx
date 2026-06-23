@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ShapeInfoArchive, ShapeStyleArchive } from "../types.ts";
-import { buildPathData, svgPath } from "./shapes.ts";
+import type { ShapeInfoArchive, ShapeStyleArchive, StrokePatternArchive } from "../types.ts";
+import { buildPathData, effectiveShapeProps, strokeDasharray, svgPath } from "./shapes.ts";
 
 /** A two-point horizontal line in a frame, with optional rotation. */
 function line(frame: { x: number; y: number; width: number; height: number; angle?: number }): ShapeInfoArchive {
@@ -185,4 +185,105 @@ test("svgPath flags arrowheads from head/tail line-ends", () => {
 test("svgPath returns undefined for a shape with no bezier path", () => {
   const noPath = { super: { super: {} } } as unknown as ShapeInfoArchive;
   assert.equal(svgPath(noPath, STROKE_STYLE), undefined);
+});
+
+test("effectiveShapeProps reads stroke/fill from the nested super when the outer shapeProperties is empty", () => {
+  const style = {
+    shapeProperties: {},
+    super: {
+      shapeProperties: { stroke: { color: { model: 1, r: 0.13, g: 0.2, b: 0.45, a: 1 }, width: 5 } },
+    },
+  } as unknown as ShapeStyleArchive;
+
+  const props = effectiveShapeProps(style);
+  assert.equal(props?.stroke?.width, 5);
+  assert.equal(props?.stroke?.color?.r, 0.13);
+});
+
+test("svgPath resolves the lifeline stroke color and width from the nested super style", () => {
+  const lifeline = {
+    shapeProperties: {},
+    super: {
+      shapeProperties: {
+        stroke: {
+          color: { model: 1, r: 0.13, g: 0.2, b: 0.45, a: 1 },
+          width: 5,
+          cap: 1,
+          pattern: { type: 0, count: 2, phase: 0, pattern: [0.001, 2, 0, 0, 0, 0] },
+        },
+      },
+    },
+  } as unknown as ShapeStyleArchive;
+
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), lifeline);
+  assert.ok(path);
+  assert.equal(path.stroke, "#213373"); // rgb(0.13,0.20,0.45) → hex
+  assert.equal(path.strokeWidth, 5);
+  assert.equal(path.strokeDasharray, "0.005,10");
+  assert.equal(path.strokeLinecap, "round");
+});
+
+test("strokeDasharray scales the first `count` pattern values by the stroke width", () => {
+  const pattern = { type: 0, count: 2, pattern: [0.001, 2, 0, 0] } as unknown as StrokePatternArchive;
+  assert.equal(strokeDasharray(pattern, 5), "0.005,10");
+});
+
+test("strokeDasharray returns undefined for a solid-pattern stroke", () => {
+  const solid = { type: 1, count: 0, pattern: [] } as unknown as StrokePatternArchive;
+  assert.equal(strokeDasharray(solid, 5), undefined);
+});
+
+test("svgPath emits no dasharray for a solid stroke", () => {
+  const solidStroke = {
+    shapeProperties: { stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 2, pattern: { type: 1 } } },
+  } as unknown as ShapeStyleArchive;
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), solidStroke);
+  assert.ok(path);
+  assert.equal(path.strokeDasharray, undefined);
+  assert.equal(path.strokeLinecap, undefined);
+});
+
+test("svgPath approximates an image fill with its tint color", () => {
+  const iconFill = {
+    shapeProperties: { fill: { image: { tint: { model: 1, r: 1, g: 0, b: 0, a: 1 } } } },
+  } as unknown as ShapeStyleArchive;
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), iconFill);
+  assert.ok(path);
+  assert.equal(path.fill, "#ff0000");
+});
+
+test("svgPath uses a solid fill color directly", () => {
+  const solidFill = {
+    shapeProperties: { fill: { color: { model: 1, r: 0, g: 1, b: 0, a: 1 } } },
+  } as unknown as ShapeStyleArchive;
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), solidFill);
+  assert.ok(path);
+  assert.equal(path.fill, "#00ff00");
+});
+
+test("svgPath carries fillOpacity and strokeOpacity from translucent colors", () => {
+  const translucent = {
+    shapeProperties: {
+      stroke: { color: { model: 1, r: 0, g: 0, b: 0, a: 0.5 }, width: 2 },
+      fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 0.25 } },
+    },
+  } as unknown as ShapeStyleArchive;
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), translucent);
+  assert.ok(path);
+  assert.equal(path.strokeOpacity, 0.5);
+  assert.equal(path.fillOpacity, 0.25);
+});
+
+test("svgPath flags only markerStart when head is an arrow and tail is none", () => {
+  const arrow = {
+    shapeProperties: {
+      stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 2 },
+      headLineEnd: { identifier: "simple arrow", isFilled: true },
+      tailLineEnd: { identifier: "none" },
+    },
+  } as unknown as ShapeStyleArchive;
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), arrow);
+  assert.ok(path);
+  assert.equal(path.markerStart, true);
+  assert.equal(path.markerEnd, undefined);
 });

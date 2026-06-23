@@ -2,10 +2,14 @@ import type { SvgPath } from "../model.ts";
 import type {
   BezierPathSourceArchive,
   Color,
+  FillArchive,
+  LineEndArchive,
   PathElement,
   ShapeInfoArchive,
   ShapeStyleArchive,
+  ShapeStylePropertiesArchive,
   StrokeArchive,
+  StrokePatternArchive,
 } from "../types.ts";
 import { colorToHex } from "./style.ts";
 
@@ -23,8 +27,17 @@ const ELEMENT_MOVE_TO = 1;
 const ELEMENT_CURVE_TO = 4;
 const ELEMENT_CLOSE = 5;
 
+/** `TSD.StrokePatternArchive.StrokePatternType.TSDSolidPattern` — a continuous line. */
+const SOLID_STROKE_PATTERN = 1;
+
 /** `TSD.StrokePatternArchive.StrokePatternType.TSDEmptyPattern` — an explicit "no line". */
 const EMPTY_STROKE_PATTERN = 2;
+
+/** `TSD.StrokeArchive.LineCap.RoundCap` — a rounded line cap (renders tiny dashes as dots). */
+const ROUND_CAP = 1;
+
+/** A line-end `identifier` meaning "no arrowhead". */
+const NO_LINE_END = "none";
 
 /** Stroke used when a shape has a path but no resolvable style, so lines still show. */
 const DEFAULT_STROKE = "currentColor";
@@ -142,54 +155,157 @@ function bezierSource(shape: ShapeInfoArchive): BezierPathSourceArchive | undefi
 }
 
 /**
- * Resolves stroke/fill from the shape style. Always returns a drawable result:
- * when the style is missing, has no shapeProperties, or resolves to neither a
- * visible stroke nor a fill, it falls back to a plain currentColor outline
- * (width 2, fill none) so a shape with a path stays visible.
- *
- * NOTE: a shape's real stroke/fill COLORS are unrecoverable here — they can live
- * in a style archive lost to a dropped .iwa chunk — so this fallback is an
- * outline a human can recolor, not the shape's original styling.
+ * A node in a shape style's inheritance chain. A `ShapeStyleArchive`'s own
+ * `shapeProperties` is usually empty; the resolved stroke/fill/line-ends live one
+ * level down its inherited `super`. The library types `super` as a bare
+ * `TSS.StyleArchive`, but at runtime each link is itself shape-style-shaped, so we
+ * model the chain structurally to walk it without casts.
  */
-function resolveStyle(style: ShapeStyleArchive | undefined): Pick<SvgPath, "stroke" | "strokeWidth" | "fill"> {
-  const properties = style?.shapeProperties;
-  const stroke = properties ? visibleStroke(properties.stroke) : undefined;
-  const fill = properties ? fillColor(properties.fill?.color) : undefined;
+interface ShapeStyleNode {
+  shapeProperties?: ShapeStylePropertiesArchive;
+  super?: ShapeStyleNode;
+}
+
+/**
+ * The effective shape properties for a style: the first `shapeProperties` along
+ * the `super` chain that actually carries a visible property (stroke, fill, or a
+ * line-end). A `ShapeStyleArchive` typically holds these one level down, so we
+ * skip empty links rather than stopping at the (empty) top-level properties.
+ */
+export function effectiveShapeProps(style: ShapeStyleArchive | undefined): ShapeStylePropertiesArchive | undefined {
+  // The library types each `super` as a bare `TSS.StyleArchive`; at runtime it is
+  // shape-style-shaped, so we reinterpret the chain head as a `ShapeStyleNode`.
+  let node: ShapeStyleNode | undefined = style as unknown as ShapeStyleNode | undefined;
+  while (node) {
+    if (hasShapeProps(node.shapeProperties)) return node.shapeProperties;
+    node = node.super;
+  }
+  return undefined;
+}
+
+function hasShapeProps(props: ShapeStylePropertiesArchive | undefined): props is ShapeStylePropertiesArchive {
+  return !!props && (!!props.stroke || !!props.fill || !!props.headLineEnd || !!props.tailLineEnd);
+}
+
+/** Stroke resolved to render-ready values, plus optional dash/cap/opacity. */
+interface ResolvedStroke {
+  color: string;
+  width: number;
+  dasharray?: string;
+  linecap?: string;
+  opacity?: number;
+}
+
+/** Fill resolved to a color (solid, or an image fill's tint approximation) and optional opacity. */
+interface ResolvedFill {
+  color: string;
+  opacity?: number;
+}
+
+/**
+ * Resolves stroke/fill from the shape style's effective properties. Always returns
+ * a drawable result: when the style is missing, has no usable properties, or
+ * resolves to neither a visible stroke nor a fill, it falls back to a plain
+ * currentColor outline (width 2, fill none) so a shape with a path stays visible.
+ *
+ * NOTE: a shape's real stroke/fill COLORS are unrecoverable when its style archive
+ * was lost to a dropped .iwa chunk — that fallback is an outline a human can
+ * recolor, not the shape's original styling.
+ */
+function resolveStyle(
+  style: ShapeStyleArchive | undefined,
+): Pick<SvgPath, "stroke" | "strokeWidth" | "fill" | "strokeDasharray" | "strokeLinecap" | "fillOpacity" | "strokeOpacity"> {
+  const props = effectiveShapeProps(style);
+  const stroke = resolveStroke(props?.stroke);
+  const fill = resolveFill(props?.fill);
   if (!stroke && !fill) return { stroke: DEFAULT_STROKE, strokeWidth: DEFAULT_STROKE_WIDTH, fill: "none" };
 
   return {
     stroke: stroke?.color ?? (fill ? "none" : DEFAULT_STROKE),
     strokeWidth: stroke?.width ?? DEFAULT_STROKE_WIDTH,
-    ...(fill ? { fill } : {}),
+    ...(fill ? { fill: fill.color } : {}),
+    ...(stroke?.dasharray ? { strokeDasharray: stroke.dasharray } : {}),
+    ...(stroke?.linecap ? { strokeLinecap: stroke.linecap } : {}),
+    ...(stroke?.opacity !== undefined ? { strokeOpacity: stroke.opacity } : {}),
+    ...(fill?.opacity !== undefined ? { fillOpacity: fill.opacity } : {}),
   };
 }
 
-function visibleStroke(stroke: StrokeArchive | undefined): { color: string; width: number } | undefined {
+function resolveStroke(stroke: StrokeArchive | undefined): ResolvedStroke | undefined {
   if (!stroke || stroke.pattern?.type === EMPTY_STROKE_PATTERN) return undefined;
-  return {
+  const width = stroke.width ?? DEFAULT_STROKE_WIDTH;
+  const resolved: ResolvedStroke = {
     color: hasRgb(stroke.color) ? colorToHex(stroke.color) : DEFAULT_STROKE,
-    width: stroke.width ?? DEFAULT_STROKE_WIDTH,
+    width,
   };
+  const dasharray = strokeDasharray(stroke.pattern, width);
+  if (dasharray) resolved.dasharray = dasharray;
+  if (stroke.cap === ROUND_CAP) resolved.linecap = "round";
+  const a = alpha(stroke.color);
+  if (a < 1) resolved.opacity = a;
+  return resolved;
 }
 
-function fillColor(color: Color | undefined): string | undefined {
-  return hasRgb(color) ? colorToHex(color) : undefined;
+/**
+ * The SVG `stroke-dasharray` for a Keynote stroke pattern, or undefined when the
+ * stroke is effectively solid. A dashed/dotted stroke carries a `pattern` of
+ * on/off lengths expressed in stroke-width multiples, with `count` significant
+ * entries; we take the first `count`, scale each by the stroke width, and join
+ * with commas (e.g. `[0.001,2]` at width 5 → `"0.005,10"`). A solid stroke (the
+ * solid pattern type, `count < 1`, or an empty/all-zero pattern) yields undefined.
+ */
+export function strokeDasharray(pattern: StrokePatternArchive | undefined, width: number): string | undefined {
+  if (!pattern || pattern.type === SOLID_STROKE_PATTERN) return undefined;
+  const count = pattern.count ?? 0;
+  if (count < 1) return undefined;
+  const values = pattern.pattern.slice(0, count);
+  if (values.length === 0 || values.every((value) => value === 0)) return undefined;
+  return values.map((value) => trimNumber(value * width)).join(",");
+}
+
+/** Resolves a fill to a render color: a solid `fill.color`, else an image fill's `tint` (an approximation). */
+function resolveFill(fill: FillArchive | undefined): ResolvedFill | undefined {
+  const color = fill?.color ?? fill?.image?.tint;
+  if (!hasRgb(color)) return undefined;
+  const resolved: ResolvedFill = { color: colorToHex(color) };
+  const a = alpha(color);
+  if (a < 1) resolved.opacity = a;
+  return resolved;
+}
+
+/** A color's alpha channel (0–1), defaulting to fully opaque when unset. */
+function alpha(color: Color | undefined): number {
+  return color?.a ?? 1;
 }
 
 function hasRgb(color: Color | undefined): color is Color {
   return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
 }
 
-/** Marks arrowheads when the style exposes a head (start) or tail (end) line-end. */
+/** Marks arrowheads when the style exposes a head (start) or tail (end) line-end other than "none". */
 function arrowFlags(style: ShapeStyleArchive | undefined): Pick<SvgPath, "markerStart" | "markerEnd"> {
-  const properties = style?.shapeProperties;
+  const props = effectiveShapeProps(style);
   return {
-    ...(properties?.headLineEnd ? { markerStart: true } : {}),
-    ...(properties?.tailLineEnd ? { markerEnd: true } : {}),
+    ...(hasLineEnd(props?.headLineEnd) ? { markerStart: true } : {}),
+    ...(hasLineEnd(props?.tailLineEnd) ? { markerEnd: true } : {}),
   };
+}
+
+/** True when a line-end is present and not the explicit "none" identifier. */
+function hasLineEnd(end: LineEndArchive | undefined): boolean {
+  return !!end && end.identifier !== NO_LINE_END;
 }
 
 /** Rounds to 2 decimals, dropping a trailing `.0` (so whole numbers stay clean). */
 function round(value: number): number {
   return Number(value.toFixed(2));
+}
+
+/**
+ * Formats a number for a dasharray entry: rounded to 4 decimals to absorb float
+ * noise, then stringified so trailing zeros drop (e.g. `0.005`, `10`). Keeps the
+ * sub-pixel dash lengths Keynote uses for dotted lines, which `round` would lose.
+ */
+function trimNumber(value: number): string {
+  return Number(value.toFixed(4)).toString();
 }

@@ -65,6 +65,14 @@ export interface SvgPath {
   stroke: string;
   strokeWidth: number;
   fill?: string;
+  /** SVG `stroke-dasharray` for a dotted/dashed stroke; absent when solid. */
+  strokeDasharray?: string;
+  /** SVG `stroke-linecap` (e.g. "round"); absent when the default butt cap applies. */
+  strokeLinecap?: string;
+  /** Fill alpha (0–1) when the resolved fill color is translucent. */
+  fillOpacity?: number;
+  /** Stroke alpha (0–1) when the resolved stroke color is translucent. */
+  strokeOpacity?: number;
   markerStart?: boolean;
   markerEnd?: boolean;
 }
@@ -131,6 +139,12 @@ export interface Slide {
    * `images` so it is not also rendered inline.
    */
   background?: string;
+  /**
+   * Solid background fill color (`#RRGGBB`) resolved from the slide's style, drawn
+   * behind all content. Matters where a background image doesn't fully cover the
+   * slide. Absent when the style declares no solid fill (gradient/image ignored).
+   */
+  backgroundColor?: string;
   title?: string;
   body: Paragraph[];
   textBoxes: TextBox[];

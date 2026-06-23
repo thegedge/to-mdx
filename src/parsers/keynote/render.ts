@@ -216,6 +216,9 @@ function slideAttributes(slide: Slide): string {
     parts.push(`background="${slide.background}"`);
     parts.push("opaqueBackground");
   }
+  // The slide's solid background fill sits behind everything via an inline style,
+  // so it shows wherever a background image doesn't fully cover the slide.
+  if (slide.backgroundColor) parts.push(styleAttr([["backgroundColor", slide.backgroundColor]]));
   return parts.join(" ");
 }
 
@@ -284,11 +287,16 @@ function renderShapes(shapes: SvgPath[], slideSize: { width: number; height: num
   return `${open}${defs}\n${paths}\n</svg>`;
 }
 
-/** A single `<path>` for one vector shape, wiring up any resolved arrowheads. */
+/** A single `<path>` for one vector shape, wiring up any resolved dash/opacity/arrowheads. */
 function renderPath(shape: SvgPath): string {
+  const extra =
+    (shape.fillOpacity !== undefined ? ` fillOpacity={${shape.fillOpacity}}` : "") +
+    (shape.strokeOpacity !== undefined ? ` strokeOpacity={${shape.strokeOpacity}}` : "") +
+    (shape.strokeDasharray ? ` strokeDasharray="${shape.strokeDasharray}"` : "") +
+    (shape.strokeLinecap ? ` strokeLinecap="${shape.strokeLinecap}"` : "");
   const markers =
     (shape.markerStart ? ' markerStart="url(#kn-arrow)"' : "") + (shape.markerEnd ? ' markerEnd="url(#kn-arrow)"' : "");
-  return `<path d="${shape.d}" fill="${shape.fill ?? "none"}" stroke="${shape.stroke}" strokeWidth={${shape.strokeWidth}}${markers} />`;
+  return `<path d="${shape.d}" fill="${shape.fill ?? "none"}" stroke="${shape.stroke}" strokeWidth={${shape.strokeWidth}}${extra}${markers} />`;
 }
 
 /**
