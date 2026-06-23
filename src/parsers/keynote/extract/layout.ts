@@ -95,8 +95,22 @@ export function slideLayoutClass({ masterName, title, contentBox }: SlideLayoutI
   const fromTitle = thankYouClass(title);
   const fromCentering = contentBox ? centeringLayoutClass(contentBox) : null;
 
-  const className = cls(fromMaster, fromTitle, fromCentering);
+  const className = normalizeLayoutClass(cls(fromMaster, fromTitle, fromCentering));
   return className.length > 0 ? className : undefined;
+}
+
+/**
+ * Normalizes a combined Keynote layout class: splits into tokens, dedupes
+ * (preserving first-seen order), and resolves the `centered`/`blank` conflict by
+ * dropping `centered` when `blank` is also present (a blank/full-bleed slide wins
+ * over a centering hint). So `"blank centered blank"` → `"blank"` and
+ * `"two-column centered blank"` → `"two-column blank"`. Pure.
+ */
+export function normalizeLayoutClass(className: string): string {
+  const seen = new Set<string>();
+  const tokens = className.split(/\s+/).filter((token) => token.length > 0 && !seen.has(token) && seen.add(token));
+  const resolved = seen.has("blank") ? tokens.filter((token) => token !== "centered") : tokens;
+  return resolved.join(" ");
 }
 
 /**

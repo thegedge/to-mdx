@@ -85,10 +85,12 @@ export function presentationToMdx(presentation: Presentation): string {
   // expression), not a string literal.
   const className = kebabCase(presentation.title);
 
-  // Tables share one scoped stylesheet emitted once for the whole document, so a
-  // table's cells reference a class instead of repeating inline borders.
-  const body = slides.includes('className="kn-table"') ? `${tableStyleBlock(className)}\n\n${slides}` : slides;
-  let output = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${body}\n</Slides>`;
+  const wrapper = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
+
+  // Tables share one scoped stylesheet emitted once for the whole document (and
+  // before `<Slides>`, since the scoped selectors still match). HTML `<table>`s
+  // depend on it; spanless markdown tables get default styling but it is harmless.
+  let output = hasRenderableTable(presentation) ? `${tableStyleBlock(className)}\n\n${wrapper}` : wrapper;
 
   // The unplaced-images section is not a slide, so it sits after the wrapper.
   const appendix = renderUnplacedImages(presentation.unplacedImages);
@@ -343,32 +345,87 @@ function renderTextBox(textBox: TextBox): string {
   return style ? `<div ${style}>\n${prose}\n</div>` : prose;
 }
 
-/**
- * The single scoped stylesheet shared by every table in the document, emitted
- * once inside `<Slides>`. The selector is scoped to the deck's slug (the same
- * class on `<Slides>`) so the table styling cannot leak. Built by string
- * concatenation so the CSS braces survive inside the JSX expression container.
- */
-function tableStyleBlock(slug: string): string {
-  const scope = `.slides.${slug} .kn-table`;
-  const css = `${scope} { border-collapse: collapse } ${scope} td, ${scope} th { border: 1px solid currentColor; padding: 0.25em }`;
-  return "<style>{`" + css + "`}</style>";
+/** Whether any slide carries a table with at least one cell (i.e. that renders). */
+function hasRenderableTable(presentation: Presentation): boolean {
+  return presentation.slides.some((slide) =>
+    slide.tables.some((table) => table.rows.some((row) => row.length > 0)),
+  );
 }
 
 /**
- * Renders an extracted table as raw HTML (`<table>`/`<tr>`/`<td>`), which MDX
- * passes through. Only anchor cells are emitted; merges become `colspan`/`rowspan`
- * attributes (omitted when 1). Cell text is MDX-escaped and intra-cell newlines
- * become `<br/>`. Borders come from the shared `.kn-table` rule, so cells carry no
- * inline style. A table with no cells renders nothing.
+ * The single scoped stylesheet shared by every HTML table in the document,
+ * emitted once before `<Slides>`. The selector is scoped to the deck's slug (the
+ * same class on `<Slides>`) so the table styling cannot leak, and styles the bare
+ * `table`/`th`/`td` elements directly (no per-table class). Multi-line for
+ * readability; built by string concatenation so the CSS braces survive inside the
+ * JSX expression container.
+ */
+function tableStyleBlock(slug: string): string {
+  const scope = `.slides.${slug}`;
+  const css = [
+    `${scope} table {`,
+    `  border-collapse: collapse;`,
+    `}`,
+    `${scope} th,`,
+    `${scope} td {`,
+    `  border: 1px solid currentColor;`,
+    `  padding: 0.25em;`,
+    `}`,
+  ].join("\n");
+  return "<style>{`\n" + css + "\n`}</style>";
+}
+
+/**
+ * Renders an extracted table. A table whose cells never span (every cell is
+ * 1×1) becomes a GitHub-flavored markdown table (the first row is the header);
+ * GFM cannot express col/row spans, so any spanning cell forces the HTML
+ * `<table>` form instead. A table with no cells renders nothing.
  */
 export function renderTable(table: TableData): string {
   if (table.rows.every((row) => row.length === 0)) return "";
+  return isSpanless(table) ? renderMarkdownTable(table) : renderHtmlTable(table);
+}
 
+/** True when no cell in the table spans more than one column or row. */
+function isSpanless(table: TableData): boolean {
+  return table.rows.every((row) => row.every((cell) => cell.colSpan === 1 && cell.rowSpan === 1));
+}
+
+/**
+ * Renders a spanless table as a GFM markdown table: the first non-empty row is
+ * the header, followed by a `| --- |` separator and the body rows. Rows are
+ * padded to the widest row so the pipe columns line up.
+ */
+function renderMarkdownTable(table: TableData): string {
+  const rows = table.rows.filter((row) => row.length > 0);
+  const width = Math.max(...rows.map((row) => row.length));
+  const line = (row: TableCell[]): string => {
+    const cells = row.map((cell) => markdownCell(cell.text));
+    while (cells.length < width) cells.push("");
+    return `| ${cells.join(" | ")} |`;
+  };
+  const separator = `| ${Array(width).fill("---").join(" | ")} |`;
+  const [header, ...body] = rows;
+  return [line(header), separator, ...body.map(line)].join("\n");
+}
+
+/** Escapes a markdown cell: MDX-escaped, `|` escaped as `\|`, newlines as `<br>`. */
+function markdownCell(text: string): string {
+  return escapeMdxText(text).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+}
+
+/**
+ * Renders a spanning table as raw HTML (`<table>`/`<tr>`/`<td>`), which MDX
+ * passes through. Only anchor cells are emitted; merges become `colSpan`/`rowSpan`
+ * attributes (omitted when 1). Cell text is MDX-escaped and intra-cell newlines
+ * become `<br/>`. Borders come from the shared scoped `table` rule, so the
+ * element carries no class and cells carry no inline style.
+ */
+function renderHtmlTable(table: TableData): string {
   const body = table.rows
     .map((row) => `${INDENT}<tr>${row.map(renderCell).join("")}</tr>`)
     .join("\n");
-  return `<table className="kn-table">\n${body}\n</table>`;
+  return `<table>\n${body}\n</table>`;
 }
 
 /** A single `<td>` with span attributes (omitted when 1) and escaped text. */

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { buildRegistry, mockObject, ref } from "../test_support.ts";
 import { KeynoteType } from "../types.ts";
 import { buildPresentation } from "./document.ts";
-import { contentBoxPercent, slideLayoutClass } from "./layout.ts";
+import { contentBoxPercent, normalizeLayoutClass, slideLayoutClass } from "./layout.ts";
 
 const T = KeynoteType;
 
@@ -29,11 +29,18 @@ test("slideLayoutClass derives centering from the shared kernel via the content 
   assert.equal(slideLayoutClass({ contentBox: { left: 30, top: 30, width: 40, height: 40 } }), "centered");
 });
 
-test("slideLayoutClass combines the master class and the centering class", () => {
+test("slideLayoutClass combines the master class and the centering class, resolving centered/blank", () => {
   assert.equal(
     slideLayoutClass({ masterName: "Comparison", contentBox: { left: 0, top: 30, width: 100, height: 40 } }),
-    "two-column centered blank",
+    "two-column blank",
   );
+});
+
+test("normalizeLayoutClass dedupes tokens and drops centered when blank is present", () => {
+  assert.equal(normalizeLayoutClass("blank centered blank"), "blank");
+  assert.equal(normalizeLayoutClass("two-column centered blank"), "two-column blank");
+  assert.equal(normalizeLayoutClass("centered"), "centered");
+  assert.equal(normalizeLayoutClass("title"), "title");
 });
 
 test("contentBoxPercent boxes drawables as slide-size percentages", () => {

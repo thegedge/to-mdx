@@ -196,7 +196,7 @@ function cell(text: string, colSpan = 1, rowSpan = 1) {
   return { text, colSpan, rowSpan };
 }
 
-test("presentationToMdx renders a table with a kn-table class, span attrs, escaped text, and <br/>", () => {
+test("presentationToMdx renders a spanning table as a classless HTML <table> with span attrs, escaped text, and <br/>", () => {
   const mdx = presentationToMdx(
     deck(
       [
@@ -216,7 +216,9 @@ test("presentationToMdx renders a table with a kn-table class, span attrs, escap
     ),
   );
 
-  assert.match(mdx, /<table className="kn-table">/);
+  assert.match(mdx, /<table>/);
+  assert.doesNotMatch(mdx, /<table className/);
+  assert.doesNotMatch(mdx, /kn-table/);
   assert.equal(mdx.includes("<td colSpan={8}>Header</td>"), true);
   assert.equal(mdx.includes("<td>a &lt;b&gt;</td>"), true);
   assert.equal(mdx.includes("<td>line1<br/>line2</td>"), true);
@@ -228,29 +230,52 @@ test("presentationToMdx renders a rowspan attribute and omits span attrs of 1", 
   assert.doesNotMatch(mdx, /colSpan/);
 });
 
-test("presentationToMdx emits one shared scoped <style> rule for tables, scoped to the deck slug", () => {
-  const mdx = presentationToMdx(deck([slide({ tables: [{ rows: [[cell("x")]] }] })], [], "Network Monitor"));
-
-  assert.equal(
-    (mdx.match(/<style>/g) ?? []).length,
-    1,
-    "exactly one <style> block",
+test("presentationToMdx renders a spanless table as a GFM markdown table (header + separator), escaping pipes and newlines", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        tables: [
+          {
+            rows: [
+              [cell("Name"), cell("Value")],
+              [cell("a | b"), cell("line1\nline2")],
+            ],
+          },
+        ],
+      }),
+    ]),
   );
-  assert.match(mdx, /\.slides\.network-monitor \.kn-table td, \.slides\.network-monitor \.kn-table th \{ border: 1px solid currentColor; padding: 0\.25em \}/);
-  // The shared rule means cells carry no inline border style.
+
+  assert.doesNotMatch(mdx, /<table/);
+  assert.match(mdx, /\| Name \| Value \|/);
+  assert.match(mdx, /\| --- \| --- \|/);
+  assert.match(mdx, /\| a \\\| b \| line1<br>line2 \|/);
+});
+
+test("presentationToMdx emits the shared scoped table <style> BEFORE <Slides>, multi-line, styling table/th/td (no kn-table)", () => {
+  const mdx = presentationToMdx(deck([slide({ tables: [{ rows: [[cell("Header", 2)]] }] })], [], "Network Monitor"));
+
+  assert.equal((mdx.match(/<style>/g) ?? []).length, 1, "exactly one <style> block");
+  // The style block comes before the <Slides> wrapper.
+  assert.ok(mdx.indexOf("<style>") < mdx.indexOf("<Slides"), "style precedes <Slides>");
+  // Multi-line CSS scoped to the deck slug, styling the bare table/th/td elements.
+  assert.match(mdx, /<style>\{`\n/);
+  assert.match(mdx, /\.slides\.network-monitor table \{\n {2}border-collapse: collapse;\n\}/);
+  assert.match(mdx, /\.slides\.network-monitor th,\n\.slides\.network-monitor td \{\n {2}border: 1px solid currentColor;\n {2}padding: 0\.25em;\n\}/);
+  assert.doesNotMatch(mdx, /kn-table/);
   assert.doesNotMatch(mdx, /<td style=/);
 });
 
 test("presentationToMdx emits the table <style> only once even with multiple tables across slides", () => {
   const mdx = presentationToMdx(
     deck([
-      slide({ tables: [{ rows: [[cell("a")]] }] }),
-      slide({ tables: [{ rows: [[cell("b")]] }, { rows: [[cell("c")]] }] }),
+      slide({ tables: [{ rows: [[cell("a", 2)]] }] }),
+      slide({ tables: [{ rows: [[cell("b", 2)]] }, { rows: [[cell("c", 2)]] }] }),
     ]),
   );
 
   assert.equal((mdx.match(/<style>/g) ?? []).length, 1);
-  assert.equal((mdx.match(/className="kn-table"/g) ?? []).length, 3);
+  assert.equal((mdx.match(/<table>/g) ?? []).length, 3);
 });
 
 test("presentationToMdx emits no table <style> when there are no tables", () => {

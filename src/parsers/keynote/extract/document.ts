@@ -19,7 +19,7 @@ import {
   imageFromArchive,
   videoFileFromArchive,
 } from "./images.ts";
-import { drawableGeometry, isFullBleed } from "./layout.ts";
+import { drawableGeometry, isFullBleed, normalizeLayoutClass } from "./layout.ts";
 import type { LayoutContext } from "./slide.ts";
 import { owningSlideId } from "./ownership.ts";
 import { boxPercent, maskCrop } from "./style.ts";
@@ -142,7 +142,7 @@ function promoteBackground(slide: Slide, useHeuristics: boolean): Slide {
   );
 
   const images = slide.images.filter((image) => image !== background);
-  const className = useHeuristics ? cls(slide.className, "blank") || undefined : slide.className;
+  const className = useHeuristics ? normalizeLayoutClass(cls(slide.className, "blank") ?? "") || undefined : slide.className;
   return { ...slide, className, background: background.fileName, images };
 }
 
