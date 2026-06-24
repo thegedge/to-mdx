@@ -155,6 +155,25 @@ function bezierSource(shape: ShapeInfoArchive): BezierPathSourceArchive | undefi
 }
 
 /**
+ * The CSS `border-radius` for a rounded-rectangle text-box shape, or undefined
+ * when the shape is not a rounded rect. Keynote stores a rounded rect as a
+ * `scalarPathSource` whose `scalar` is the corner radius in the shape's natural
+ * units; expressing it as a percentage of the box's *smaller* natural dimension
+ * keeps the rounding scale-independent (so it survives the box being resized to
+ * slide percentages). A zero/absent scalar or degenerate natural size yields
+ * undefined so a sharp-cornered box emits nothing.
+ */
+export function shapeBorderRadius(shape: ShapeInfoArchive): string | undefined {
+  const scalarSource = shape.super?.pathsource?.scalarPathSource;
+  const scalar = scalarSource?.scalar;
+  if (!scalar) return undefined;
+  const natural = scalarSource.naturalSize;
+  const min = Math.min(natural?.width ?? 0, natural?.height ?? 0);
+  if (min <= 0) return undefined;
+  return `${Number(((scalar / min) * 100).toFixed(1))}%`;
+}
+
+/**
  * A node in a shape style's inheritance chain. A `ShapeStyleArchive`'s own
  * `shapeProperties` is usually empty; the resolved stroke/fill/line-ends live one
  * level down its inherited `super`. The library types `super` as a bare

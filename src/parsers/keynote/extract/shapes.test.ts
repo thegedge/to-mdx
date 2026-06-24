@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ShapeInfoArchive, ShapeStyleArchive, StrokePatternArchive } from "../types.ts";
-import { buildPathData, effectiveShapeProps, strokeDasharray, svgPath } from "./shapes.ts";
+import { buildPathData, effectiveShapeProps, shapeBorderRadius, strokeDasharray, svgPath } from "./shapes.ts";
 
 /** A two-point horizontal line in a frame, with optional rotation. */
 function line(frame: { x: number; y: number; width: number; height: number; angle?: number }): ShapeInfoArchive {
@@ -272,6 +272,30 @@ test("svgPath carries fillOpacity and strokeOpacity from translucent colors", ()
   assert.ok(path);
   assert.equal(path.strokeOpacity, 0.5);
   assert.equal(path.fillOpacity, 0.25);
+});
+
+test("shapeBorderRadius expresses a rounded-rect scalar as a percent of the smaller natural side", () => {
+  const roundedRect = {
+    super: {
+      pathsource: {
+        scalarPathSource: { type: 0, scalar: 15, naturalSize: { width: 168, height: 200 } },
+      },
+    },
+  } as unknown as ShapeInfoArchive;
+  // 15 / min(168, 200) * 100 = 8.928… → "8.9%"
+  assert.equal(shapeBorderRadius(roundedRect), "8.9%");
+});
+
+test("shapeBorderRadius returns undefined when the shape has no scalar path source", () => {
+  const sharp = { super: { pathsource: { bezierPathSource: {} } } } as unknown as ShapeInfoArchive;
+  assert.equal(shapeBorderRadius(sharp), undefined);
+});
+
+test("shapeBorderRadius returns undefined for a zero corner radius", () => {
+  const zero = {
+    super: { pathsource: { scalarPathSource: { type: 0, scalar: 0, naturalSize: { width: 100, height: 100 } } } },
+  } as unknown as ShapeInfoArchive;
+  assert.equal(shapeBorderRadius(zero), undefined);
 });
 
 test("svgPath flags only markerStart when head is an arrow and tail is none", () => {

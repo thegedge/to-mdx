@@ -1,4 +1,4 @@
-import type { Paragraph, Slide, SlideImage, SlideVideo, SvgPath, TableData, TextBox } from "../model.ts";
+import type { Paragraph, Slide, SlideImage, SlideVideo, SvgPath, TableData, TextBox, TextBoxStyle } from "../model.ts";
 import type { Registry } from "../registry.ts";
 import { isType } from "../type_ids.ts";
 import { PlaceholderKind } from "../types.ts";
@@ -18,7 +18,7 @@ import type {
   TableInfoArchive,
 } from "../types.ts";
 import { extractTable } from "./table.ts";
-import { effectiveShapeProps, resolveFill, svgPath } from "./shapes.ts";
+import { effectiveShapeProps, resolveFill, shapeBorderRadius, svgPath } from "./shapes.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
 import { boxPercent, colorToHex, fillColorCss, textBoxStyle } from "./style.ts";
@@ -307,10 +307,11 @@ function processRef(
       collectShape(shape, registry, collected);
       return;
     }
-    // A free shape-backed text box can carry its shape's fill as a background;
-    // placeholder boxes pass no style, so their flow text stays unstyled (#1).
+    // A free shape-backed text box can carry its shape's fill as a background and
+    // a rounded-rect corner radius; placeholder boxes pass neither, so their flow
+    // text stays unstyled (#1).
     const shapeStyle = registry.resolve<ShapeStyleArchive>(shape.super?.style);
-    collectText(role, paragraphs, shape, storage, registry, collected, shapeStyle);
+    collectText(role, paragraphs, shape, storage, registry, collected, shapeStyle, shapeBorderRadius(shape));
     pushGeometry(shape, collected);
   }
 }
@@ -335,9 +336,12 @@ function collectText(
   registry: Registry,
   collected: Collected,
   shapeStyle?: ShapeStyleArchive,
+  borderRadius?: string,
 ): void {
   if (bucketParagraphs(role, paragraphs, collected) || paragraphs.length === 0) return;
-  collected.textBoxes.push(freeTextBox(paragraphs, message, storage, registry, collected.slideSize, shapeStyle));
+  collected.textBoxes.push(
+    freeTextBox(paragraphs, message, storage, registry, collected.slideSize, shapeStyle, borderRadius),
+  );
 }
 
 /**
@@ -353,6 +357,7 @@ function freeTextBox(
   registry: Registry,
   slideSize: { width: number; height: number },
   shapeStyle?: ShapeStyleArchive,
+  borderRadius?: string,
 ): TextBox {
   const textBox = asTextBox(paragraphs);
   if (textBox.kind !== "text") return textBox;
@@ -360,8 +365,12 @@ function freeTextBox(
   const box = boxPercent(drawableGeometry(message), slideSize);
   const textStyle = textBoxStyle(storage, registry, slideSize.height);
   const backgroundColor = fillColorCss(resolveFill(effectiveShapeProps(shapeStyle)?.fill));
-  const style = backgroundColor ? { ...textStyle, backgroundColor } : textStyle;
-  return { ...textBox, ...(box ? { box } : {}), ...(style ? { style } : {}) };
+  const style: TextBoxStyle = {
+    ...textStyle,
+    ...(backgroundColor ? { backgroundColor } : {}),
+    ...(borderRadius ? { borderRadius } : {}),
+  };
+  return { ...textBox, ...(box ? { box } : {}), ...(Object.keys(style).length > 0 ? { style } : {}) };
 }
 
 /** Records a drawable's geometry (walked through its `super` chain) for layout heuristics. */

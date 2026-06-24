@@ -125,6 +125,13 @@ export interface TextBoxStyle {
    */
   backgroundColor?: string;
   /**
+   * The box's corner radius as a CSS `border-radius` percentage (e.g. `"8.9%"`),
+   * lifted from a rounded-rectangle shape's `scalarPathSource` (its corner-radius
+   * scalar over the box's smaller natural dimension). Present only for free text
+   * boxes backed by a rounded-rect shape; absent for sharp-cornered boxes.
+   */
+  borderRadius?: string;
+  /**
    * A character outline as a CSS `-webkit-text-stroke` value (`"<width>px <color>"`,
    * e.g. `"5px #000000"`), lifted from the run's `tsdStroke`. Present only when a
    * real stroke is set (an explicit `tsdStrokeNull` yields none).

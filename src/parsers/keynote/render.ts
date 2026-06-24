@@ -199,7 +199,21 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
   if (style?.fontSizeToken && !omitFontSize) declarations.push(["fontSize", style.fontSizeToken]);
   if (style?.color) declarations.push(["color", style.color]);
   if (style?.fontWeight !== undefined) declarations.push(["fontWeight", style.fontWeight]);
-  if (style?.textAlign) declarations.push(["textAlign", style.textAlign]);
+  // A filled box is one of the deck's sized diagram labels (e.g. "verifier",
+  // "maps"): center its text both ways via flexbox, since the box has a real
+  // height to center within. Flow/placeholder boxes carry no fill, so they keep
+  // their natural top-left flow. Centering forces `textAlign: center`, overriding
+  // any per-paragraph alignment; an unfilled box keeps its own alignment.
+  const centered = !!style?.backgroundColor;
+  if (centered) {
+    declarations.push(["display", "flex"]);
+    declarations.push(["flexDirection", "column"]);
+    declarations.push(["justifyContent", "center"]);
+    declarations.push(["alignItems", "center"]);
+    declarations.push(["textAlign", "center"]);
+  } else if (style?.textAlign) {
+    declarations.push(["textAlign", style.textAlign]);
+  }
   // A character outline (white-on-black "REQUEST" style text); camelCase JSX key.
   if (style?.textStroke) declarations.push(["WebkitTextStroke", style.textStroke]);
   // A shape-fill background, with a little breathing room so text isn't flush to
@@ -208,6 +222,8 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
     declarations.push(["backgroundColor", style.backgroundColor]);
     declarations.push(["padding", "0.2em 0.4em"]);
   }
+  // A rounded-rect shape's corner radius (e.g. the diagram labels' "8.9%").
+  if (style?.borderRadius) declarations.push(["borderRadius", style.borderRadius]);
 
   return declarations;
 }
@@ -320,10 +336,18 @@ function shapeOverlayDeclarations(): Declaration[] {
   ];
 }
 
-/** The shared arrowhead marker, emitted once per slide when any shape uses an arrow. */
+/**
+ * The shared arrowhead marker, emitted once per slide when any shape uses an
+ * arrow. `markerUnits="userSpaceOnUse"` fixes the arrowhead at a constant
+ * slide-point size (12×12) regardless of the line's stroke width, so a thick
+ * (stroke-width 8) connector no longer renders a giant ~48px head; the default
+ * `strokeWidth` units would scale the marker with the line. The `viewBox` keeps
+ * the triangle's own 0–10 coordinate space, so `refX`/`refY` are unchanged.
+ */
 const ARROW_MARKER =
-  '<defs><marker id="kn-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" ' +
-  'orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker></defs>';
+  '<defs><marker id="kn-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" ' +
+  'markerWidth="12" markerHeight="12" orient="auto-start-reverse">' +
+  '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker></defs>';
 
 /**
  * One absolutely-positioned `<svg>` overlay holding the slide's vector shapes as

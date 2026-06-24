@@ -88,6 +88,49 @@ test("presentationToMdx emits a free text box's shape-fill background (with padd
   assert.match(mdx, /padding: "0\.2em 0\.4em"/);
 });
 
+test("presentationToMdx flex-centers a filled diagram-label box both ways with textAlign center", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "verifier" }],
+            box: { left: 10, top: 20, width: 15, height: 8 },
+            style: { backgroundColor: "#f9db9a", borderRadius: "8.9%" },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /display: "flex"/);
+  assert.match(mdx, /flexDirection: "column"/);
+  assert.match(mdx, /justifyContent: "center"/);
+  assert.match(mdx, /alignItems: "center"/);
+  assert.match(mdx, /textAlign: "center"/);
+  assert.match(mdx, /borderRadius: "8\.9%"/);
+});
+
+test("presentationToMdx does not flex-center an unfilled (flow-style) text box", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "a caption" }],
+            box: { left: 10, top: 20, width: 15, height: 8 },
+            style: { color: "#ffffff", textAlign: "left" },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.doesNotMatch(mdx, /display: "flex"/);
+  assert.doesNotMatch(mdx, /justifyContent/);
+  assert.match(mdx, /textAlign: "left"/);
+});
+
 test("presentationToMdx emits WebkitTextStroke for an outlined text box", () => {
   const mdx = presentationToMdx(
     deck([
@@ -757,6 +800,15 @@ test("presentationToMdx emits the shared arrow marker and wires markerEnd for ar
 
   assert.match(mdx, /<marker id="kn-arrow"/);
   assert.match(mdx, /markerEnd="url\(#kn-arrow\)"/);
+});
+
+test("presentationToMdx sizes the arrow marker in user space so thick strokes don't bloat the head", () => {
+  const mdx = presentationToMdx(
+    deck([slide({ shapes: [{ d: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 8, markerEnd: true }] })]),
+  );
+  assert.match(mdx, /markerUnits="userSpaceOnUse"/);
+  assert.match(mdx, /markerWidth="12" markerHeight="12"/);
+  assert.doesNotMatch(mdx, /markerWidth="6"/);
 });
 
 test("presentationToMdx omits the shape overlay when a slide has no shapes", () => {
