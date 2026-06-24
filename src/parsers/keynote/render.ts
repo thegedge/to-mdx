@@ -145,9 +145,49 @@ function shapeDefsBlock(presentation: Presentation, pathIds: Map<string, string>
   if (anyShapeMarker(presentation)) {
     entries.push(ARROW_MARKER);
   }
-  for (const [d, id] of pathIds) entries.push(`<path id="${id}" d="${d}" />`);
+  for (const [d, id] of pathIds) {
+    entries.push(defElement(id, d));
+  }
   const body = entries.map((entry) => `${INDENT.repeat(2)}${entry}`).join("\n");
   return `<svg width="0" height="0" aria-hidden="true" ${styleAttr([["position", "absolute"]])}>\n${INDENT}<defs>\n${body}\n${INDENT}</defs>\n</svg>`;
+}
+
+/**
+ * A shape def as the simplest SVG element for its geometry: a two-point `M…L…`
+ * is a `<line>`, an all-`M`/`L` path is a `<polyline>`, anything with curves or a
+ * close is a `<path>`. (The `<use>` carries fill/stroke, so an open polyline still
+ * strokes like the original path.)
+ */
+function defElement(id: string, d: string): string {
+  const points = linearPoints(d);
+  if (points && points.length === 2) {
+    const [[x1, y1], [x2, y2]] = points;
+    return `<line id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+  }
+  if (points && points.length > 2) {
+    return `<polyline id="${id}" points="${points.map(([x, y]) => `${x},${y}`).join(" ")}" />`;
+  }
+  return `<path id="${id}" d="${d}" />`;
+}
+
+/** The points of a path made only of `M`/`L` commands, or null if it has curves/closes. */
+function linearPoints(d: string): Array<[number, number]> | null {
+  const tokens = d.trim().split(/\s+/);
+  const points: Array<[number, number]> = [];
+
+  for (let i = 0; i < tokens.length; i += 3) {
+    if (tokens[i] !== "M" && tokens[i] !== "L") {
+      return null;
+    }
+    const x = Number(tokens[i + 1]);
+    const y = Number(tokens[i + 2]);
+    if (Number.isNaN(x) || Number.isNaN(y)) {
+      return null;
+    }
+    points.push([x, y]);
+  }
+
+  return points.length >= 2 ? points : null;
 }
 
 /** Whether any shape in the deck resolves an arrowhead (so the shared marker is worth emitting). */

@@ -815,7 +815,7 @@ test("presentationToMdx renders a vector shape as a <use> in an <svg> sized to t
 
   // The unique local path is defined once in a hidden document-level <defs>.
   assert.match(mdx, /<svg width="0" height="0" aria-hidden="true" style=\{\{ position: "absolute" \}\}>/);
-  assert.match(mdx, /<defs>\n\s*<path id="kn-p1" d="M 0 0 L 100 0" \/>\n\s*<\/defs>/);
+  assert.match(mdx, /<defs>\n\s*<line id="kn-p1" x1="0" y1="0" x2="100" y2="0" \/>\n\s*<\/defs>/);
   // The shape instance references it via <use> in the slide overlay, carrying its transform + style.
   assert.match(mdx, /<svg viewBox="0 0 1920 1080"/);
   assert.match(mdx, /<use href="#kn-p1" transform="translate\(100 200\) scale\(7\.16 0\)" fill="none" stroke="#000000" strokeWidth=\{2\} \/>/);
@@ -884,12 +884,24 @@ test("presentationToMdx dedupes identical local paths into one def, referenced b
 
   // One <defs> for the whole document, with the shared path defined exactly once.
   assert.equal(mdx.match(/<defs>/g)?.length, 1);
-  assert.equal(mdx.match(/<path id="kn-p1"/g)?.length, 1);
-  assert.equal(mdx.match(/d="M 0 0 L 50 0"/g)?.length, 1);
+  assert.equal(mdx.match(/<line id="kn-p1"/g)?.length, 1);
+  assert.equal(mdx.match(/x1="0" y1="0" x2="50" y2="0"/g)?.length, 1);
   // Both instances reference the same def, each with its own transform.
   assert.equal(mdx.match(/href="#kn-p1"/g)?.length, 2);
   assert.match(mdx, /<use href="#kn-p1" transform="translate\(10 20\)"/);
   assert.match(mdx, /<use href="#kn-p1" transform="translate\(80 90\) rotate\(45 25 0\)"/);
+});
+
+test("presentationToMdx defines an all-L path as a <polyline> and a curved/closed path as a <path>", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({ shapes: [{ localD: "M 0 0 L 10 0 L 10 10", stroke: "#000000", strokeWidth: 2 }] }),
+      slide({ shapes: [{ localD: "M 0 0 C 1 1 2 2 3 3 Z", fill: "#ff0000" }] }),
+    ]),
+  );
+
+  assert.match(mdx, /<polyline id="kn-p1" points="0,0 10,0 10,10" \/>/);
+  assert.match(mdx, /<path id="kn-p2" d="M 0 0 C 1 1 2 2 3 3 Z" \/>/);
 });
 
 test("presentationToMdx derives positioned image and box zIndex from drawablesZOrder rank", () => {
