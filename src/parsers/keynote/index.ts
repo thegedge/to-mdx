@@ -5,7 +5,6 @@ import JSZip from "jszip";
 import { generateMetadataExports } from "../../generators/mdx.ts";
 import type { Options } from "../../parsers.ts";
 import { decodeKeynote, partialEntriesWarning } from "./decode.ts";
-import { writeDebugDump, writeRawDump } from "./debug.ts";
 import { buildPresentation } from "./extract/document.ts";
 import { convertPdfDataFiles } from "./extract/pdf.ts";
 import { buildDataSourceMap, distinctImageFileNames, imageCoverageWarning } from "./extract/images.ts";
@@ -42,17 +41,6 @@ export async function parse(outputRoot: string, presentationFile: string, option
   const totalDistinct = distinctImageFileNames(registry, dataFiles).size;
   const coverageWarning = imageCoverageWarning({ placedOccurrences, totalOccurrences, placedDistinct, totalDistinct });
   if (coverageWarning) allWarnings.push(coverageWarning);
-
-  const dumpPath = options.dumpKeynote ?? process.env.KEYNOTE_DEBUG_DUMP;
-  if (dumpPath) {
-    await writeDebugDump(dumpPath, registry, presentation, allWarnings);
-  }
-
-  const rawDumpPath = options.dumpKeynoteRaw ?? process.env.KEYNOTE_DEBUG_RAW;
-  if (rawDumpPath) {
-    const rawSlides = options.dumpKeynoteRawSlides ?? process.env.KEYNOTE_DEBUG_RAW_SLIDES;
-    await writeRawDump(rawDumpPath, registry, rawSlides);
-  }
 
   await copyImages(presentation, dataFiles, basename, outputRoot);
 

@@ -3,15 +3,6 @@ import { parse as parseOpenDocument } from "./parsers/open_document.ts";
 
 export interface Options {
   useHeuristics?: boolean;
-  /** When set, write the decoded Keynote structure as JSON to this path. */
-  dumpKeynote?: string;
-  /** When set, write RAW decoded Keynote protobuf objects as JSON to this path. */
-  dumpKeynoteRaw?: string;
-  /**
-   * Comma-separated 1-based slide numbers (presentation order) to target for the
-   * raw dump instead of the default first three. Only used with `dumpKeynoteRaw`.
-   */
-  dumpKeynoteRawSlides?: string;
 }
 
 export async function parse(outputRoot: string, filePath: string, options: Options): Promise<void> {

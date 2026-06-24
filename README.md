@@ -40,7 +40,6 @@ run un-sandboxed.
 ### Options
 
 - `--use-heuristics`: Use heuristics to determine classnames and eliminate positioning divs
-- `--dump-keynote <path>`: Write the decoded Keynote structure as JSON to `<path>` (also via `KEYNOTE_DEBUG_DUMP=<path>`) — for debugging `.key` conversions
 - `-h, --help`: Show help message
 
 ## Conversions
@@ -56,8 +55,7 @@ Generates the following:
 
 Modern Keynote files (Keynote 6+, iWork '13 onward) store content as Snappy-compressed
 Protobuf in `Index/*.iwa`. The schemas are community-reverse-engineered and version-dependent,
-so conversion is best-effort — use `--dump-keynote <path>` to inspect the decoded structure
-when output looks wrong.
+so conversion is best-effort.
 
 Generates the same output layout as ODP (MDX in `src/pages/presentations/`, images in
 `src/static/img/presentations/`).
