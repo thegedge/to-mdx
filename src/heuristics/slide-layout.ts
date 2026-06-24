@@ -34,17 +34,26 @@ export function centeringLayoutClass(box: LayoutBox): "centered" | "centered bla
 }
 
 /**
- * Normalizes a slide's layout-class list: dedupes tokens (first-seen order) and
- * lets `blank` (a full-bleed slide with no content layout) override any content
- * class (`two-column`, `centered`, …) — a blank slide is just blank.
+ * The slide *layout* classes, in precedence order — at most one survives
+ * normalization. `blank` (full-bleed, no content) overrides a content master,
+ * which overrides the `centered` positioning hint. Everything NOT in this set
+ * (backgrounds like `bg-white`, automatic style names like `c25`) is not a layout
+ * class and is left untouched.
+ */
+const LAYOUT_CLASSES = ["blank", "title-with-points", "title", "two-column", "caption", "with-description", "centered"] as const;
+const LAYOUT_CLASS_SET: ReadonlySet<string> = new Set(LAYOUT_CLASSES);
+
+/**
+ * Normalizes a slide's class list: dedupes (first-seen order), keeps at most one
+ * layout class (highest precedence wins), and leaves every non-layout class in
+ * place. So `"two-column centered"` → `"two-column"`, `"centered blank bg-white"`
+ * → `"blank bg-white"`, and `"c39 c51 c52"` (no layout class) is unchanged.
  */
 export function normalizeLayoutClass(className: string): string {
   const seen = new Set<string>();
   const tokens = className.split(/\s+/).filter((token) => token.length > 0 && !seen.has(token) && seen.add(token));
-  if (seen.has("blank")) {
-    return "blank";
-  }
-  return tokens.join(" ");
+  const winner = LAYOUT_CLASSES.find((layout) => seen.has(layout));
+  return tokens.filter((token) => !LAYOUT_CLASS_SET.has(token) || token === winner).join(" ");
 }
 
 const FULL_BLEED = { minCoverage: 90, maxInset: 2, minExtent: 98 } as const;

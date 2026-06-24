@@ -36,12 +36,22 @@ test("slideLayoutClass collapses a full-bleed slide to blank even under a conten
   );
 });
 
-test("normalizeLayoutClass dedupes tokens and collapses any content layout to blank when blank is present", () => {
+test("normalizeLayoutClass keeps one layout class by precedence (blank > content > centered)", () => {
   assert.equal(normalizeLayoutClass("blank centered blank"), "blank");
   assert.equal(normalizeLayoutClass("two-column centered blank"), "blank");
   assert.equal(normalizeLayoutClass("two-column blank"), "blank");
+  // A content master beats the `centered` positioning hint.
+  assert.equal(normalizeLayoutClass("two-column centered"), "two-column");
   assert.equal(normalizeLayoutClass("centered"), "centered");
   assert.equal(normalizeLayoutClass("title"), "title");
+});
+
+test("normalizeLayoutClass leaves non-layout classes (backgrounds, style names) untouched", () => {
+  // Only the layout class collapses; `bg-white` / `cNN` are preserved in place.
+  assert.equal(normalizeLayoutClass("centered blank bg-white"), "blank bg-white");
+  assert.equal(normalizeLayoutClass("blank c53"), "blank c53");
+  assert.equal(normalizeLayoutClass("c39 c51 c52"), "c39 c51 c52");
+  assert.equal(normalizeLayoutClass("bg-white"), "bg-white");
 });
 
 test("contentBoxPercent boxes drawables as slide-size percentages", () => {
