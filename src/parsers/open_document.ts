@@ -221,10 +221,13 @@ async function getPresentationDate(metadata: Record<string, unknown>, presentati
     }
   }
 
-  // Degrade to the file's mtime rather than throwing (mirrors the Keynote path).
-  const mtime = fs.statSync(presentationFile).mtime;
-  console.warn(`⚠️  No presentation date in metadata; using file mtime ${formatDate(mtime)}`);
-  return mtime;
+  // Degrade to the file's creation time rather than throwing (mirrors the Keynote
+  // path). birthtime is unset on some filesystems, where it reads as epoch 0 — fall
+  // back to mtime there.
+  const stats = fs.statSync(presentationFile);
+  const created = stats.birthtimeMs > 0 ? stats.birthtime : stats.mtime;
+  console.warn(`⚠️  No presentation date in metadata; using file creation time ${formatDate(created)}`);
+  return created;
 }
 
 function sanitizeFilename(text: string): string {
