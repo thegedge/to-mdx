@@ -112,7 +112,9 @@ export function normalizeLayoutClass(className: string): string {
   // `blank` is a full-bleed slide with no content layout, so it overrides any
   // content-layout class (`two-column`, `centered`, …) the master name or a
   // heuristic inferred — a blank slide is just blank.
-  if (seen.has("blank")) return "blank";
+  if (seen.has("blank")) {
+    return "blank";
+  }
   return tokens.join(" ");
 }
 

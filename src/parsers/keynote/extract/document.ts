@@ -68,22 +68,23 @@ export function buildPresentation(
 }
 
 /**
- * Places every ImageArchive/MovieArchive on its owning content slide by walking
- * the drawable's parent chain upward (see `owningSlideId`). This is robust to
- * unknown container types that a top-down drawable traversal would fail to
- * descend into (e.g. animation-build groups), so it — not the text pass — is
- * authoritative for images and movies. Deduped by archive id.
- */
-/**
- * Sets a resolved image's `opacity` from its own `MediaStyleArchive`
- * (`image.style` → `mediaProperties.opacity`, walked up the `super` chain), the
- * Style-tab opacity. Left unset for an opaque image so no `opacity` is emitted.
+ * Sets a resolved image's `opacity` from its `MediaStyleArchive` (the Style-tab
+ * opacity, walked up the `super` chain). Left unset when opaque so none is emitted.
  */
 function applyImageOpacity(resolved: SlideImage, image: ImageArchive, registry: Registry): void {
   const opacity = mediaOpacity(registry.resolve<MediaStyleArchive>(image.style));
-  if (opacity !== undefined) resolved.opacity = opacity;
+  if (opacity !== undefined) {
+    resolved.opacity = opacity;
+  }
 }
 
+/**
+ * Places every ImageArchive/MovieArchive on its owning content slide by walking
+ * the drawable's parent chain upward (see `owningSlideId`). Robust to unknown
+ * container types a top-down traversal would miss (e.g. animation-build groups),
+ * so it — not the text pass — is authoritative for images and movies. Deduped by
+ * archive id.
+ */
 function placeDrawables(
   registry: Registry,
   contentSlideIds: Set<bigint>,
@@ -96,19 +97,23 @@ function placeDrawables(
 
   const slotFor = (slideId: bigint): SlidePlacements => {
     const existing = placements.get(slideId);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     const slot: SlidePlacements = { images: [], videos: [] };
     placements.set(slideId, slot);
     return slot;
   };
 
-  // A slide's `drawablesZOrder` index → rank map, cached per slide. Lets a placed
-  // image/movie inherit the same back-to-front rank its (possibly grouped)
-  // drawable holds in the authoritative order; empty for older decks.
+  // A slide's `drawablesZOrder` index → rank map, cached per slide, so a placed
+  // image/movie inherits the rank its (possibly grouped) drawable holds; empty for
+  // older decks.
   const zOrderMaps = new Map<bigint, Map<bigint, number>>();
   const zOrderMapFor = (slideId: bigint): Map<bigint, number> => {
     const existing = zOrderMaps.get(slideId);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
     const slide = registry.get(slideId)?.message as SlideArchive | undefined;
     const map = new Map<bigint, number>();
     slide?.drawablesZOrder.forEach((ref, index) => map.set(ref.identifier, index));
@@ -117,39 +122,69 @@ function placeDrawables(
   };
 
   for (const entry of registry.entriesOfTypes(typeIds("ImageArchive"))) {
-    if (placed.has(entry.id)) continue;
+    if (placed.has(entry.id)) {
+      continue;
+    }
     const slideId = owningSlideId(entry, registry, contentSlideIds);
-    if (slideId === undefined) continue;
+    if (slideId === undefined) {
+      continue;
+    }
+
     const image = entry.message as ImageArchive;
     const resolved = imageFromArchive(image, dataFileNames, dataInfo, image.super?.accessibilityDescription ?? "");
-    if (!resolved) continue;
+    if (!resolved) {
+      continue;
+    }
+
     const imageGeometry = drawableGeometry(image);
     const box = boxPercent(imageGeometry, slideSize);
-    if (box) resolved.box = box;
+    if (box) {
+      resolved.box = box;
+    }
     const maskGeometry = drawableGeometry(registry.resolve<MaskArchive>(image.mask));
     if (imageGeometry && maskGeometry) {
       const crop = maskCrop(imageGeometry, maskGeometry, slideSize);
-      if (crop) resolved.crop = crop;
+      if (crop) {
+        resolved.crop = crop;
+      }
     }
     applyImageOpacity(resolved, image, registry);
+
     const zOrder = drawableZOrder(entry, registry, zOrderMapFor(slideId));
-    if (zOrder !== undefined) resolved.zOrder = zOrder;
+    if (zOrder !== undefined) {
+      resolved.zOrder = zOrder;
+    }
+
     placed.add(entry.id);
     slotFor(slideId).images.push(resolved);
   }
 
   for (const entry of registry.entriesOfTypes(typeIds("MovieArchive"))) {
-    if (placed.has(entry.id)) continue;
+    if (placed.has(entry.id)) {
+      continue;
+    }
     const slideId = owningSlideId(entry, registry, contentSlideIds);
-    if (slideId === undefined) continue;
+    if (slideId === undefined) {
+      continue;
+    }
+
     const movie = entry.message as MovieArchive;
     const fileName = videoFileFromArchive(movie, dataFileNames, dataInfo);
-    if (!fileName) continue;
+    if (!fileName) {
+      continue;
+    }
+
     const video: SlideVideo = { fileName };
     const box = boxPercent(drawableGeometry(movie), slideSize);
-    if (box) video.box = box;
+    if (box) {
+      video.box = box;
+    }
+
     const zOrder = drawableZOrder(entry, registry, zOrderMapFor(slideId));
-    if (zOrder !== undefined) video.zOrder = zOrder;
+    if (zOrder !== undefined) {
+      video.zOrder = zOrder;
+    }
+
     placed.add(entry.id);
     slotFor(slideId).videos.push(video);
   }
@@ -158,12 +193,10 @@ function placeDrawables(
 }
 
 /**
- * Promotes a slide's dominant full-bleed image to its background: detects images
- * whose box bleeds across the whole slide, picks the largest by area, sets it as
- * `slide.background`, and drops it from the inline `images` list so it is not
- * double-rendered. The remaining images stay inline (positioned). The inferred
- * `blank` layout class is added only when heuristics are on; the background
- * itself is always promoted.
+ * Promotes a slide's dominant full-bleed image to its background: picks the
+ * largest full-bleed image, sets it as `slide.background`, and drops it from the
+ * inline `images` list so it is not double-rendered. The inferred `blank` class is
+ * added only with heuristics on; the background itself is always promoted.
  */
 function promoteBackground(slide: Slide, useHeuristics: boolean): Slide {
   const candidates = slide.images.filter((image): image is SlideImage & { box: NonNullable<SlideImage["box"]> } => {
@@ -171,7 +204,9 @@ function promoteBackground(slide: Slide, useHeuristics: boolean): Slide {
     // promoted to a `cover` background (which would drop the crop).
     return image.crop === undefined && image.box !== undefined && isFullBleed(image.box);
   });
-  if (candidates.length === 0) return slide;
+  if (candidates.length === 0) {
+    return slide;
+  }
 
   const background = candidates.reduce((best, image) =>
     image.box.width * image.box.height > best.box.width * best.box.height ? image : best,
@@ -183,12 +218,10 @@ function promoteBackground(slide: Slide, useHeuristics: boolean): Slide {
 }
 
 /**
- * Resolves the inheritable images carried by each slide's master ("template")
- * slide, cached per master id because one master is shared by many content
- * slides (so its single image archive must be re-placed on every slide that uses
- * it — it deliberately bypasses the per-archive-id dedup in `placeDrawables`).
- * Only IMAGE drawables are inherited; master title/body shapes are dropped by
- * `makeDefaultsResolver` and ignored here.
+ * Resolves the inheritable images carried by each slide's master ("template"),
+ * cached per master id. One master is shared by many slides, so its image archive
+ * is re-placed on every slide that uses it (deliberately bypassing the per-archive
+ * dedup in `placeDrawables`). Only image drawables are inherited.
  */
 function makeMasterImagesResolver(
   registry: Registry,
@@ -200,10 +233,14 @@ function makeMasterImagesResolver(
 
   return (slide) => {
     const templateRef = slide.templateSlide;
-    if (!templateRef) return [];
+    if (!templateRef) {
+      return [];
+    }
 
     const cached = cache.get(templateRef.identifier);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const master = registry.resolve<SlideArchive>(templateRef);
     const images = master ? collectMasterImages(master, registry, dataFileNames, dataInfo, slideSize) : [];
@@ -213,12 +250,11 @@ function makeMasterImagesResolver(
 }
 
 /**
- * Resolves a master slide's image drawables to `SlideImage[]`, reusing the exact
- * image/geometry/crop pipeline `placeDrawables` runs for content images. Walks
- * the master's z-ordered drawables (falling back to `ownedDrawables`) and skips
- * any non-image drawable (shapes) as well as sage-tagged image *placeholders*
- * (e.g. a "Media" photo slot the content slide fills with its own image) — only
- * untagged decorations like logos and backgrounds are inherited.
+ * Resolves a master slide's image drawables to `SlideImage[]`, reusing the same
+ * image/geometry/crop pipeline `placeDrawables` runs for content images. Skips
+ * non-image drawables and sage-tagged image *placeholders* (a "Media" slot the
+ * content slide fills itself), so only untagged decorations (logos, backgrounds)
+ * are inherited.
  */
 function collectMasterImages(
   master: SlideArchive,
@@ -234,21 +270,31 @@ function collectMasterImages(
   );
 
   for (const ref of drawables) {
-    if (placeholderIds.has(ref.identifier)) continue;
+    if (placeholderIds.has(ref.identifier)) {
+      continue;
+    }
     const entry = registry.get(ref.identifier);
-    if (!entry || !isType(entry.type, "ImageArchive")) continue;
+    if (!entry || !isType(entry.type, "ImageArchive")) {
+      continue;
+    }
 
     const image = entry.message as ImageArchive;
     const resolved = imageFromArchive(image, dataFileNames, dataInfo, image.super?.accessibilityDescription ?? "");
-    if (!resolved) continue;
+    if (!resolved) {
+      continue;
+    }
 
     const imageGeometry = drawableGeometry(image);
     const box = boxPercent(imageGeometry, slideSize);
-    if (box) resolved.box = box;
+    if (box) {
+      resolved.box = box;
+    }
     const maskGeometry = drawableGeometry(registry.resolve<MaskArchive>(image.mask));
     if (imageGeometry && maskGeometry) {
       const crop = maskCrop(imageGeometry, maskGeometry, slideSize);
-      if (crop) resolved.crop = crop;
+      if (crop) {
+        resolved.crop = crop;
+      }
     }
     applyImageOpacity(resolved, image, registry);
     images.push(resolved);
@@ -258,26 +304,33 @@ function collectMasterImages(
 }
 
 /**
- * Layers a master slide's inherited images onto a content slide. A full-bleed
- * (uncropped) master image fills the slide background only when the slide has no
- * background of its own (the slide's own promoted background always wins);
- * everything else is appended as a positioned inline image. Images whose file
- * name already appears as the slide's background or among its images are skipped,
- * so re-running is idempotent and an image owned by the slide is never doubled.
+ * Layers a master slide's inherited images onto a content slide. An uncropped
+ * full-bleed master image fills the background only when the slide has none of its
+ * own (the slide's promoted background always wins); everything else is appended
+ * as a positioned inline image. Images already present (as background or inline)
+ * are skipped, so re-running is idempotent.
  */
 function inheritMasterImages(slide: Slide, masterImages: SlideImage[], useHeuristics: boolean): Slide {
-  if (masterImages.length === 0) return slide;
+  if (masterImages.length === 0) {
+    return slide;
+  }
 
   let result = slide;
   for (const image of masterImages) {
-    if (result.background === image.fileName) continue;
-    if (result.images.some((existing) => existing.fileName === image.fileName)) continue;
+    if (result.background === image.fileName) {
+      continue;
+    }
+    if (result.images.some((existing) => existing.fileName === image.fileName)) {
+      continue;
+    }
 
     const fullBleed = image.box !== undefined && isFullBleed(image.box);
     if (fullBleed) {
       // Own background wins; a full-bleed decoration would clobber content, so
       // skip it entirely when the slide already has one.
-      if (result.background) continue;
+      if (result.background) {
+        continue;
+      }
       if (image.crop === undefined) {
         // An uncropped full-bleed image becomes the slide's `cover` background.
         const className = useHeuristics
@@ -312,10 +365,14 @@ function makeDefaultsResolver(registry: Registry): (slide: SlideArchive) => Slid
 
   return (slide) => {
     const templateRef = slide.templateSlide;
-    if (!templateRef) return NO_DEFAULTS;
+    if (!templateRef) {
+      return NO_DEFAULTS;
+    }
 
     const cached = cache.get(templateRef.identifier);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const master = registry.resolve<SlideArchive>(templateRef);
     const texts = master ? slidePlaceholderTexts(master, registry) : { titles: [], bodies: [] };
@@ -342,10 +399,14 @@ export function orderedSlideArchives(registry: Registry): RegistryEntry[] {
   const slides: RegistryEntry[] = [];
   for (const ref of refs) {
     const slide = slideEntryForNode(ref, registry);
-    if (slide) slides.push(slide);
+    if (slide) {
+      slides.push(slide);
+    }
   }
 
-  if (slides.length > 0) return slides;
+  if (slides.length > 0) {
+    return slides;
+  }
 
   // Last-ditch fallback: every SlideArchive in the document, unordered.
   return registry.entriesOfTypes(typeIds("SlideArchive"));
@@ -368,28 +429,40 @@ function findShow(registry: Registry): ShowArchive | undefined {
   const documentEntry = registry.firstOfTypes(typeIds("DocumentArchive"));
   if (documentEntry) {
     const show = registry.resolve<ShowArchive>((documentEntry.message as DocumentArchive).show);
-    if (show) return show;
+    if (show) {
+      return show;
+    }
   }
   return registry.firstOfTypes(typeIds("ShowArchive"))?.message as ShowArchive | undefined;
 }
 
 function slideReferences(show: ShowArchive, registry: Registry): Array<bigint> {
   const tree = show.slideTree;
-  if (!tree) return [];
+  if (!tree) {
+    return [];
+  }
 
-  if (tree.slides.length > 0) return tree.slides.map((ref) => ref.identifier);
+  if (tree.slides.length > 0) {
+    return tree.slides.map((ref) => ref.identifier);
+  }
 
   // No flat list: walk the node tree depth-first from the root.
   const ordered: bigint[] = [];
   const seen = new Set<bigint>();
   const walk = (nodeRef: Reference | undefined): void => {
-    if (!nodeRef || seen.has(nodeRef.identifier)) return;
+    if (!nodeRef || seen.has(nodeRef.identifier)) {
+      return;
+    }
     seen.add(nodeRef.identifier);
     const node = registry.resolve<SlideNodeArchive>(nodeRef);
-    if (!node) return;
+    if (!node) {
+      return;
+    }
     // Skip hidden ("skipped") slides, mirroring the flat-list path; still recurse
     // into children, which are independent slides in the show tree.
-    if (!node.isHidden) ordered.push(nodeRef.identifier);
+    if (!node.isHidden) {
+      ordered.push(nodeRef.identifier);
+    }
     for (const child of node.children) walk(child);
   };
   walk(tree.rootSlideNode);
@@ -398,15 +471,21 @@ function slideReferences(show: ShowArchive, registry: Registry): Array<bigint> {
 
 function slideEntryForNode(id: bigint, registry: Registry): RegistryEntry | undefined {
   const entry = registry.get(id);
-  if (!entry) return undefined;
+  if (!entry) {
+    return undefined;
+  }
 
-  if (isType(entry.type, "SlideArchive")) return entry;
+  if (isType(entry.type, "SlideArchive")) {
+    return entry;
+  }
 
   if (isType(entry.type, "SlideNodeArchive")) {
     const node = entry.message as SlideNodeArchive;
     // Keynote marks "skipped" slides hidden on their tree node; exclude them
     // entirely so they don't render and visible slide numbers stay aligned.
-    if (node.isHidden) return undefined;
+    if (node.isHidden) {
+      return undefined;
+    }
     return node.slide ? registry.get(node.slide.identifier) : undefined;
   }
 

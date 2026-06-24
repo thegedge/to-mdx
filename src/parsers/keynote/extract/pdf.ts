@@ -11,7 +11,9 @@ export function pdfToSvg(bytes: Uint8Array): Uint8Array | undefined {
   return suppressMupdfWarnings(() => {
     try {
       const document = mupdf.Document.openDocument(bytes, "application/pdf");
-      if (document.countPages() === 0) return undefined;
+      if (document.countPages() === 0) {
+        return undefined;
+      }
 
       const page = document.loadPage(0);
       const buffer = new mupdf.Buffer();
@@ -38,7 +40,9 @@ export function pdfToSvg(bytes: Uint8Array): Uint8Array | undefined {
 function suppressMupdfWarnings<T>(fn: () => T): T {
   const original = process.stderr.write.bind(process.stderr);
   process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]): boolean => {
-    if (/^warning:/m.test(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString())) return true;
+    if (/^warning:/m.test(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString())) {
+      return true;
+    }
     return (original as (c: string | Uint8Array, ...a: unknown[]) => boolean)(chunk, ...rest);
   }) as typeof process.stderr.write;
   try {

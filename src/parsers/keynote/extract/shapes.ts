@@ -46,27 +46,28 @@ const DEFAULT_STROKE_WIDTH = 2;
 
 /**
  * Turns a no-text shape into a LOCAL-coordinate SVG path plus a per-instance
- * `transform` that positions/rotates/scales it onto the slide. A shape with a
- * drawable path ALWAYS renders: when its style is missing or resolves to nothing
- * visible we fall back to a plain outline (see resolveStyle). Returns undefined
- * only when the shape carries no drawable path at all. Keeping the path in local
- * coordinates lets identical shapes (every connector line, each repeated arrow or
- * icon) share one `<defs>` entry, with only the cheap `transform` differing.
+ * `transform` placing it on the slide. Any shape with a drawable path renders
+ * (falling back to a plain outline when its style is missing); returns undefined
+ * only when it has no path. Local coordinates let identical shapes share one
+ * `<defs>` entry, differing only by `transform`.
  */
 export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | undefined): SvgPath | undefined {
   const bezier = bezierSource(shape);
   const elements = bezier?.path?.elements;
-  if (!bezier || !elements?.length) return undefined;
+  if (!bezier || !elements?.length) {
+    return undefined;
+  }
 
   const frame = shapeFrame(shape);
-  // An SVG marker inherits its element's transform, so a non-uniform scale (a line
-  // is scaled along its length) would stretch the arrowhead. For shapes that carry
-  // an arrowhead we bake the scale into the path instead, leaving the transform
-  // scale-free; everything else keeps the scale on the transform so identical
-  // shapes still dedupe to one <defs> path.
+  // A marker inherits its element's transform, so a non-uniform scale would stretch
+  // the arrowhead. For arrowed shapes we bake the scale into the path and leave the
+  // transform scale-free; others keep the scale on the transform so identical shapes
+  // still dedupe to one <defs> path.
   const markers = arrowFlags(style);
   const { localD, transform } = buildLocalPath(elements, frame, markers.markerStart === true || markers.markerEnd === true);
-  if (!localD) return undefined;
+  if (!localD) {
+    return undefined;
+  }
 
   const opacity = shapeOpacity(style);
   return {
@@ -87,37 +88,30 @@ export interface LocalPath {
 }
 
 /**
- * Splits a shape's path into (a) a normalized LOCAL `d` and (b) a `transform`
- * that reproduces the old baked geometry exactly. The local path translates every
- * point so the (endpoint) bounding box starts at (0,0); the transform then maps
- * local → slide as `translate(frameX frameY) rotate(angle cx cy) scale(sx sy)`,
- * with `cx,cy` the frame centre and `sx,sy = frameW/boundsW, frameH/boundsH`
- * (Keynote's `naturalSize` mirrors the frame, so the path bounds are the right
- * reference). SVG applies the list right-to-left — scale, then rotate around the
- * frame centre, then translate to the frame origin — which is precisely the old
- * per-point pipeline. Identity components are dropped so a plain placed path emits
- * a short transform (or none).
+ * Splits a shape's path into a normalized LOCAL `d` (points translated so the
+ * endpoint bounding box starts at (0,0)) and a `transform` mapping local → slide
+ * as `translate(frameX frameY) rotate(angle cx cy) scale(sx sy)`, with `cx,cy` the
+ * frame centre and `sx,sy = frameW/boundsW, frameH/boundsH`. SVG applies the list
+ * right-to-left (scale, then rotate, then translate). Identity components are
+ * dropped.
  */
 export function buildLocalPath(elements: PathElement[], frame: Frame, bakeScale = false): LocalPath {
   const bounds = pathBounds(elements);
   const sx = bounds.width ? frame.width / bounds.width : 1;
   const sy = bounds.height ? frame.height / bounds.height : 1;
   // When baking, the scale folds into the path coordinates and the transform keeps
-  // only translate + rotate (both leave a marker undistorted); otherwise the local
-  // path is the bare normalized shape and the scale rides the transform (so it can
-  // be shared across differently-sized instances).
+  // only translate + rotate; otherwise the scale rides the transform so the local
+  // path can be shared across differently-sized instances.
   const localD = buildLocalD(elements, bounds, bakeScale ? sx : 1, bakeScale ? sy : 1);
   const transform = buildTransform(frame, bakeScale ? 1 : sx, bakeScale ? 1 : sy);
   return { localD, transform };
 }
 
 /**
- * The local `d` string: each point translated by the bounding box's origin so the
- * path's drawn extent starts at (0,0). A cubic-bezier element (type 4) carries its
- * two control points and endpoint as `[c1, c2, end]`, emitted as an SVG `C`; a
- * malformed curve with fewer than three points falls back to a straight segment to
- * its last point. (Control points may go slightly negative — bounds are measured
- * over endpoints only, matching the old baking.)
+ * The local `d` string, each point translated to the bounding-box origin. A
+ * cubic-bezier element (type 4) emits an SVG `C` from its `[c1, c2, end]` points,
+ * falling back to a straight segment when malformed. (Control points may go
+ * slightly negative — bounds are measured over endpoints only.)
  */
 function buildLocalD(elements: PathElement[], bounds: Bounds, sx: number, sy: number): string {
   const commands: string[] = [];
@@ -134,7 +128,9 @@ function buildLocalD(elements: PathElement[], bounds: Bounds, sx: number, sy: nu
       continue;
     }
     const point = element.points.at(-1);
-    if (!point) continue;
+    if (!point) {
+      continue;
+    }
     commands.push(`${element.type === ELEMENT_MOVE_TO ? "M" : "L"} ${at(point)}`);
   }
 
@@ -147,19 +143,24 @@ function localPoint(point: { x: number; y: number }, bounds: Bounds, sx: number,
 }
 
 /**
- * The `transform` mapping a local path onto the slide. Scales the local bounds to
- * the frame size, rotates around the frame centre, and translates to the frame
- * origin. A degenerate axis (zero path width or height — e.g. a straight line is
- * flat in one axis) scales by 1, NOT 0: every local coordinate on that axis is
- * already 0 so the factor doesn't move anything, but `scale(x, 0)` is a singular
- * matrix that makes SVG renderers drop the element entirely (this is what made the
- * connector lines/arrows vanish). Identity translate/rotate/scale parts are omitted.
+ * The `transform` mapping a local path onto the slide: scale to frame size, rotate
+ * around the frame centre, translate to the frame origin. A degenerate axis (zero
+ * path width/height, e.g. a flat straight line) scales by 1, NOT 0 — `scale(x, 0)`
+ * is a singular matrix that makes SVG renderers drop the element (it doesn't move
+ * anything anyway, since every coordinate on that axis is already 0). Identity
+ * parts are omitted.
  */
 function buildTransform(frame: Frame, sx: number, sy: number): string {
   const parts: string[] = [];
-  if (frame.x !== 0 || frame.y !== 0) parts.push(`translate(${round(frame.x)} ${round(frame.y)})`);
-  if (frame.angle !== 0) parts.push(`rotate(${round(frame.angle)} ${round(frame.width / 2)} ${round(frame.height / 2)})`);
-  if (sx !== 1 || sy !== 1) parts.push(`scale(${roundScale(sx)} ${roundScale(sy)})`);
+  if (frame.x !== 0 || frame.y !== 0) {
+    parts.push(`translate(${round(frame.x)} ${round(frame.y)})`);
+  }
+  if (frame.angle !== 0) {
+    parts.push(`rotate(${round(frame.angle)} ${round(frame.width / 2)} ${round(frame.height / 2)})`);
+  }
+  if (sx !== 1 || sy !== 1) {
+    parts.push(`scale(${roundScale(sx)} ${roundScale(sy)})`);
+  }
   return parts.join(" ");
 }
 
@@ -176,11 +177,15 @@ function pathBounds(elements: PathElement[]): Bounds {
   const ys: number[] = [];
   for (const element of elements) {
     const point = element.points.at(-1);
-    if (!point) continue;
+    if (!point) {
+      continue;
+    }
     xs.push(point.x);
     ys.push(point.y);
   }
-  if (xs.length === 0) return { minX: 0, minY: 0, width: 0, height: 0 };
+  if (xs.length === 0) {
+    return { minX: 0, minY: 0, width: 0, height: 0 };
+  }
   const minX = Math.min(...xs);
   const minY = Math.min(...ys);
   return { minX, minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
@@ -206,29 +211,29 @@ function bezierSource(shape: ShapeInfoArchive): BezierPathSourceArchive | undefi
 
 /**
  * The CSS `border-radius` for a rounded-rectangle text-box shape, or undefined
- * when the shape is not a rounded rect. Keynote stores a rounded rect as a
- * `scalarPathSource` whose `scalar` is the corner radius in the shape's natural
- * units; expressing it as a percentage of the box's *smaller* natural dimension
- * keeps the rounding scale-independent (so it survives the box being resized to
- * slide percentages). A zero/absent scalar or degenerate natural size yields
- * undefined so a sharp-cornered box emits nothing.
+ * otherwise. Keynote stores the corner radius as a `scalarPathSource.scalar` in
+ * natural units; expressing it as a percentage of the box's *smaller* natural
+ * dimension keeps the rounding scale-independent when the box is resized.
  */
 export function shapeBorderRadius(shape: ShapeInfoArchive): string | undefined {
   const scalarSource = shape.super?.pathsource?.scalarPathSource;
   const scalar = scalarSource?.scalar;
-  if (!scalar) return undefined;
+  if (!scalar) {
+    return undefined;
+  }
   const natural = scalarSource.naturalSize;
   const min = Math.min(natural?.width ?? 0, natural?.height ?? 0);
-  if (min <= 0) return undefined;
+  if (min <= 0) {
+    return undefined;
+  }
   return `${Number(((scalar / min) * 100).toFixed(1))}%`;
 }
 
 /**
- * A node in a shape style's inheritance chain. A `ShapeStyleArchive`'s own
- * `shapeProperties` is usually empty; the resolved stroke/fill/line-ends live one
- * level down its inherited `super`. The library types `super` as a bare
- * `TSS.StyleArchive`, but at runtime each link is itself shape-style-shaped, so we
- * model the chain structurally to walk it without casts.
+ * A node in a shape style's inheritance chain. The resolved stroke/fill/line-ends
+ * usually sit one level down the `super` chain (typed as a bare `TSS.StyleArchive`
+ * but shape-style-shaped at runtime), so we model it structurally to walk it
+ * without casts.
  */
 interface ShapeStyleNode {
   shapeProperties?: ShapeStylePropertiesArchive;
@@ -236,17 +241,15 @@ interface ShapeStyleNode {
 }
 
 /**
- * The effective shape properties for a style: the first `shapeProperties` along
- * the `super` chain that actually carries a visible property (stroke, fill, or a
- * line-end). A `ShapeStyleArchive` typically holds these one level down, so we
- * skip empty links rather than stopping at the (empty) top-level properties.
+ * The first `shapeProperties` along the `super` chain carrying a visible property
+ * (stroke, fill, or line-end); empty links are skipped.
  */
 export function effectiveShapeProps(style: ShapeStyleArchive | undefined): ShapeStylePropertiesArchive | undefined {
-  // The library types each `super` as a bare `TSS.StyleArchive`; at runtime it is
-  // shape-style-shaped, so we reinterpret the chain head as a `ShapeStyleNode`.
   let node: ShapeStyleNode | undefined = style as unknown as ShapeStyleNode | undefined;
   while (node) {
-    if (hasShapeProps(node.shapeProperties)) return node.shapeProperties;
+    if (hasShapeProps(node.shapeProperties)) {
+      return node.shapeProperties;
+    }
     node = node.super;
   }
   return undefined;
@@ -258,27 +261,28 @@ function hasShapeProps(props: ShapeStylePropertiesArchive | undefined): props is
 
 /**
  * The shape's group-level Style-tab opacity (`shapeProperties.opacity`), rounded to
- * 3 decimals, or undefined when unset or fully opaque (`>= 1`). This is the
- * whole-shape opacity that sits beside `fill`/`stroke`, distinct from the
- * per-channel fill/stroke alphas.
+ * 3 decimals, or undefined when unset or fully opaque. Distinct from the per-channel
+ * fill/stroke alphas.
  */
 export function shapeOpacity(style: ShapeStyleArchive | undefined): number | undefined {
   const opacity = effectiveShapeProps(style)?.opacity;
-  if (opacity === undefined || opacity >= 1) return undefined;
+  if (opacity === undefined || opacity >= 1) {
+    return undefined;
+  }
   return roundOpacity(opacity);
 }
 
 /**
- * The first non-empty drop `shadow` along the style chain, or undefined when no
- * shape-style link carries one. Empty `{}` shadows (the deck's opaque-fill shapes
- * carry these) are skipped so a real shadow deeper in the chain still wins; the
- * `super` chain is walked structurally, mirroring `effectiveShapeProps`.
+ * The first non-empty drop `shadow` along the style chain, or undefined. Empty
+ * `{}` shadows are skipped so a real shadow deeper in the chain still wins.
  */
 function effectiveShadow(style: ShapeStyleArchive | undefined): ShadowArchive | undefined {
   let node: ShapeStyleNode | undefined = style as unknown as ShapeStyleNode | undefined;
   while (node) {
     const shadow = node.shapeProperties?.shadow;
-    if (shadow && Object.keys(shadow).length > 0) return shadow;
+    if (shadow && Object.keys(shadow).length > 0) {
+      return shadow;
+    }
     node = node.super;
   }
   return undefined;
@@ -286,21 +290,22 @@ function effectiveShadow(style: ShapeStyleArchive | undefined): ShadowArchive | 
 
 /**
  * The shape's drop shadow as a CSS `text-shadow`/`box-shadow` value
- * (`"<dx>px <dy>px <blur>px <color>"`), or undefined when there is no real shadow
- * (absent, empty, explicitly disabled, or carrying no usable geometry/color). The
- * offset is resolved from the polar `angle`/`offset` pair: `dx = offset·cos(angle)`,
+ * (`"<dx>px <dy>px <blur>px <color>"`), or undefined when there is no real shadow.
+ * The offset comes from the polar `angle`/`offset` pair: `dx = offset·cos(angle)`,
  * `dy = -offset·sin(angle)` (the `-` maps Keynote's y-up angle onto CSS's y-down
- * axis, so the stock 315° drop shadow lands bottom-right). `radius` is the blur. The
- * color combines its own alpha with the shadow's `opacity` (hex when opaque, `rgba`
- * when translucent), defaulting to opaque black when no color is stored.
+ * axis, so the stock 315° drop shadow lands bottom-right). `radius` is the blur.
  */
 export function shapeTextShadow(style: ShapeStyleArchive | undefined): string | undefined {
   const shadow = effectiveShadow(style);
-  if (!shadow || shadow.isEnabled === false) return undefined;
+  if (!shadow || shadow.isEnabled === false) {
+    return undefined;
+  }
 
   const offset = shadow.offset ?? 0;
   const blur = shadow.radius ?? 0;
-  if (offset === 0 && blur === 0 && !hasRgb(shadow.color)) return undefined;
+  if (offset === 0 && blur === 0 && !hasRgb(shadow.color)) {
+    return undefined;
+  }
 
   const angle = ((shadow.angle ?? 0) * Math.PI) / 180;
   const dx = round(offset * Math.cos(angle));
@@ -332,13 +337,11 @@ export interface ResolvedFill {
 
 /**
  * Resolves stroke/fill from the shape style's effective properties. Always returns
- * a drawable result: when the style is missing, has no usable properties, or
- * resolves to neither a visible stroke nor a fill, it falls back to a plain
+ * a drawable result: with no visible stroke or fill it falls back to a plain
  * currentColor outline (width 2, fill none) so a shape with a path stays visible.
  *
- * NOTE: a shape's real stroke/fill COLORS are unrecoverable when its style archive
- * was lost to a dropped .iwa chunk — that fallback is an outline a human can
- * recolor, not the shape's original styling.
+ * NOTE: real stroke/fill colors are unrecoverable when the style archive was lost
+ * to a dropped .iwa chunk — the fallback is an outline a human can recolor.
  */
 function resolveStyle(
   style: ShapeStyleArchive | undefined,
@@ -346,7 +349,9 @@ function resolveStyle(
   const props = effectiveShapeProps(style);
   const stroke = resolveStroke(props?.stroke);
   const fill = resolveFill(props?.fill);
-  if (!stroke && !fill) return { stroke: DEFAULT_STROKE, strokeWidth: DEFAULT_STROKE_WIDTH, fill: "none" };
+  if (!stroke && !fill) {
+    return { stroke: DEFAULT_STROKE, strokeWidth: DEFAULT_STROKE_WIDTH, fill: "none" };
+  }
 
   return {
     stroke: stroke?.color ?? (fill ? "none" : DEFAULT_STROKE),
@@ -360,17 +365,25 @@ function resolveStyle(
 }
 
 function resolveStroke(stroke: StrokeArchive | undefined): ResolvedStroke | undefined {
-  if (!stroke || stroke.pattern?.type === EMPTY_STROKE_PATTERN) return undefined;
+  if (!stroke || stroke.pattern?.type === EMPTY_STROKE_PATTERN) {
+    return undefined;
+  }
   const width = stroke.width ?? DEFAULT_STROKE_WIDTH;
   const resolved: ResolvedStroke = {
     color: hasRgb(stroke.color) ? colorToHex(stroke.color) : DEFAULT_STROKE,
     width,
   };
   const dasharray = strokeDasharray(stroke.pattern, width);
-  if (dasharray) resolved.dasharray = dasharray;
-  if (stroke.cap === ROUND_CAP) resolved.linecap = "round";
+  if (dasharray) {
+    resolved.dasharray = dasharray;
+  }
+  if (stroke.cap === ROUND_CAP) {
+    resolved.linecap = "round";
+  }
   const a = alpha(stroke.color);
-  if (a < 1) resolved.opacity = roundOpacity(a);
+  if (a < 1) {
+    resolved.opacity = roundOpacity(a);
+  }
   return resolved;
 }
 
@@ -381,28 +394,36 @@ function roundOpacity(a: number): number {
 
 /**
  * The SVG `stroke-dasharray` for a Keynote stroke pattern, or undefined when the
- * stroke is effectively solid. A dashed/dotted stroke carries a `pattern` of
- * on/off lengths expressed in stroke-width multiples, with `count` significant
- * entries; we take the first `count`, scale each by the stroke width, and join
- * with commas (e.g. `[0.001,2]` at width 5 → `"0.005,10"`). A solid stroke (the
- * solid pattern type, `count < 1`, or an empty/all-zero pattern) yields undefined.
+ * stroke is effectively solid. A dashed stroke's `pattern` holds on/off lengths in
+ * stroke-width multiples; we take the first `count`, scale each by the width, and
+ * join with commas (e.g. `[0.001,2]` at width 5 → `"0.005,10"`).
  */
 export function strokeDasharray(pattern: StrokePatternArchive | undefined, width: number): string | undefined {
-  if (!pattern || pattern.type === SOLID_STROKE_PATTERN) return undefined;
+  if (!pattern || pattern.type === SOLID_STROKE_PATTERN) {
+    return undefined;
+  }
   const count = pattern.count ?? 0;
-  if (count < 1) return undefined;
+  if (count < 1) {
+    return undefined;
+  }
   const values = pattern.pattern.slice(0, count);
-  if (values.length === 0 || values.every((value) => value === 0)) return undefined;
+  if (values.length === 0 || values.every((value) => value === 0)) {
+    return undefined;
+  }
   return values.map((value) => trimNumber(value * width)).join(",");
 }
 
 /** Resolves a fill to a render color: a solid `fill.color`, else an image fill's `tint` (an approximation). */
 export function resolveFill(fill: FillArchive | undefined): ResolvedFill | undefined {
   const color = fill?.color ?? fill?.image?.tint;
-  if (!hasRgb(color)) return undefined;
+  if (!hasRgb(color)) {
+    return undefined;
+  }
   const resolved: ResolvedFill = { color: colorToHex(color) };
   const a = alpha(color);
-  if (a < 1) resolved.opacity = roundOpacity(a);
+  if (a < 1) {
+    resolved.opacity = roundOpacity(a);
+  }
   return resolved;
 }
 
@@ -418,10 +439,9 @@ function hasRgb(color: Color | undefined): color is Color {
 /** Marks arrowheads when the style exposes a head (start) or tail (end) line-end other than "none". */
 function arrowFlags(style: ShapeStyleArchive | undefined): Pick<SvgPath, "markerStart" | "markerEnd"> {
   const props = effectiveShapeProps(style);
-  // The line runs tail → head, so the path's first point is the tail and its last
-  // is the head: `headLineEnd` (the arrowhead) belongs at the path END (`markerEnd`)
-  // and `tailLineEnd` at the START. Without this the arrows point the wrong way
-  // (left-to-right where Keynote draws right-to-left).
+  // The line runs tail → head, so `headLineEnd` (the arrowhead) belongs at the path
+  // END (`markerEnd`) and `tailLineEnd` at the START. Otherwise arrows point the
+  // wrong way.
   return {
     ...(hasLineEnd(props?.tailLineEnd) ? { markerStart: true } : {}),
     ...(hasLineEnd(props?.headLineEnd) ? { markerEnd: true } : {}),

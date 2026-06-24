@@ -22,11 +22,15 @@ export function buildDataInfoMap(registry: Registry): Map<bigint, string> {
   for (const entry of registry.allEntries()) {
     const fromKnownType = metadataTypes.has(entry.type);
     const datas = datasOf(entry);
-    if (!fromKnownType && datas.length === 0) continue;
+    if (!fromKnownType && datas.length === 0) {
+      continue;
+    }
 
     for (const data of datas) {
       const fileName = fileNameForData(data);
-      if (fileName) map.set(data.identifier, fileName);
+      if (fileName) {
+        map.set(data.identifier, fileName);
+      }
     }
   }
 
@@ -51,11 +55,15 @@ export interface ImageCoverage {
  */
 export function imageCoverageWarning(coverage: ImageCoverage): string | null {
   const { placedOccurrences, totalOccurrences, placedDistinct, totalDistinct } = coverage;
-  if (totalOccurrences <= 0 || placedOccurrences >= totalOccurrences) return null;
+  if (totalOccurrences <= 0 || placedOccurrences >= totalOccurrences) {
+    return null;
+  }
 
   const base = `Placed ${placedOccurrences} of ${totalOccurrences} image occurrences (${placedDistinct} of ${totalDistinct} distinct images)`;
   const unlinked = totalOccurrences - placedOccurrences;
-  if (unlinked <= 0) return base;
+  if (unlinked <= 0) {
+    return base;
+  }
   return `${base}; ${unlinked} occurrence(s) could not be linked to a slide`;
 }
 
@@ -94,10 +102,14 @@ interface DataAsset {
 function buildDataAssets(dataFiles: Map<string, Uint8Array>): DataAsset[] {
   const parsed: Array<{ id: number; source: string; display: string }> = [];
   for (const fullName of dataFiles.keys()) {
-    if (!fullName.startsWith("Data/")) continue;
+    if (!fullName.startsWith("Data/")) {
+      continue;
+    }
     const source = fullName.slice("Data/".length);
     const match = /-(\d+)\.[^.]+$/.exec(source);
-    if (!match) continue;
+    if (!match) {
+      continue;
+    }
     const display = source.slice(0, match.index) + source.slice(match.index + match[1].length + 1);
     parsed.push({ id: Number(match[1]), source, display });
   }
@@ -154,7 +166,9 @@ export function distinctImageFileNames(registry: Registry, dataFiles: Map<string
   const names = new Set<string>();
   for (const entry of registry.entriesOfTypes(typeIds("ImageArchive"))) {
     const resolved = imageFromArchive(entry.message as ImageArchive, dataFileNames, dataInfo, "");
-    if (resolved) names.add(resolved.fileName);
+    if (resolved) {
+      names.add(resolved.fileName);
+    }
   }
   return names;
 }
@@ -170,7 +184,9 @@ export function imageFromArchive(
     dataFileNames,
     dataInfo,
   );
-  if (!fileName) return null;
+  if (!fileName) {
+    return null;
+  }
 
   return { fileName, altText: altText || "image" };
 }
@@ -190,11 +206,17 @@ function resolveDataFileName(
   dataInfo: Map<bigint, string>,
 ): string | null {
   for (const ref of refs) {
-    if (ref?.identifier === undefined) continue;
+    if (ref?.identifier === undefined) {
+      continue;
+    }
     const primary = dataFileNames.get(Number(ref.identifier));
-    if (primary) return primary;
+    if (primary) {
+      return primary;
+    }
     const fallback = dataInfo.get(ref.identifier);
-    if (fallback) return fallback;
+    if (fallback) {
+      return fallback;
+    }
   }
   return null;
 }

@@ -33,7 +33,9 @@ const IMAGE_EXTENSIONS: ReadonlySet<string> = new Set([
  */
 export function isImageFile(name: string): boolean {
   const dot = name.lastIndexOf(".");
-  if (dot < 0) return false;
+  if (dot < 0) {
+    return false;
+  }
   return IMAGE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
 }
 
@@ -50,7 +52,9 @@ type Declaration = readonly [property: string, value: string | number];
  * an empty string when there is nothing to emit.
  */
 export function styleAttr(declarations: Declaration[]): string {
-  if (declarations.length === 0) return "";
+  if (declarations.length === 0) {
+    return "";
+  }
   const body = declarations
     .map(([property, value]) => `${property}: ${typeof value === "number" ? value : `"${value}"`}`)
     .join(", ");
@@ -99,8 +103,12 @@ export function presentationToMdx(presentation: Presentation): string {
   // default styling but it is harmless.
   const heads: string[] = [];
   const defs = shapeDefsBlock(presentation, pathIds);
-  if (defs) heads.push(defs);
-  if (hasRenderableTable(presentation)) heads.push(tableStyleBlock(className));
+  if (defs) {
+    heads.push(defs);
+  }
+  if (hasRenderableTable(presentation)) {
+    heads.push(tableStyleBlock(className));
+  }
   return [...heads, wrapper].join("\n\n");
 }
 
@@ -114,7 +122,9 @@ function collectPathIds(presentation: Presentation): Map<string, string> {
   const ids = new Map<string, string>();
   for (const slide of presentation.slides) {
     for (const shape of slide.shapes ?? []) {
-      if (!ids.has(shape.localD)) ids.set(shape.localD, `kn-p${ids.size + 1}`);
+      if (!ids.has(shape.localD)) {
+        ids.set(shape.localD, `kn-p${ids.size + 1}`);
+      }
     }
   }
   return ids;
@@ -128,9 +138,13 @@ function collectPathIds(presentation: Presentation): Map<string, string> {
  * included only when some shape uses an arrowhead.
  */
 function shapeDefsBlock(presentation: Presentation, pathIds: Map<string, string>): string {
-  if (pathIds.size === 0) return "";
+  if (pathIds.size === 0) {
+    return "";
+  }
   const entries: string[] = [];
-  if (anyShapeMarker(presentation)) entries.push(ARROW_MARKER);
+  if (anyShapeMarker(presentation)) {
+    entries.push(ARROW_MARKER);
+  }
   for (const [d, id] of pathIds) entries.push(`<path id="${id}" d="${d}" />`);
   const body = entries.map((entry) => `${INDENT.repeat(2)}${entry}`).join("\n");
   return `<svg width="0" height="0" aria-hidden="true" ${styleAttr([["position", "absolute"]])}>\n${INDENT}<defs>\n${body}\n${INDENT}</defs>\n</svg>`;
@@ -258,10 +272,18 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
   }
 
   const style = textBox.style;
-  if (style?.fontFamily) declarations.push(["fontFamily", style.fontFamily]);
-  if (style?.fontSizeToken && !omitFontSize) declarations.push(["fontSize", style.fontSizeToken]);
-  if (style?.color) declarations.push(["color", style.color]);
-  if (style?.fontWeight !== undefined) declarations.push(["fontWeight", style.fontWeight]);
+  if (style?.fontFamily) {
+    declarations.push(["fontFamily", style.fontFamily]);
+  }
+  if (style?.fontSizeToken && !omitFontSize) {
+    declarations.push(["fontSize", style.fontSizeToken]);
+  }
+  if (style?.color) {
+    declarations.push(["color", style.color]);
+  }
+  if (style?.fontWeight !== undefined) {
+    declarations.push(["fontWeight", style.fontWeight]);
+  }
   // A filled box is one of the deck's sized diagram labels (e.g. "verifier",
   // "maps"): center its text both ways via flexbox, since the box has a real
   // height to center within. Flow/placeholder boxes carry no fill, so they keep
@@ -278,11 +300,17 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
     declarations.push(["textAlign", style.textAlign]);
   }
   // A character outline (white-on-black "REQUEST" style text); camelCase JSX key.
-  if (style?.textStroke) declarations.push(["WebkitTextStroke", style.textStroke]);
+  if (style?.textStroke) {
+    declarations.push(["WebkitTextStroke", style.textStroke]);
+  }
   // A drop shadow lifted from the backing shape (e.g. the sign-off "Thanks!").
-  if (style?.textShadow) declarations.push(["textShadow", style.textShadow]);
+  if (style?.textShadow) {
+    declarations.push(["textShadow", style.textShadow]);
+  }
   // The backing shape's group-level Style-tab opacity (e.g. a translucent label).
-  if (style?.opacity !== undefined) declarations.push(["opacity", style.opacity]);
+  if (style?.opacity !== undefined) {
+    declarations.push(["opacity", style.opacity]);
+  }
   // A shape-fill background, with a little breathing room so text isn't flush to
   // the box edge (matching the deck's filled diagram labels).
   if (style?.backgroundColor) {
@@ -290,7 +318,9 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
     declarations.push(["padding", "0.2em 0.4em"]);
   }
   // A rounded-rect shape's corner radius (e.g. the diagram labels' "8.9%").
-  if (style?.borderRadius) declarations.push(["borderRadius", style.borderRadius]);
+  if (style?.borderRadius) {
+    declarations.push(["borderRadius", style.borderRadius]);
+  }
 
   return declarations;
 }
@@ -303,7 +333,9 @@ function percent(value: number): number {
 function renderSlide(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string {
   const attributes = slideAttributes(slide);
   const blocks = slideBlocks(slide, slideSize, pathIds);
-  if (blocks.length === 0) return attributes ? `<Slide ${attributes} />` : "<Slide />";
+  if (blocks.length === 0) {
+    return attributes ? `<Slide ${attributes} />` : "<Slide />";
+  }
 
   const open = attributes ? `<Slide ${attributes}>` : "<Slide>";
   return `${open}\n${indent(blocks.join("\n\n"))}\n</Slide>`;
@@ -317,7 +349,9 @@ function renderSlide(slide: Slide, slideSize: { width: number; height: number },
  */
 function slideAttributes(slide: Slide): string {
   const parts: string[] = [];
-  if (slide.className) parts.push(`className="${slide.className}"`);
+  if (slide.className) {
+    parts.push(`className="${slide.className}"`);
+  }
   if (slide.background) {
     // The `Slide` component prepends `backgroundRoot` (= imageRoot), so this is a
     // bare file name; rooting it here would double the prefix and 404 the image.
@@ -326,7 +360,9 @@ function slideAttributes(slide: Slide): string {
   }
   // The slide's solid background fill sits behind everything via an inline style,
   // so it shows wherever a background image doesn't fully cover the slide.
-  if (slide.backgroundColor) parts.push(styleAttr([["backgroundColor", slide.backgroundColor]]));
+  if (slide.backgroundColor) {
+    parts.push(styleAttr([["backgroundColor", slide.backgroundColor]]));
+  }
   return parts.join(" ");
 }
 
@@ -335,10 +371,16 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number },
 
   // A full-bleed tint over the background image (zIndex 0): above the cover
   // background, below the figure (zIndex 1) and text (zIndex >= 2).
-  if (slide.backgroundTint) blocks.push(backgroundTintOverlay(slide.backgroundTint));
+  if (slide.backgroundTint) {
+    blocks.push(backgroundTintOverlay(slide.backgroundTint));
+  }
 
-  if (slide.title) blocks.push(`# ${escapeMdxText(slide.title)}`);
-  if (slide.body.length > 0) blocks.push(renderBullets(slide.body));
+  if (slide.title) {
+    blocks.push(`# ${escapeMdxText(slide.title)}`);
+  }
+  if (slide.body.length > 0) {
+    blocks.push(renderBullets(slide.body));
+  }
 
   // Shapes are grouped into one `<svg>` per contiguous z-order run, so a slide of
   // identical icons collapses to a single overlay instead of dozens.
@@ -367,7 +409,9 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number },
   }
 
   const notes = renderSpeakerNotes(slide.notes);
-  if (notes) blocks.push(notes);
+  if (notes) {
+    blocks.push(notes);
+  }
 
   return blocks.filter((block) => block.length > 0);
 }
@@ -436,10 +480,20 @@ interface ShapeRun {
 function shapeBarriers(slide: Slide): number[] {
   const barriers: number[] = [];
   for (const textBox of slide.textBoxes) {
-    if (textBox.kind === "text" && textBox.zOrder !== undefined) barriers.push(textBox.zOrder);
+    if (textBox.kind === "text" && textBox.zOrder !== undefined) {
+      barriers.push(textBox.zOrder);
+    }
   }
-  for (const image of slide.images) if (image.zOrder !== undefined) barriers.push(image.zOrder);
-  for (const video of slide.videos) if (video.zOrder !== undefined) barriers.push(video.zOrder);
+  for (const image of slide.images) {
+    if (image.zOrder !== undefined) {
+      barriers.push(image.zOrder);
+    }
+  }
+  for (const video of slide.videos) {
+    if (video.zOrder !== undefined) {
+      barriers.push(video.zOrder);
+    }
+  }
   return barriers;
 }
 
@@ -463,13 +517,17 @@ function groupShapeRuns(shapes: SvgPath[], barriers: number[]): ShapeRun[] {
     current.push(shape);
     previousZ = shape.zOrder;
   }
-  if (current.length > 0) runs.push(makeRun(current));
+  if (current.length > 0) {
+    runs.push(makeRun(current));
+  }
   return runs;
 }
 
 /** True when a non-shape drawable's z-rank lies strictly between two consecutive shapes' ranks. */
 function splitsRun(previousZ: number | undefined, z: number | undefined, barriers: number[]): boolean {
-  if (previousZ === undefined || z === undefined) return false;
+  if (previousZ === undefined || z === undefined) {
+    return false;
+  }
   const lo = Math.min(previousZ, z);
   const hi = Math.max(previousZ, z);
   return barriers.some((barrier) => barrier > lo && barrier < hi);
@@ -520,9 +578,13 @@ function renderImage(image: SlideImage): string {
   // A full-bleed master backdrop sits behind all content at zIndex 0; everything
   // else stacks by its z-order rank above the slide backdrop.
   const zIndex = image.backdrop ? 0 : positionedZIndex(image.zOrder, 1);
-  if (image.crop) return renderCroppedImage(image.fileName, image.altText, image.crop, zIndex, image.opacity);
+  if (image.crop) {
+    return renderCroppedImage(image.fileName, image.altText, image.crop, zIndex, image.opacity);
+  }
   const declarations = image.box ? imageDeclarations(image.box, zIndex) : [];
-  if (image.opacity !== undefined) declarations.push(["opacity", image.opacity]);
+  if (image.opacity !== undefined) {
+    declarations.push(["opacity", image.opacity]);
+  }
   const style = declarations.length > 0 ? `${styleAttr(declarations)} ` : "";
   return `<Image ${style}${imageSrc(image.fileName)} role="presentation" alt="${escapeMdxText(image.altText)}" />`;
 }
@@ -558,13 +620,17 @@ function cropImageDeclarations(crop: ImageCrop): Declaration[] {
 function renderCroppedImage(fileName: string, altText: string, crop: ImageCrop, zIndex: number, opacity?: number): string {
   const container = styleAttr(cropContainerDeclarations(crop, zIndex));
   const innerDeclarations = cropImageDeclarations(crop);
-  if (opacity !== undefined) innerDeclarations.push(["opacity", opacity]);
+  if (opacity !== undefined) {
+    innerDeclarations.push(["opacity", opacity]);
+  }
   const inner = `<Image ${styleAttr(innerDeclarations)} ${imageSrc(fileName)} role="presentation" alt="${escapeMdxText(altText)}" />`;
   return `<div ${container}>\n${INDENT}${inner}\n</div>`;
 }
 
 function renderSpeakerNotes(notes: Paragraph[]): string {
-  if (notes.length === 0) return "";
+  if (notes.length === 0) {
+    return "";
+  }
   return `<SpeakerNotes>\n${indent(renderBullets(notes))}\n</SpeakerNotes>`;
 }
 
@@ -650,7 +716,9 @@ function tableStyleBlock(slug: string): string {
  * `<table>` form instead. A table with no cells renders nothing.
  */
 export function renderTable(table: TableData): string {
-  if (table.rows.every((row) => row.length === 0)) return "";
+  if (table.rows.every((row) => row.length === 0)) {
+    return "";
+  }
   // GFM cannot express col/row spans, cell backgrounds, or per-cell text
   // color/alignment, so any of those forces the raw-HTML form; only a span-free,
   // style-free table stays markdown.
@@ -719,17 +787,33 @@ function renderHtmlTable(table: TableData): string {
  */
 function renderCell(cell: TableCell): string {
   let attrs = "";
-  if (cell.colSpan > 1) attrs += ` colSpan={${cell.colSpan}}`;
-  if (cell.rowSpan > 1) attrs += ` rowSpan={${cell.rowSpan}}`;
+  if (cell.colSpan > 1) {
+    attrs += ` colSpan={${cell.colSpan}}`;
+  }
+  if (cell.rowSpan > 1) {
+    attrs += ` rowSpan={${cell.rowSpan}}`;
+  }
   const declarations: Declaration[] = [];
   const fill = cellFillStyle(cell);
-  if (fill) declarations.push(["backgroundColor", fill]);
-  if (cell.color !== undefined) declarations.push(["color", cell.color]);
-  if (cell.fontFamily !== undefined) declarations.push(["fontFamily", cell.fontFamily]);
-  if (cell.bold) declarations.push(["fontWeight", 700]);
-  if (cell.align !== undefined) declarations.push(["textAlign", cell.align]);
+  if (fill) {
+    declarations.push(["backgroundColor", fill]);
+  }
+  if (cell.color !== undefined) {
+    declarations.push(["color", cell.color]);
+  }
+  if (cell.fontFamily !== undefined) {
+    declarations.push(["fontFamily", cell.fontFamily]);
+  }
+  if (cell.bold) {
+    declarations.push(["fontWeight", 700]);
+  }
+  if (cell.align !== undefined) {
+    declarations.push(["textAlign", cell.align]);
+  }
   const style = styleAttr(declarations);
-  if (style) attrs += ` ${style}`;
+  if (style) {
+    attrs += ` ${style}`;
+  }
   return `<td${attrs}>${cellHtml(cell.text)}</td>`;
 }
 
@@ -739,8 +823,12 @@ function renderCell(cell: TableCell): string {
  * text, as a `td`-level `opacity` would); an opaque fill stays the plain hex.
  */
 function cellFillStyle(cell: TableCell): string | undefined {
-  if (cell.backgroundColor === undefined) return undefined;
-  if (cell.backgroundOpacity === undefined) return cell.backgroundColor;
+  if (cell.backgroundColor === undefined) {
+    return undefined;
+  }
+  if (cell.backgroundOpacity === undefined) {
+    return cell.backgroundColor;
+  }
   return rgba(cell.backgroundColor, cell.backgroundOpacity);
 }
 

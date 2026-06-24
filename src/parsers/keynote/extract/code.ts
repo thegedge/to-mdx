@@ -26,8 +26,12 @@ const STRONG_CODE = /[{};]|=>|->|::|#include|\bdef\b|\bfunction\b|\w+\([^)]*\)\s
 
 function looksLikeCode(paragraphs: Paragraph[]): boolean {
   const lines = paragraphs.map((paragraph) => paragraph.text).filter((line) => line.length > 0);
-  if (lines.length < 2) return false;
-  if (!lines.some((line) => STRONG_CODE.test(line))) return false;
+  if (lines.length < 2) {
+    return false;
+  }
+  if (!lines.some((line) => STRONG_CODE.test(line))) {
+    return false;
+  }
 
   const codeLines = lines.filter((line) => CODE_LINE.test(line)).length;
   return codeLines / lines.length >= 0.6;

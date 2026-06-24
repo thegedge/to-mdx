@@ -13,7 +13,9 @@ export function parentReference(message: unknown): bigint | undefined {
   // `super` (corrupt decode) can't spin forever.
   for (let depth = 0; node && typeof node === "object" && depth < 8; depth += 1) {
     const parent = (node as { parent?: { identifier?: bigint } }).parent;
-    if (parent?.identifier !== undefined) return parent.identifier;
+    if (parent?.identifier !== undefined) {
+      return parent.identifier;
+    }
     node = (node as { super?: unknown }).super;
   }
   return undefined;
@@ -36,9 +38,15 @@ export function owningSlideId(
 
   while (current) {
     const parentId = parentReference(current.message);
-    if (parentId === undefined) return undefined;
-    if (contentSlideIds.has(parentId)) return parentId;
-    if (seen.has(parentId)) return undefined;
+    if (parentId === undefined) {
+      return undefined;
+    }
+    if (contentSlideIds.has(parentId)) {
+      return parentId;
+    }
+    if (seen.has(parentId)) {
+      return undefined;
+    }
     seen.add(parentId);
     current = registry.get(parentId);
   }
@@ -63,11 +71,17 @@ export function drawableZOrder(
 
   while (current) {
     const rank = order.get(current.id);
-    if (rank !== undefined) return rank;
-    if (seen.has(current.id)) return undefined;
+    if (rank !== undefined) {
+      return rank;
+    }
+    if (seen.has(current.id)) {
+      return undefined;
+    }
     seen.add(current.id);
     const parentId = parentReference(current.message);
-    if (parentId === undefined) return undefined;
+    if (parentId === undefined) {
+      return undefined;
+    }
     current = registry.get(parentId);
   }
 

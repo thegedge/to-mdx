@@ -11,9 +11,13 @@ import { parse } from "./parsers.ts";
 function gitToplevel(): string {
   let dir = process.cwd();
   for (;;) {
-    if (fs.existsSync(path.join(dir, ".git"))) return dir;
+    if (fs.existsSync(path.join(dir, ".git"))) {
+      return dir;
+    }
     const parent = path.dirname(dir);
-    if (parent === dir) throw new Error("not a git repository");
+    if (parent === dir) {
+      throw new Error("not a git repository");
+    }
     dir = parent;
   }
 }
@@ -28,10 +32,14 @@ export function resolveProjectRoot(runGit: () => string = gitToplevel): string {
   // sandboxed child needn't stat ancestor directories (which its read scope
   // excludes). Falls through to the walk when run directly (e.g. tests).
   const fromLauncher = process.env.TO_MDX_OUTPUT_ROOT;
-  if (fromLauncher) return fromLauncher;
+  if (fromLauncher) {
+    return fromLauncher;
+  }
   try {
     const root = runGit().trim();
-    if (root) return root;
+    if (root) {
+      return root;
+    }
   } catch {
     // git missing or not a repo — fall through to cwd.
   }

@@ -24,7 +24,9 @@ import { alignmentToken, colorToHex, fontFamily } from "./style.ts";
  */
 export function extractTable(info: TableInfoArchive, registry: Registry): TableData | undefined {
   const model = registry.resolve<TableModelArchive>(info.tableModel);
-  if (!model) return undefined;
+  if (!model) {
+    return undefined;
+  }
   return tableData(model, registry);
 }
 
@@ -66,11 +68,15 @@ export interface CellTables {
  */
 export function tableData(model: TableModelArchive, registry: Registry): TableData | undefined {
   const store = model.baseDataStore;
-  if (!store) return undefined;
+  if (!store) {
+    return undefined;
+  }
 
   const columns = model.numberOfColumns;
   const rowCount = model.numberOfRows;
-  if (!columns || !rowCount) return undefined;
+  if (!columns || !rowCount) {
+    return undefined;
+  }
 
   const richColor = new Map<number, string>();
   const tables: CellTables = {
@@ -88,10 +94,14 @@ export function tableData(model: TableModelArchive, registry: Registry): TableDa
 
   for (const tileEntry of store.tiles?.tiles ?? []) {
     const tile = registry.resolve<Tile>(tileEntry.tile);
-    if (!tile) continue;
+    if (!tile) {
+      continue;
+    }
     for (const rowInfo of tile.rowInfos) {
       const globalRow = tileEntry.tileid * tileSize + rowInfo.tileRowIndex;
-      if (globalRow < 0 || globalRow >= rowCount) continue;
+      if (globalRow < 0 || globalRow >= rowCount) {
+        continue;
+      }
       offsetsByRow[globalRow] = decodeOffsets(rowInfo.cellOffsets, columns);
       buffers[globalRow] = rowInfo.cellStorageBuffer;
     }
@@ -107,9 +117,13 @@ export function tableData(model: TableModelArchive, registry: Registry): TableDa
 /** Maps each string-table key to its stored string (skipping non-string entries). */
 function stringMap(list: TableDataList | undefined): Map<number, string> {
   const map = new Map<number, string>();
-  if (!list) return map;
+  if (!list) {
+    return map;
+  }
   for (const entry of list.entries) {
-    if (entry.string !== undefined) map.set(entry.key, entry.string);
+    if (entry.string !== undefined) {
+      map.set(entry.key, entry.string);
+    }
   }
   return map;
 }
@@ -128,16 +142,24 @@ function richTextMap(
   colors: Map<number, string>,
 ): Map<number, string> {
   const map = new Map<number, string>();
-  if (!list) return map;
+  if (!list) {
+    return map;
+  }
   for (const entry of list.entries) {
-    if (!entry.richTextPayload) continue;
+    if (!entry.richTextPayload) {
+      continue;
+    }
     const payload = registry.resolve<RichTextPayloadArchive>(entry.richTextPayload);
     const storage = registry.resolve<StorageArchive>(payload?.storage);
-    if (!storage) continue;
+    if (!storage) {
+      continue;
+    }
     map.set(entry.key, storage.text.join("\n"));
     const charStyle = registry.resolve<CharacterStyleArchive>(storage.tableCharStyle?.entries[0]?.object);
     const fontColor = charStyle?.charProperties?.fontColor;
-    if (hasRgb(fontColor)) colors.set(entry.key, colorToHex(fontColor));
+    if (hasRgb(fontColor)) {
+      colors.set(entry.key, colorToHex(fontColor));
+    }
   }
   return map;
 }
@@ -145,11 +167,15 @@ function richTextMap(
 /** Reads a row's `cellOffsets` into a `columns`-length array (`NO_CELL` past the end). */
 function decodeOffsets(raw: Uint8Array | undefined, columns: number): number[] {
   const out = new Array<number>(columns).fill(NO_CELL);
-  if (!raw) return out;
+  if (!raw) {
+    return out;
+  }
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
   for (let col = 0; col < columns; col++) {
     const at = col * 2;
-    if (at + 2 > raw.byteLength) break;
+    if (at + 2 > raw.byteLength) {
+      break;
+    }
     out[col] = view.getUint16(at, true);
   }
   return out;
@@ -166,11 +192,15 @@ function decodeRow(
   styling: CellStyling,
 ): TableCell[] {
   const offsets = offsetsByRow[r];
-  if (!offsets || !buffer) return [];
+  if (!offsets || !buffer) {
+    return [];
+  }
 
   const cells: TableCell[] = [];
   for (let c = 0; c < columns; c++) {
-    if (offsets[c] === NO_CELL) continue; // covered by a merge (or empty)
+    if (offsets[c] === NO_CELL) {
+      continue; // covered by a merge (or empty)
+    }
     const background = cellBackground(styling, buffer, offsets[c], r, c);
     const text = cellText(styling, tables, buffer, offsets[c], r, c);
     cells.push({
@@ -207,7 +237,9 @@ function rowSpanAt(offsetsByRow: (number[] | undefined)[], r: number, c: number,
   let span = 1;
   for (let rr = r + 1; rr < rowCount; rr++) {
     const below = offsetsByRow[rr];
-    if (!below || below[c] !== NO_CELL || c >= firstAnchorColumn(below)) break;
+    if (!below || below[c] !== NO_CELL || c >= firstAnchorColumn(below)) {
+      break;
+    }
     span++;
   }
   return span;
@@ -216,7 +248,9 @@ function rowSpanAt(offsetsByRow: (number[] | undefined)[], r: number, c: number,
 /** Smallest column with an anchor in `offsets`, or the column count if the row has none. */
 function firstAnchorColumn(offsets: number[]): number {
   for (let col = 0; col < offsets.length; col++) {
-    if (offsets[col] !== NO_CELL) return col;
+    if (offsets[col] !== NO_CELL) {
+      return col;
+    }
   }
   return offsets.length;
 }
@@ -229,17 +263,27 @@ function firstAnchorColumn(offsets: number[]): number {
  * Every other type, and any out-of-bounds read, yields an empty string.
  */
 export function cellValue(buffer: Uint8Array, offset: number, tables: CellTables): string {
-  if (offset < 0 || offset + CELL_TYPE_OFFSET >= buffer.byteLength) return "";
+  if (offset < 0 || offset + CELL_TYPE_OFFSET >= buffer.byteLength) {
+    return "";
+  }
 
   const cellType = buffer[offset + CELL_TYPE_OFFSET];
-  if (cellType !== CELL_TYPE_TEXT && cellType !== CELL_TYPE_NUMBER && cellType !== CELL_TYPE_RICH) return "";
+  if (cellType !== CELL_TYPE_TEXT && cellType !== CELL_TYPE_NUMBER && cellType !== CELL_TYPE_RICH) {
+    return "";
+  }
 
-  if (offset + KEY_OFFSET + 4 > buffer.byteLength) return "";
+  if (offset + KEY_OFFSET + 4 > buffer.byteLength) {
+    return "";
+  }
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   const key = view.getUint32(offset + KEY_OFFSET, true);
 
-  if (cellType === CELL_TYPE_NUMBER) return String(key);
-  if (cellType === CELL_TYPE_RICH) return tables.richText.get(key) ?? "";
+  if (cellType === CELL_TYPE_NUMBER) {
+    return String(key);
+  }
+  if (cellType === CELL_TYPE_RICH) {
+    return tables.richText.get(key) ?? "";
+  }
   return tables.strings.get(key) ?? "";
 }
 
@@ -316,7 +360,9 @@ interface CellStyleNode {
 export function effectiveCellFill(style: CellStyleArchive | undefined): FillArchive | undefined {
   let node: CellStyleNode | undefined = style as unknown as CellStyleNode | undefined;
   while (node) {
-    if (node.cellProperties?.cellFill) return node.cellProperties.cellFill;
+    if (node.cellProperties?.cellFill) {
+      return node.cellProperties.cellFill;
+    }
     node = node.super;
   }
   return undefined;
@@ -325,10 +371,14 @@ export function effectiveCellFill(style: CellStyleArchive | undefined): FillArch
 /** Converts a fill to a render-ready background (hex + optional rounded alpha), or undefined when not a solid color. */
 export function fillToBackground(fill: FillArchive | undefined): CellBackground | undefined {
   const color = fill?.color;
-  if (!hasRgb(color)) return undefined;
+  if (!hasRgb(color)) {
+    return undefined;
+  }
   const background: CellBackground = { backgroundColor: colorToHex(color) };
   const a = color.a ?? 1;
-  if (a < 1) background.backgroundOpacity = Math.round(a * 1000) / 1000;
+  if (a < 1) {
+    background.backgroundOpacity = Math.round(a * 1000) / 1000;
+  }
   return background;
 }
 
@@ -399,11 +449,21 @@ export function effectiveTextProps(
   let alignment: number | undefined;
   let bold: boolean | undefined;
   while (node) {
-    if (fontColor === undefined && node.charProperties?.fontColor) fontColor = node.charProperties.fontColor;
-    if (fontName === undefined && node.charProperties?.fontName) fontName = node.charProperties.fontName;
-    if (alignment === undefined && node.paraProperties?.alignment !== undefined) alignment = node.paraProperties.alignment;
-    if (bold === undefined && node.charProperties?.bold !== undefined) bold = node.charProperties.bold;
-    if (fontColor !== undefined && fontName !== undefined && alignment !== undefined && bold !== undefined) break;
+    if (fontColor === undefined && node.charProperties?.fontColor) {
+      fontColor = node.charProperties.fontColor;
+    }
+    if (fontName === undefined && node.charProperties?.fontName) {
+      fontName = node.charProperties.fontName;
+    }
+    if (alignment === undefined && node.paraProperties?.alignment !== undefined) {
+      alignment = node.paraProperties.alignment;
+    }
+    if (bold === undefined && node.charProperties?.bold !== undefined) {
+      bold = node.charProperties.bold;
+    }
+    if (fontColor !== undefined && fontName !== undefined && alignment !== undefined && bold !== undefined) {
+      break;
+    }
     node = node.super;
   }
   return { fontColor, fontName, alignment, bold };
@@ -412,15 +472,25 @@ export function effectiveTextProps(
 /** Resolves a text-style reference to its effective color/font/alignment/bold, or undefined when none resolves. */
 function resolveTextStyle(ref: Reference | undefined, registry: Registry): CellTextStyle | undefined {
   const style = registry.resolve<ParagraphStyleArchive>(ref);
-  if (!style) return undefined;
+  if (!style) {
+    return undefined;
+  }
   const { fontColor, fontName, alignment, bold } = effectiveTextProps(style);
   const resolved: CellTextStyle = {};
-  if (hasRgb(fontColor)) resolved.color = colorToHex(fontColor);
+  if (hasRgb(fontColor)) {
+    resolved.color = colorToHex(fontColor);
+  }
   const family = fontFamily(fontName);
-  if (family) resolved.fontFamily = family;
+  if (family) {
+    resolved.fontFamily = family;
+  }
   const align = alignmentToken(alignment);
-  if (align) resolved.align = align;
-  if (bold === true) resolved.bold = true;
+  if (align) {
+    resolved.align = align;
+  }
+  if (bold === true) {
+    resolved.bold = true;
+  }
   return resolved.color !== undefined ||
     resolved.fontFamily !== undefined ||
     resolved.align !== undefined ||
@@ -467,16 +537,22 @@ const GATED_FIELD_WIDTHS: ReadonlyArray<readonly [bit: number, width: number]> =
  * present fields ahead of the target field to find its position.
  */
 function gatedFieldId(buffer: Uint8Array, offset: number, flag: number): number | undefined {
-  if (offset < 0 || offset + GATED_FIELDS_OFFSET > buffer.byteLength) return undefined;
+  if (offset < 0 || offset + GATED_FIELDS_OFFSET > buffer.byteLength) {
+    return undefined;
+  }
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   const flags = view.getUint32(offset + FLAGS_OFFSET, true);
   let p = offset + GATED_FIELDS_OFFSET;
   for (const [bit, width] of GATED_FIELD_WIDTHS) {
     if (!(flags & bit)) {
-      if (bit === flag) return undefined; // target field not present
+      if (bit === flag) {
+        return undefined; // target field not present
+      }
       continue;
     }
-    if (bit === flag) return p + 4 <= buffer.byteLength ? view.getUint32(p, true) : undefined;
+    if (bit === flag) {
+      return p + 4 <= buffer.byteLength ? view.getUint32(p, true) : undefined;
+    }
     p += width;
   }
   return undefined;
@@ -507,23 +583,37 @@ export function cellBackground(
   c: number,
 ): CellBackground | undefined {
   const id = cellStyleId(buffer, offset);
-  if (id !== undefined && styling.byKey.has(id)) return styling.byKey.get(id);
+  if (id !== undefined && styling.byKey.has(id)) {
+    return styling.byKey.get(id);
+  }
   return positionalBackground(styling, r, c);
 }
 
 /** The positional default fill for a cell, by row/column band. */
 function positionalBackground(styling: CellStyling, r: number, c: number): CellBackground | undefined {
-  if (r < styling.headerRows) return styling.header;
-  if (styling.footerRows > 0 && r >= styling.rowCount - styling.footerRows) return styling.footer;
-  if (c < styling.headerColumns) return styling.headerColumn;
+  if (r < styling.headerRows) {
+    return styling.header;
+  }
+  if (styling.footerRows > 0 && r >= styling.rowCount - styling.footerRows) {
+    return styling.footer;
+  }
+  if (c < styling.headerColumns) {
+    return styling.headerColumn;
+  }
   return styling.body;
 }
 
 /** The positional default text style for a cell, by row/column band (mirrors `positionalBackground`). */
 function positionalTextStyle(styling: CellStyling, r: number, c: number): CellTextStyle | undefined {
-  if (r < styling.headerRows) return styling.textHeader;
-  if (styling.footerRows > 0 && r >= styling.rowCount - styling.footerRows) return styling.textFooter;
-  if (c < styling.headerColumns) return styling.textHeaderColumn;
+  if (r < styling.headerRows) {
+    return styling.textHeader;
+  }
+  if (styling.footerRows > 0 && r >= styling.rowCount - styling.footerRows) {
+    return styling.textFooter;
+  }
+  if (c < styling.headerColumns) {
+    return styling.textHeaderColumn;
+  }
   return styling.textBody;
 }
 
@@ -534,9 +624,15 @@ function positionalTextStyle(styling: CellStyling, r: number, c: number): CellTe
  * positional color.
  */
 function richCellColor(buffer: Uint8Array, offset: number, tables: CellTables): string | undefined {
-  if (!tables.richColor || offset < 0 || offset + CELL_TYPE_OFFSET >= buffer.byteLength) return undefined;
-  if (buffer[offset + CELL_TYPE_OFFSET] !== CELL_TYPE_RICH) return undefined;
-  if (offset + KEY_OFFSET + 4 > buffer.byteLength) return undefined;
+  if (!tables.richColor || offset < 0 || offset + CELL_TYPE_OFFSET >= buffer.byteLength) {
+    return undefined;
+  }
+  if (buffer[offset + CELL_TYPE_OFFSET] !== CELL_TYPE_RICH) {
+    return undefined;
+  }
+  if (offset + KEY_OFFSET + 4 > buffer.byteLength) {
+    return undefined;
+  }
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   return tables.richColor.get(view.getUint32(offset + KEY_OFFSET, true));
 }

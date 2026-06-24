@@ -160,7 +160,9 @@ function slideBackground(
   while (node) {
     const fill = node.slideProperties?.fill;
     if (fill) {
-      if (hasRgb(fill.color)) return { backgroundColor: colorToHex(fill.color) };
+      if (hasRgb(fill.color)) {
+        return { backgroundColor: colorToHex(fill.color) };
+      }
       const fileName = imageFillFileName(fill, dataFileNames);
       if (fileName) {
         const tint = fillColorCss(resolveFill(fill));
@@ -185,7 +187,9 @@ function hasRgb(color: Color | undefined): color is Color {
 /** The slide's master ("template") name, used to map to a layout class. */
 function masterName(slide: SlideArchive, registry: Registry): string | undefined {
   const ref = slide.templateSlide;
-  if (!ref) return undefined;
+  if (!ref) {
+    return undefined;
+  }
   return registry.resolve<SlideArchive>(ref)?.name;
 }
 
@@ -227,7 +231,9 @@ function collectFromSlide(
 
   if (sage.titleId !== undefined) {
     collected.sageTitle = drawableParagraphs(sage.titleId, registry);
-    if (collected.sageTitle.length > 0) pushGeometry(registry.get(sage.titleId)?.message, collected);
+    if (collected.sageTitle.length > 0) {
+      pushGeometry(registry.get(sage.titleId)?.message, collected);
+    }
   }
   for (const bodyId of sage.bodyIds) {
     const paragraphs = drawableParagraphs(bodyId, registry);
@@ -264,11 +270,15 @@ function processRef(
   handled: Set<bigint>,
   zOrder?: number,
 ): void {
-  if (!ref || handled.has(ref.identifier)) return;
+  if (!ref || handled.has(ref.identifier)) {
+    return;
+  }
   handled.add(ref.identifier);
 
   const entry = registry.get(ref.identifier);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
 
   if (isType(entry.type, "GroupArchive")) {
     // Grouped children share their group's z-order rank.
@@ -280,7 +290,9 @@ function processRef(
 
   if (isType(entry.type, "TableInfoArchive")) {
     const table = extractTable(entry.message as TableInfoArchive, registry);
-    if (table) collected.tables.push(table);
+    if (table) {
+      collected.tables.push(table);
+    }
     else collected.tableCount += 1;
     return;
   }
@@ -299,7 +311,9 @@ function processRef(
     // resolve per-paragraph sizes (slide-height-relative) for the mixed-size case.
     const paragraphs = extractParagraphs(storage, registry, collected.slideSize.height);
     collectText(resolvedRole, paragraphs, placeholder, storage, registry, collected, undefined, undefined, zOrder);
-    if (paragraphs.length > 0) pushGeometry(placeholder, collected);
+    if (paragraphs.length > 0) {
+      pushGeometry(placeholder, collected);
+    }
     return;
   }
 
@@ -326,7 +340,9 @@ function processRef(
 function collectShape(shape: ShapeInfoArchive, registry: Registry, collected: Collected, zOrder?: number): void {
   const style = registry.resolve<ShapeStyleArchive>(shape.super?.style);
   const path = svgPath(shape, style);
-  if (path) collected.shapes.push(zOrder === undefined ? path : { ...path, zOrder });
+  if (path) {
+    collected.shapes.push(zOrder === undefined ? path : { ...path, zOrder });
+  }
 }
 
 /**
@@ -345,7 +361,9 @@ function collectText(
   borderRadius?: string,
   zOrder?: number,
 ): void {
-  if (bucketParagraphs(role, paragraphs, collected) || paragraphs.length === 0) return;
+  if (bucketParagraphs(role, paragraphs, collected) || paragraphs.length === 0) {
+    return;
+  }
   collected.textBoxes.push(
     freeTextBox(paragraphs, message, storage, registry, collected.slideSize, shapeStyle, borderRadius, zOrder),
   );
@@ -368,7 +386,9 @@ function freeTextBox(
   zOrder?: number,
 ): TextBox {
   const textBox = asTextBox(paragraphs);
-  if (textBox.kind !== "text") return textBox;
+  if (textBox.kind !== "text") {
+    return textBox;
+  }
 
   const box = boxPercent(drawableGeometry(message), slideSize);
   const textStyle = textBoxStyle(storage, registry, slideSize.height);
@@ -393,7 +413,9 @@ function freeTextBox(
 /** Records a drawable's geometry (walked through its `super` chain) for layout heuristics. */
 function pushGeometry(message: unknown, collected: Collected): void {
   const box = drawableGeometry(message);
-  if (box) collected.geometries.push(box);
+  if (box) {
+    collected.geometries.push(box);
+  }
 }
 
 /** Files title/body paragraphs by role. Returns whether the role consumed them. */
@@ -410,8 +432,12 @@ function bucketParagraphs(role: Role, paragraphs: Paragraph[], collected: Collec
 }
 
 function roleFromKind(kind: number | undefined): Role {
-  if (kind === PlaceholderKind.title) return "title";
-  if (kind === PlaceholderKind.body) return "body";
+  if (kind === PlaceholderKind.title) {
+    return "title";
+  }
+  if (kind === PlaceholderKind.body) {
+    return "body";
+  }
   return undefined;
 }
 
@@ -437,14 +463,18 @@ interface SageRoles {
 function collectSageTags(slide: SlideArchive): SageRoles {
   const map = slide.sageTagToInfoMap;
   const roles: SageRoles = { bodyIds: [], handledIds: [] };
-  if (!map?.length) return roles;
+  if (!map?.length) {
+    return roles;
+  }
 
   const idForTag = (tag: string): bigint | undefined =>
     map.find((mapEntry) => mapEntry.tag === tag)?.info?.identifier;
 
   for (const tag of SAGE_TITLE_TAGS) {
     const id = idForTag(tag);
-    if (id === undefined) continue;
+    if (id === undefined) {
+      continue;
+    }
     roles.handledIds.push(id);
     roles.titleId ??= id;
   }
@@ -463,7 +493,9 @@ function collectSageTags(slide: SlideArchive): SageRoles {
 /** Text of a drawable referenced by id, whether a shape or a title placeholder. */
 function drawableParagraphs(id: bigint, registry: Registry): Paragraph[] {
   const entry = registry.get(id);
-  if (!entry) return [];
+  if (!entry) {
+    return [];
+  }
 
   if (isType(entry.type, "ShapeInfoArchive")) {
     return extractParagraphs(storageForShape(entry.message as ShapeInfoArchive, registry), registry);
@@ -481,15 +513,21 @@ function drawableParagraphs(id: bigint, registry: Registry): Paragraph[] {
  */
 function pickTitle(slide: SlideArchive, collected: Collected, defaults: Set<string>): string | undefined {
   const sageTitle = joinText(collected.sageTitle);
-  if (sageTitle && !defaults.has(sageTitle)) return sageTitle;
+  if (sageTitle && !defaults.has(sageTitle)) {
+    return sageTitle;
+  }
 
   for (const paragraphs of collected.titles) {
     const text = joinText(paragraphs);
-    if (text && !defaults.has(text)) return text;
+    if (text && !defaults.has(text)) {
+      return text;
+    }
   }
 
   const thumbnail = (slide.thumbnailTextForTitlePlaceholder ?? "").trim();
-  if (thumbnail && !defaults.has(thumbnail)) return thumbnail;
+  if (thumbnail && !defaults.has(thumbnail)) {
+    return thumbnail;
+  }
 
   return undefined;
 }
@@ -497,7 +535,9 @@ function pickTitle(slide: SlideArchive, collected: Collected, defaults: Set<stri
 function pickBody(bodies: Paragraph[][], defaults: Set<string>): Paragraph[] {
   for (const paragraphs of bodies) {
     const text = joinText(paragraphs);
-    if (text && !defaults.has(text)) return paragraphs;
+    if (text && !defaults.has(text)) {
+      return paragraphs;
+    }
   }
   return [];
 }
@@ -511,6 +551,8 @@ function joinText(paragraphs: Paragraph[]): string {
 
 function notesParagraphs(ref: Reference | undefined, registry: Registry): Paragraph[] {
   const note = registry.resolve<NoteArchive>(ref);
-  if (!note) return [];
+  if (!note) {
+    return [];
+  }
   return extractParagraphs(registry.resolve<StorageArchive>(note.containedStorage), registry);
 }

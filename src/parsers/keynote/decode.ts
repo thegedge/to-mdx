@@ -33,13 +33,14 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
   const partialEntryNames = new Set<string>();
 
   // `splitObjectsAs` reports unrecoverable per-chunk parse failures by writing to
-  // console and abandoning the rest of that chunk (a known limitation against
-  // newer Keynote). Capture and count those instead of letting them spam stderr,
-  // then surface a single summary. Console is always restored in `finally`.
+  // console and abandoning the rest of that chunk. Capture and count those rather
+  // than letting them spam stderr; console is always restored in `finally`.
   const original = { error: console.error, log: console.log };
   let chunkFailed = false;
   const capture = (...args: unknown[]): void => {
-    if (PARTIAL_DECODE.test(args.map(String).join(" "))) chunkFailed = true;
+    if (PARTIAL_DECODE.test(args.map(String).join(" "))) {
+      chunkFailed = true;
+    }
   };
   console.error = capture;
   console.log = capture;
@@ -52,12 +53,11 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
       }
 
       try {
-        // An `.iwa` is a Snappy stream split into ≤64 KB blocks; the DECOMPRESSED
-        // blocks concatenate into one protobuf object stream, and objects routinely
-        // straddle block boundaries. Decoding each block independently (as the
-        // library's own splitter does) therefore aborts mid-object at every
-        // boundary, dropping the rest of the block — which is what lost whole
-        // stylesheets/tables. Concatenate first, then split the full stream.
+        // An `.iwa` is a Snappy stream of ≤64 KB blocks whose decompressed bytes
+        // form one protobuf object stream, with objects straddling block
+        // boundaries. Decoding each block independently (as the library's splitter
+        // does) aborts mid-object at every boundary, losing whole stylesheets/
+        // tables — so concatenate first, then split the full stream.
         const blocks: Uint8Array[] = [];
         for await (const snappyChunk of dechunk(entry.data)) {
           blocks.push(await uncompress(snappyChunk.data));
@@ -82,7 +82,9 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
   }
 
   const summary = partialDecodeWarning(partialChunks, totalChunks);
-  if (summary) warnings.push(summary);
+  if (summary) {
+    warnings.push(summary);
+  }
 
   const partialEntries = sortPartialEntries(partialEntryNames);
 
@@ -91,7 +93,9 @@ export async function decodeKeynote(filePath: string): Promise<DecodedArchive> {
 
 /** Concatenates an `.iwa`'s decompressed Snappy blocks into one object stream. */
 function concatChunks(blocks: Uint8Array[]): Uint8Array {
-  if (blocks.length === 1) return blocks[0];
+  if (blocks.length === 1) {
+    return blocks[0];
+  }
   const total = blocks.reduce((sum, block) => sum + block.length, 0);
   const full = new Uint8Array(total);
   let offset = 0;
@@ -109,12 +113,16 @@ export function sortPartialEntries(names: Iterable<string>): string[] {
 
 /** Single human-readable summary of how many .iwa chunks failed to fully decode. */
 export function partialDecodeWarning(partialChunks: number, totalChunks: number): string | null {
-  if (partialChunks <= 0) return null;
+  if (partialChunks <= 0) {
+    return null;
+  }
   return `⚠️  ${partialChunks} of ${totalChunks} .iwa chunks only partially decoded (library limitation; some content may be missing)`;
 }
 
 /** Lists the `.iwa` components affected by partial decoding, so the user knows what is lost. */
 export function partialEntriesWarning(partialEntries: string[]): string | null {
-  if (partialEntries.length === 0) return null;
+  if (partialEntries.length === 0) {
+    return null;
+  }
   return `Partial .iwa components: ${partialEntries.join(", ")}`;
 }

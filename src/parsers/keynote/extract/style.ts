@@ -37,28 +37,26 @@ const FONT_SIZE_TOKENS: ReadonlyArray<{ token: string; px: number }> = [
 ];
 
 /**
- * Reference height (px) that a font's *fraction of the slide height* is scaled
- * against before picking a token. Keynote point sizes are absolute to the deck's
- * (large) canvas, so a raw 36pt body line maps to a huge token; instead we treat
- * the font as a fraction of slide height and render it as if the slide were this
- * many px tall. Tuned on the reference deck (1920×1080): typical body text (~36pt)
- * lands on `--text-lg`, titles climb to `--text-4xl`, and a giant 200pt emoji tops
- * out around `--text-8xl` rather than `--text-9xl`.
+ * Reference height (px) a font's fraction of slide height is scaled against before
+ * picking a token. Keynote point sizes are absolute to the deck's large canvas, so
+ * we render the font as if the slide were this many px tall instead. Tuned on the
+ * 1920×1080 reference deck so body text lands on `--text-lg`, titles on `--text-4xl`.
  */
 const SLIDE_FONT_REFERENCE_PX = 512;
 
 /**
- * Maps a Keynote point size to the `var(--text-*)` token nearest it (capped at the
- * ends of the scale). When a slide height is supplied the size is first rescaled by
- * its fraction of the slide height (see `SLIDE_FONT_REFERENCE_PX`), so a font's
- * token reflects how large it reads on the slide rather than its raw point value; a
- * missing/degenerate slide height falls back to the raw point size.
+ * Maps a Keynote point size to the nearest `var(--text-*)` token (capped at the
+ * scale ends). A supplied slide height rescales the size by its fraction of slide
+ * height (see `SLIDE_FONT_REFERENCE_PX`) so the token reflects how large it reads;
+ * a missing height falls back to the raw point size.
  */
 export function fontSizeToken(pt: number, slideHeightPt?: number): string {
   const px = slideHeightPt && slideHeightPt > 0 ? (pt / slideHeightPt) * SLIDE_FONT_REFERENCE_PX : pt;
   let best = FONT_SIZE_TOKENS[0];
   for (const candidate of FONT_SIZE_TOKENS) {
-    if (Math.abs(candidate.px - px) < Math.abs(best.px - px)) best = candidate;
+    if (Math.abs(candidate.px - px) < Math.abs(best.px - px)) {
+      best = candidate;
+    }
   }
   return `var(--text-${best.token})`;
 }
@@ -90,31 +88,34 @@ export function rgba(hex: string, alpha: number): string {
  * simply omit the property).
  */
 export function fillColorCss(fill: ResolvedFill | undefined): string | undefined {
-  if (!fill) return undefined;
+  if (!fill) {
+    return undefined;
+  }
   return fill.opacity === undefined ? fill.color : rgba(fill.color, fill.opacity);
 }
 
 /**
  * Maps a PostScript-ish font name to a usable CSS family: drops a trailing
- * weight/style suffix after the last `-` (e.g. `ShopifySans-Light` → `ShopifySans`,
- * `Helvetica-Bold` → `Helvetica`), then splits a camelCase family into words
- * (`ShopifySans` → `Shopify Sans`). `Impact` stays `Impact`. Blank names yield
- * undefined. (We can't recover the registered display name, so this is a best
- * effort at a human-readable family.)
+ * weight/style suffix after the last `-` (`ShopifySans-Light` → `ShopifySans`),
+ * then splits camelCase into words (`ShopifySans` → `Shopify Sans`). Blank names
+ * yield undefined. A best effort, since the registered display name is unrecoverable.
  */
 export function fontFamily(name: string | undefined): string | undefined {
-  if (!name) return undefined;
+  if (!name) {
+    return undefined;
+  }
   const dash = name.lastIndexOf("-");
   const base = (dash > 0 ? name.slice(0, dash) : name).trim();
-  if (!base) return undefined;
+  if (!base) {
+    return undefined;
+  }
   return base.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 /**
- * A node in a media style's inheritance chain. The instance may carry
- * `mediaProperties` directly, or inherit it from its `super` (typed as a bare
- * `TSS.StyleArchive` but media-style-shaped at runtime), so we model it
- * structurally to walk it without casts — mirroring the slide-style walk.
+ * A node in a media style's inheritance chain. `mediaProperties` may sit on the
+ * instance or one level down its `super` (typed as a bare `TSS.StyleArchive` but
+ * media-style-shaped at runtime), so we model it structurally to walk without casts.
  */
 interface MediaStyleNode {
   mediaProperties?: { opacity?: number };
@@ -122,16 +123,17 @@ interface MediaStyleNode {
 }
 
 /**
- * The effective image opacity (0–1) from a resolved `MediaStyleArchive`: walks
- * the `super` chain for the first `mediaProperties.opacity`. Returns undefined
- * when no opacity is set or it is fully opaque (`>= 1`), so callers can simply
- * omit the property; a translucent value is rounded to 3 decimals.
+ * The effective image opacity (0–1) from a `MediaStyleArchive`: the first
+ * `mediaProperties.opacity` along the `super` chain, rounded to 3 decimals.
+ * Undefined when unset or fully opaque.
  */
 export function mediaOpacity(style: MediaStyleArchive | undefined): number | undefined {
   let node = style as MediaStyleNode | undefined;
   while (node) {
     const opacity = node.mediaProperties?.opacity;
-    if (opacity !== undefined) return opacity < 1 ? Number(opacity.toFixed(3)) : undefined;
+    if (opacity !== undefined) {
+      return opacity < 1 ? Number(opacity.toFixed(3)) : undefined;
+    }
     node = node.super;
   }
   return undefined;
@@ -154,7 +156,9 @@ export function boxPercent(
   box: RawBox | undefined,
   slideSize: { width: number; height: number },
 ): TextBoxGeometry | undefined {
-  if (!box || slideSize.width <= 0 || slideSize.height <= 0) return undefined;
+  if (!box || slideSize.width <= 0 || slideSize.height <= 0) {
+    return undefined;
+  }
   return {
     left: (box.x / slideSize.width) * 100,
     top: (box.y / slideSize.height) * 100,
@@ -164,19 +168,19 @@ export function boxPercent(
 }
 
 /**
- * Crop geometry for a masked image. The mask frame `(mx,my,mw,mh)` is in the
- * image's local space (mask.parent = image), so the visible region on the slide
- * is `(x+mx, y+my, mw, mh)` showing the full image clipped to it. The container
- * is expressed in slide-size percentages; the inner `<img>` is sized/offset in
- * percentages of the container. Returns undefined when the slide or mask is
- * degenerate (zero-sized), so callers fall back to the plain image box.
+ * Crop geometry for a masked image. The mask frame is in the image's local space
+ * (mask.parent = image), so the visible slide region is `(x+mx, y+my, mw, mh)`. The
+ * container is in slide-size percentages; the inner `<img>` is sized/offset in
+ * percentages of the container. Undefined when the slide or mask is zero-sized.
  */
 export function maskCrop(
   image: RawBox,
   mask: RawBox,
   slideSize: { width: number; height: number },
 ): ImageCrop | undefined {
-  if (slideSize.width <= 0 || slideSize.height <= 0 || mask.width <= 0 || mask.height <= 0) return undefined;
+  if (slideSize.width <= 0 || slideSize.height <= 0 || mask.width <= 0 || mask.height <= 0) {
+    return undefined;
+  }
   return {
     left: ((image.x + mask.x) / slideSize.width) * 100,
     top: ((image.y + mask.y) / slideSize.height) * 100,
@@ -191,17 +195,18 @@ export function maskCrop(
 
 /**
  * Lifts the dominant visual style from a text box's storage: font size, color,
- * weight, and alignment from the first paragraph style, with a color override
- * from the first character style (where Keynote keeps run-level color). This is a
- * first-pass read of the first paragraph/run — no full style inheritance — so any
- * property the archive omits is dropped, and an empty result returns undefined.
+ * weight, and alignment from the first paragraph style, with a color override from
+ * the first character style. A first-pass read of the first paragraph/run (no full
+ * style inheritance); an empty result returns undefined.
  */
 export function textBoxStyle(
   storage: StorageArchive | undefined,
   registry: Registry,
   slideHeightPt?: number,
 ): TextBoxStyle | undefined {
-  if (!storage) return undefined;
+  if (!storage) {
+    return undefined;
+  }
 
   const paraStyle = registry.resolve<ParagraphStyleArchive>(storage.tableParaStyle?.entries[0]?.object);
   const charStyle = registry.resolve<CharacterStyleArchive>(storage.tableCharStyle?.entries[0]?.object);
@@ -211,40 +216,59 @@ export function textBoxStyle(
   const family = fontFamily(charStyle?.charProperties?.fontName ?? charProps?.fontName);
 
   const style: TextBoxStyle = {};
-  if (charProps?.fontSize !== undefined) style.fontSizeToken = fontSizeToken(charProps.fontSize, slideHeightPt);
-  if (family) style.fontFamily = family;
-  if (hasRgb(fontColor)) style.color = colorToHex(fontColor);
-  if (charProps?.bold) style.fontWeight = 700;
+  if (charProps?.fontSize !== undefined) {
+    style.fontSizeToken = fontSizeToken(charProps.fontSize, slideHeightPt);
+  }
+  if (family) {
+    style.fontFamily = family;
+  }
+  if (hasRgb(fontColor)) {
+    style.color = colorToHex(fontColor);
+  }
+  if (charProps?.bold) {
+    style.fontWeight = 700;
+  }
   const align = alignmentToken(paraStyle?.paraProperties?.alignment);
-  if (align) style.textAlign = align;
+  if (align) {
+    style.textAlign = align;
+  }
   const stroke = textStroke(charStyle?.charProperties, charProps);
-  if (stroke) style.textStroke = stroke;
+  if (stroke) {
+    style.textStroke = stroke;
+  }
 
   return Object.keys(style).length > 0 ? style : undefined;
 }
 
 /**
- * The character outline as a CSS `-webkit-text-stroke` value, resolved from the
- * run's stroke `oneof`: a present `tsdStroke` (color + width in points) becomes
- * `"<width>px <color>"`, while an explicit `tsdStrokeNull` means "no outline". The
- * run-level (character) properties win over the paragraph-level ones, so a run
- * that clears the stroke (`tsdStrokeNull`) suppresses a paragraph-default stroke.
+ * The character outline as a CSS `-webkit-text-stroke` value from the run's stroke
+ * `oneof`: a `tsdStroke` (color + width) becomes `"<width>px <color>"`, while
+ * `tsdStrokeNull` means "no outline". Run-level props win over paragraph-level, so
+ * a run clearing the stroke suppresses a paragraph default.
  */
 function textStroke(
   charProps: CharacterStyleArchive["charProperties"] | undefined,
   paraCharProps: ParagraphStyleArchive["charProperties"] | undefined,
 ): string | undefined {
   for (const props of [charProps, paraCharProps]) {
-    if (!props) continue;
-    if (props.tsdStrokeNull) return undefined;
-    if (props.tsdStroke) return strokeToCss(props.tsdStroke);
+    if (!props) {
+      continue;
+    }
+    if (props.tsdStrokeNull) {
+      return undefined;
+    }
+    if (props.tsdStroke) {
+      return strokeToCss(props.tsdStroke);
+    }
   }
   return undefined;
 }
 
 /** A stroke's CSS `"<width>px <color>"`; undefined when it carries no RGB color. */
 function strokeToCss(stroke: StrokeArchive): string | undefined {
-  if (!hasRgb(stroke.color)) return undefined;
+  if (!hasRgb(stroke.color)) {
+    return undefined;
+  }
   const width = Number((stroke.width ?? 1).toFixed(2));
   return `${width}px ${colorToHex(stroke.color)}`;
 }

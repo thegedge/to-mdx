@@ -49,12 +49,16 @@ function buildNameIndex(): Map<string, Set<number>> {
   const index = new Map<string, Set<number>>();
   for (const [idText, constructor] of Object.entries(KeynoteArchives as Record<string, unknown>)) {
     const typeName = (constructor as { typeName?: string } | undefined)?.typeName;
-    if (!typeName) continue;
+    if (!typeName) {
+      continue;
+    }
 
     // typeName is the fully-qualified proto name, e.g. "TSP.PackageMetadata".
     const shortName = typeName.slice(typeName.lastIndexOf(".") + 1);
     const id = Number(idText);
-    if (!Number.isFinite(id)) continue;
+    if (!Number.isFinite(id)) {
+      continue;
+    }
 
     let ids = index.get(shortName);
     if (!ids) {
@@ -71,7 +75,9 @@ const NAME_INDEX = buildNameIndex();
 /** Every type id whose message constructor carries the given proto message name. */
 export function typeIds(name: KeynoteTypeName): Set<number> {
   const resolved = NAME_INDEX.get(name);
-  if (resolved && resolved.size > 0) return resolved;
+  if (resolved && resolved.size > 0) {
+    return resolved;
+  }
   return new Set(FALLBACK_IDS[name]);
 }
 

@@ -32,7 +32,9 @@ export async function parse(outputRoot: string, presentationFile: string, option
   const allWarnings = [...warnings, ...registry.warnings];
 
   const partialWarning = partialEntriesWarning(partialEntries);
-  if (partialWarning) allWarnings.push(partialWarning);
+  if (partialWarning) {
+    allWarnings.push(partialWarning);
+  }
 
   const totalOccurrences = registry.entriesOfTypes(typeIds("ImageArchive")).length;
   const placedOccurrences = presentation.slides.reduce((total, slide) => total + slide.images.length, 0);
@@ -40,7 +42,9 @@ export async function parse(outputRoot: string, presentationFile: string, option
     .size;
   const totalDistinct = distinctImageFileNames(registry, dataFiles).size;
   const coverageWarning = imageCoverageWarning({ placedOccurrences, totalOccurrences, placedDistinct, totalDistinct });
-  if (coverageWarning) allWarnings.push(coverageWarning);
+  if (coverageWarning) {
+    allWarnings.push(coverageWarning);
+  }
 
   await copyImages(presentation, dataFiles, basename, outputRoot);
 
@@ -69,7 +73,9 @@ async function resolveDate(presentationFile: string): Promise<Date> {
   // (which only resets the file's own mtime). Fall back to the file mtime when the
   // archive can't be read.
   const fromArchive = await archiveDate(presentationFile);
-  if (fromArchive) return fromArchive;
+  if (fromArchive) {
+    return fromArchive;
+  }
 
   const stats = await stat(presentationFile);
   console.warn(`⚠️  No date in Keynote archive; using file mtime ${formatDate(stats.mtime)}`);
@@ -82,7 +88,9 @@ async function archiveDate(presentationFile: string): Promise<Date | undefined> 
     const zip = await JSZip.loadAsync(await readFile(presentationFile));
     let latest: Date | undefined;
     for (const entry of Object.values(zip.files)) {
-      if (entry.date && (latest === undefined || entry.date > latest)) latest = entry.date;
+      if (entry.date && (latest === undefined || entry.date > latest)) {
+        latest = entry.date;
+      }
     }
     return latest;
   } catch {
@@ -104,9 +112,13 @@ async function copyImages(
   for (const slide of presentation.slides) {
     for (const image of slide.images) fileNames.add(image.fileName);
     for (const video of slide.videos) fileNames.add(video.fileName);
-    if (slide.background) fileNames.add(slide.background);
+    if (slide.background) {
+      fileNames.add(slide.background);
+    }
   }
-  if (fileNames.size === 0) return;
+  if (fileNames.size === 0) {
+    return;
+  }
 
   await mkdir(imagesDir, { recursive: true });
 
@@ -122,7 +134,9 @@ async function copyImages(
       continue;
     }
     const target = path.join(imagesDir, fileName);
-    if (fs.existsSync(target)) continue;
+    if (fs.existsSync(target)) {
+      continue;
+    }
     await writeFile(target, bytes);
   }
 }

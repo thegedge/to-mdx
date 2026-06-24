@@ -8,7 +8,9 @@ import { fontSizeToken } from "./style.ts";
  * the editable text in `owned_storage`, falling back to the older `text_flow`.
  */
 export function storageForShape(shape: ShapeInfoArchive | undefined, registry: Registry): StorageArchive | undefined {
-  if (!shape) return undefined;
+  if (!shape) {
+    return undefined;
+  }
   return registry.resolve<StorageArchive>(shape.ownedStorage) ?? registry.resolve<StorageArchive>(shape.textFlow);
 }
 
@@ -29,10 +31,14 @@ export function extractParagraphs(
   registry: Registry,
   slideHeightPt?: number,
 ): Paragraph[] {
-  if (!storage) return [];
+  if (!storage) {
+    return [];
+  }
 
   const full = storage.text.join("");
-  if (!full.trim()) return [];
+  if (!full.trim()) {
+    return [];
+  }
 
   const depthAt = buildDepthLookup(storage);
   const fontSizeAt = slideHeightPt ? buildFontSizeLookup(storage, registry, slideHeightPt) : undefined;
@@ -78,12 +84,16 @@ function buildFontSizeLookup(
     }))
     .filter((mark): mark is { at: number; pt: number } => mark.pt !== undefined)
     .sort((a, b) => a.at - b.at);
-  if (marks.length === 0) return () => undefined;
+  if (marks.length === 0) {
+    return () => undefined;
+  }
 
   return (charIndex: number) => {
     let pt: number | undefined;
     for (const mark of marks) {
-      if (mark.at > charIndex) break;
+      if (mark.at > charIndex) {
+        break;
+      }
       pt = mark.pt;
     }
     return pt === undefined ? undefined : fontSizeToken(pt, slideHeightPt);
@@ -92,7 +102,9 @@ function buildFontSizeLookup(
 
 function buildDepthLookup(storage: StorageArchive): (charIndex: number) => number {
   const entries = storage.tableParaData?.entries ?? [];
-  if (entries.length === 0) return () => 0;
+  if (entries.length === 0) {
+    return () => 0;
+  }
 
   const marks = entries
     .map((entry) => ({ at: entry.characterIndex, depth: entry.first }))
@@ -101,7 +113,9 @@ function buildDepthLookup(storage: StorageArchive): (charIndex: number) => numbe
   return (charIndex: number) => {
     let depth = 0;
     for (const mark of marks) {
-      if (mark.at > charIndex) break;
+      if (mark.at > charIndex) {
+        break;
+      }
       depth = mark.depth;
     }
     return depth;

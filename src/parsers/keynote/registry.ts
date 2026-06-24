@@ -20,10 +20,14 @@ export class Registry {
   #unresolved = new Set<string>();
 
   add(object: IwaObject): void {
-    if (object.identifier === undefined) return;
+    if (object.identifier === undefined) {
+      return;
+    }
 
     const primary = object.messages[0];
-    if (!primary) return;
+    if (!primary) {
+      return;
+    }
 
     this.#byId.set(object.identifier, {
       id: object.identifier,
@@ -51,20 +55,26 @@ export class Registry {
 
   firstOfType(type: number): RegistryEntry | undefined {
     for (const entry of this.#byId.values()) {
-      if (entry.type === type) return entry;
+      if (entry.type === type) {
+        return entry;
+      }
     }
     return undefined;
   }
 
   firstOfTypes(types: Set<number>): RegistryEntry | undefined {
     for (const entry of this.#byId.values()) {
-      if (types.has(entry.type)) return entry;
+      if (types.has(entry.type)) {
+        return entry;
+      }
     }
     return undefined;
   }
 
   resolve<T>(ref: Reference | DataReference | undefined): T | undefined {
-    if (!ref) return undefined;
+    if (!ref) {
+      return undefined;
+    }
 
     const entry = this.#byId.get(ref.identifier);
     if (!entry) {
@@ -90,7 +100,9 @@ export class Registry {
 
   private noteUnresolved(id: bigint): void {
     const key = id.toString();
-    if (this.#unresolved.has(key)) return;
+    if (this.#unresolved.has(key)) {
+      return;
+    }
     this.#unresolved.add(key);
     this.warnings.push(`Unresolved reference: ${key}`);
   }
