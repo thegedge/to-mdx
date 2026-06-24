@@ -32,3 +32,13 @@ export function centeringLayoutClass(box: LayoutBox): "centered" | "centered bla
 
   return null;
 }
+
+const FULL_BLEED = { minCoverage: 90, maxInset: 2, minExtent: 98 } as const;
+
+/** Whether a box is large enough to serve as the slide's background (full-bleed). */
+export function isFullBleed(box: LayoutBox): boolean {
+  const coversBoth = box.width >= FULL_BLEED.minCoverage && box.height >= FULL_BLEED.minCoverage;
+  const bleedsX = box.left <= FULL_BLEED.maxInset && box.left + box.width >= FULL_BLEED.minExtent;
+  const bleedsY = box.top <= FULL_BLEED.maxInset && box.top + box.height >= FULL_BLEED.minExtent;
+  return coversBoth || (bleedsX && bleedsY);
+}

@@ -1,6 +1,8 @@
-import { centeringLayoutClass, type LayoutBox } from "../../../heuristics/slide-layout.ts";
-import type { TextBoxGeometry } from "../model.ts";
+import { centeringLayoutClass, isFullBleed, type LayoutBox } from "../../../heuristics/slide-layout.ts";
 import { cls } from "../../../utils.ts";
+
+// Re-exported so the Keynote extractors/renderer keep importing it from here.
+export { isFullBleed };
 
 /** A drawable's geometry in slide (point) coordinates, as decoded from the archive. */
 export interface RawBox {
@@ -44,16 +46,6 @@ export function drawableGeometry(message: unknown): RawBox | undefined {
  * background: either it covers ≳90% of both axes, or it sits flush to the
  * top-left (inset ≤2%) and spans ≳98% of both axes (i.e. bleeds off the edge).
  */
-const FULL_BLEED = { minCoverage: 90, maxInset: 2, minExtent: 98 } as const;
-
-/** Whether an image box is large enough to serve as the slide's background. */
-export function isFullBleed(box: TextBoxGeometry): boolean {
-  const coversBoth = box.width >= FULL_BLEED.minCoverage && box.height >= FULL_BLEED.minCoverage;
-  const bleedsX = box.left <= FULL_BLEED.maxInset && box.left + box.width >= FULL_BLEED.minExtent;
-  const bleedsY = box.top <= FULL_BLEED.maxInset && box.top + box.height >= FULL_BLEED.minExtent;
-  return coversBoth || (bleedsX && bleedsY);
-}
-
 /**
  * Maps a Keynote master ("template") slide name to the CSS layout vocabulary the
  * ODP path already uses. First pass: tunable — these names track the stock

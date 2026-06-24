@@ -1,5 +1,7 @@
 /** Intermediate, format-agnostic representation extracted from the Keynote archive. */
 
+import type { LayoutBox } from "../../heuristics/slide-layout.ts";
+
 export interface Paragraph {
   /** List/indent depth; 0 = top level. */
   depth: number;
@@ -127,13 +129,8 @@ export interface SvgPath {
   zOrder?: number;
 }
 
-/** A free text box's bounding box, expressed as percentages of the slide size. */
-export interface TextBoxGeometry {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
+/** A box on the slide as percentages of the slide size (the shared layout box). */
+export type TextBoxGeometry = LayoutBox;
 
 /** Dominant visual styling extracted from a free text box's first paragraph/run. */
 export interface TextBoxStyle {
