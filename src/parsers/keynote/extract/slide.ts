@@ -291,9 +291,14 @@ function processRef(
   if (isType(entry.type, "TableInfoArchive")) {
     const table = extractTable(entry.message as TableInfoArchive, registry);
     if (table) {
+      const box = boxPercent(drawableGeometry(entry.message), collected.slideSize);
+      if (box) {
+        table.box = box;
+      }
       collected.tables.push(table);
+    } else {
+      collected.tableCount += 1;
     }
-    else collected.tableCount += 1;
     return;
   }
 

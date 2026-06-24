@@ -241,6 +241,8 @@ export interface TableCell {
  */
 export interface TableData {
   rows: TableCell[][];
+  /** Position/size on the slide (percent), so the table sits where Keynote placed it. */
+  box?: TextBoxGeometry;
 }
 
 export interface Slide {

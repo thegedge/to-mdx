@@ -452,7 +452,7 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number },
   }
 
   for (const table of slide.tables) {
-    blocks.push(renderTable(table));
+    blocks.push(renderPositionedTable(table));
   }
 
   if (slide.tableCount > 0) {
@@ -764,6 +764,17 @@ function tableStyleRules(scope: string): string[] {
     `${scope} table {\n  border-collapse: collapse;\n}`,
     `${scope} th,\n${scope} td {\n  border: 1px solid currentColor;\n  padding: 0.25em;\n}`,
   ];
+}
+
+/**
+/** Renders a table, wrapped in an absolutely-positioned div at its slide box when it has one. */
+function renderPositionedTable(table: TableData): string {
+  const rendered = renderTable(table);
+  if (!table.box || !rendered) {
+    return rendered;
+  }
+  const declarations: Declaration[] = [["position", "absolute"], ...positionRules(table.box), ["zIndex", 1]];
+  return `<div ${styleAttr(declarations)}>\n${indent(rendered)}\n</div>`;
 }
 
 /**
