@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Presentation, Slide } from "./model.ts";
-import { hoistStyles } from "./hoist.ts";
+import { hoistStyles, StyleCollector } from "./hoist.ts";
 import { assembleMdxDocument, escapeMdxText, isImageFile, positionRules, presentationToMdx, styleAttr } from "./render.ts";
 
 function slide(overrides: Partial<Slide> = {}): Slide {
@@ -723,15 +723,19 @@ test("presentationToMdx applies a rarer fontFamily via a scoped class while the 
 });
 
 test("hoistStyles makes a 2+-use color a var with a definition and leaves a single-use color literal", () => {
+  const collector = new StyleCollector();
+  const slide = collector.add([["backgroundColor", "#223274"]]);
+  const twice = collector.add([["color", "#223274"]]);
+  const once = collector.add([["color", "#abcdef"]]);
   const wrapper = [
     '<Slides className="deck" backgroundRoot={imageRoot}>',
-    '<Slide style={{ backgroundColor: "#223274" }}>',
-    '  <div style={{ color: "#223274" }}>a</div>',
-    '  <div style={{ color: "#abcdef" }}>b</div>',
+    `<Slide ${slide}>`,
+    `  <div ${twice}>a</div>`,
+    `  <div ${once}>b</div>`,
     "</Slide>",
     "</Slides>",
   ].join("\n");
-  const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck");
+  const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
   assert.match(rules.join("\n"), /--palette1: #223274;/);
   assert.match(out, /backgroundColor: "var\(--palette1\)"/);
@@ -742,15 +746,19 @@ test("hoistStyles makes a 2+-use color a var with a definition and leaves a sing
 });
 
 test("hoistStyles hoists an identical 2+-use style set to a class and leaves a unique one inline", () => {
-  const repeated = 'style={{ position: "absolute", overflow: "hidden", zIndex: 1 }}';
+  const collector = new StyleCollector();
+  const repeated = [["position", "absolute"], ["overflow", "hidden"], ["zIndex", 1]] as const;
+  const a = collector.add([...repeated]);
+  const b = collector.add([...repeated]);
+  const unique = collector.add([["position", "absolute"], ["zIndex", 9]]);
   const wrapper = [
     '<Slides className="deck" backgroundRoot={imageRoot}>',
-    `<div ${repeated}>a</div>`,
-    `<div ${repeated}>b</div>`,
-    '<div style={{ position: "absolute", zIndex: 9 }}>c</div>',
+    `<div ${a}>a</div>`,
+    `<div ${b}>b</div>`,
+    `<div ${unique}>c</div>`,
     "</Slides>",
   ].join("\n");
-  const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck");
+  const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
   assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}position: absolute;\n {2}overflow: hidden;\n {2}z-index: 1;\n\}/);
   assert.equal((out.match(/className="style1"/g) ?? []).length, 2);

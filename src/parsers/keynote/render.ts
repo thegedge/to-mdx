@@ -1,7 +1,8 @@
 import { kebabCase } from "../../utils.ts";
 import { isFullBleed } from "./extract/layout.ts";
 import { rgba } from "./extract/style.ts";
-import { hoistStyles } from "./hoist.ts";
+import { declarationBody, hoistStyles, StyleCollector } from "./hoist.ts";
+import type { Declaration } from "./hoist.ts";
 import type { ImageCrop, Paragraph, Presentation, Slide, SlideImage, SlideVideo, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
@@ -41,25 +42,30 @@ export function isImageFile(name: string): boolean {
 }
 
 /**
- * One JSX inline-style entry: a camelCase property and its value. String values
- * are emitted quoted (`"10%"`); number values are emitted bare (`700`), matching
- * how React/JSX style objects accept unitless numerics.
+ * The collector active for the current `presentationToMdx` render, into which
+ * `styleAttr` registers each style's structured declarations (emitting a
+ * placeholder token in their place) so `hoistStyles` can work on the declarations
+ * rather than a regex parse of the rendered JSX. Undefined outside a render and
+ * while emitting the document `<defs>` (whose styles are never hoisted), where
+ * `styleAttr` falls back to emitting a literal `style={{ … }}`.
  */
-type Declaration = readonly [property: string, value: string | number];
+let activeCollector: StyleCollector | undefined;
 
 /**
  * Turns ordered style declarations into a JSX `style={{ … }}` attribute string,
  * e.g. `style={{ position: "absolute", left: "10%", fontWeight: 700 }}`. Returns
- * an empty string when there is nothing to emit.
+ * an empty string when there is nothing to emit. During a render the style is
+ * registered with the {@link activeCollector} and a placeholder token is returned
+ * in place of the attribute, so the hoister can read it back structurally.
  */
 export function styleAttr(declarations: Declaration[]): string {
   if (declarations.length === 0) {
     return "";
   }
-  const body = declarations
-    .map(([property, value]) => `${property}: ${typeof value === "number" ? value : `"${value}"`}`)
-    .join(", ");
-  return `style={{ ${body} }}`;
+  if (activeCollector) {
+    return activeCollector.add(declarations);
+  }
+  return `style={{ ${declarationBody(declarations)} }}`;
 }
 
 /**
@@ -90,7 +96,19 @@ export function presentationToMdx(presentation: Presentation): string {
   // `<defs>` and referenced by `<use>`, so repeated shapes (cars, arrows, every
   // straight connector) collapse to one definition keyed on the local `d`.
   const pathIds = collectPathIds(presentation);
-  const slides = presentation.slides.map((slide) => renderSlide(slide, slideSize, pathIds)).join("\n\n");
+
+  // Render the slides with a render-scoped collector active, so every `styleAttr`
+  // registers its structured declarations and leaves a placeholder token behind.
+  // Restored afterwards so the document `<defs>` styling stays literal (unhoisted).
+  const collector = new StyleCollector();
+  const previousCollector = activeCollector;
+  activeCollector = collector;
+  let slides: string;
+  try {
+    slides = presentation.slides.map((slide) => renderSlide(slide, slideSize, pathIds)).join("\n\n");
+  } finally {
+    activeCollector = previousCollector;
+  }
 
   // `backgroundRoot={imageRoot}` references the exported `imageRoot` const (a JSX
   // expression), not a string literal.
@@ -100,7 +118,7 @@ export function presentationToMdx(presentation: Presentation): string {
   const rawWrapper = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
   // Lift repeated colors/fonts/style-sets into the scoped stylesheet, leaving the
   // rendered slides visually identical (see `hoistStyles`).
-  const { wrapper, rules } = hoistStyles(rawWrapper, scope);
+  const { wrapper, rules } = hoistStyles(rawWrapper, scope, collector);
 
   // The scoped stylesheet merges the hoisted rules with the shared table rules.
   // HTML `<table>`s depend on the latter; spanless markdown tables get default
@@ -256,13 +274,13 @@ function renderVideo(video: SlideVideo): string {
       ? videoCoverDeclarations()
       : imageDeclarations(video.box, positionedZIndex(video.zOrder, 1))
     : [];
-  const style = declarations.length > 0 ? `${styleAttr(declarations)} ` : "";
+  const attr = declarations.length > 0 ? styleAttr(declarations) : "";
 
   if (isImageFile(video.fileName)) {
-    return `<Image ${style}${imageSrc(video.fileName)} role="presentation" alt="" />`;
+    return `<Image ${attr ? `${attr} ` : ""}${imageSrc(video.fileName)} role="presentation" alt="" />`;
   }
-  return style
-    ? `<video controls ${styleAttr(declarations)} ${imageSrc(video.fileName)} />`
+  return attr
+    ? `<video controls ${attr} ${imageSrc(video.fileName)} />`
     : `<video controls ${imageSrc(video.fileName)}></video>`;
 }
 
