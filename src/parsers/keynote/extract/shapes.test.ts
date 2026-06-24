@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ShapeInfoArchive, ShapeStyleArchive, StrokePatternArchive } from "../types.ts";
-import { buildPathData, effectiveShapeProps, shapeBorderRadius, strokeDasharray, svgPath } from "./shapes.ts";
+import { buildPathData, effectiveShapeProps, shapeBorderRadius, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
 
 /** A two-point horizontal line in a frame, with optional rotation. */
 function line(frame: { x: number; y: number; width: number; height: number; angle?: number }): ShapeInfoArchive {
@@ -272,6 +272,70 @@ test("svgPath carries fillOpacity and strokeOpacity from translucent colors", ()
   assert.ok(path);
   assert.equal(path.strokeOpacity, 0.5);
   assert.equal(path.fillOpacity, 0.25);
+});
+
+test("svgPath carries a translucent shapeProperties.opacity (rounded), opaque/absent emits none", () => {
+  const translucent = {
+    shapeProperties: { fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 1 } }, opacity: 0.700942873954773 },
+  } as unknown as ShapeStyleArchive;
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), translucent);
+  assert.ok(path);
+  assert.equal(path.opacity, 0.701);
+
+  const opaque = {
+    shapeProperties: { fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 1 } }, opacity: 1 },
+  } as unknown as ShapeStyleArchive;
+  assert.equal(svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), opaque)?.opacity, undefined);
+
+  const absent = {
+    shapeProperties: { fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 1 } } },
+  } as unknown as ShapeStyleArchive;
+  assert.equal(svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), absent)?.opacity, undefined);
+});
+
+test("shapeOpacity reads a translucent opacity that sits beside the fill on a nested super link", () => {
+  const style = {
+    shapeProperties: {},
+    super: { shapeProperties: { fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 1 } }, opacity: 0.7 } },
+  } as unknown as ShapeStyleArchive;
+  assert.equal(shapeOpacity(style), 0.7);
+});
+
+test("shapeTextShadow maps an enabled drop shadow to a CSS text-shadow (y-down offset, combined alpha)", () => {
+  const style = {
+    shapeProperties: {
+      shadow: { color: { model: 1, r: 0, g: 0, b: 0, a: 1 }, angle: 90, offset: 2, radius: 16, opacity: 1, isEnabled: true, type: 0 },
+    },
+  } as unknown as ShapeStyleArchive;
+  // angle 90 → dx = cos(90)·2 ≈ 0, dy = -sin(90)·2 = -2; radius 16 → blur; opaque black → hex.
+  assert.equal(shapeTextShadow(style), "0px -2px 16px #000000");
+});
+
+test("shapeTextShadow finds a shadow-only super link that effectiveShapeProps skips, and combines alpha into rgba", () => {
+  const style = {
+    shapeProperties: { shrinkToFit: true },
+    super: {
+      shapeProperties: {
+        shadow: { color: { model: 1, r: 0, g: 0, b: 0, a: 0.5 }, angle: 315, offset: 4, radius: 8, opacity: 0.5, isEnabled: true },
+      },
+    },
+  } as unknown as ShapeStyleArchive;
+  // effectiveShapeProps returns undefined here (no fill/stroke/line-end on either link).
+  assert.equal(effectiveShapeProps(style), undefined);
+  // angle 315 → dx = cos(315)·4 ≈ 2.83, dy = -sin(315)·4 ≈ 2.83 (bottom-right); alpha 0.5·0.5 = 0.25.
+  assert.equal(shapeTextShadow(style), "2.83px 2.83px 8px rgba(0, 0, 0, 0.25)");
+});
+
+test("shapeTextShadow returns undefined for an empty, disabled, or absent shadow", () => {
+  const empty = { shapeProperties: { fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 1 } }, shadow: {} } } as unknown as ShapeStyleArchive;
+  assert.equal(shapeTextShadow(empty), undefined);
+
+  const disabled = {
+    shapeProperties: { shadow: { color: { model: 1, r: 0, g: 0, b: 0, a: 1 }, offset: 2, radius: 16, isEnabled: false } },
+  } as unknown as ShapeStyleArchive;
+  assert.equal(shapeTextShadow(disabled), undefined);
+
+  assert.equal(shapeTextShadow(undefined), undefined);
 });
 
 test("shapeBorderRadius expresses a rounded-rect scalar as a percent of the smaller natural side", () => {

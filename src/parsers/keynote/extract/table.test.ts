@@ -401,18 +401,19 @@ test("tableData applies per-cell styleTable fills and positional defaults to cel
   });
 });
 
-test("effectiveTextProps walks the super chain for the first font color and alignment", () => {
-  // Color sits on the outer link; alignment is inherited one level down its super.
+test("effectiveTextProps walks the super chain for the first font color, font name, and alignment", () => {
+  // Color + font name sit on the outer link; alignment is inherited one level down its super.
   const style = {
-    charProperties: { fontColor: { r: 1, g: 1, b: 1 } },
+    charProperties: { fontColor: { r: 1, g: 1, b: 1 }, fontName: "ShopifySans-Light" },
     paraProperties: {},
     super: { paraProperties: { alignment: 1 } },
   };
   assert.deepEqual(effectiveTextProps(style as unknown as Parameters<typeof effectiveTextProps>[0]), {
     fontColor: { r: 1, g: 1, b: 1 },
+    fontName: "ShopifySans-Light",
     alignment: 1,
   });
-  assert.deepEqual(effectiveTextProps(undefined), { fontColor: undefined, alignment: undefined });
+  assert.deepEqual(effectiveTextProps(undefined), { fontColor: undefined, fontName: undefined, alignment: undefined });
 });
 
 /** A `CellStyling` carrying only positional text styles (no fills), for `cellText` tests. */
@@ -432,6 +433,17 @@ test("cellText resolves a positional text color and defaults alignment to center
   // Body cell: positional color, default-center alignment.
   assert.deepEqual(cellText(styling, noTables, textCell(1), 0, 1, 0), { color: "#000000", align: "center" });
   // No positional style resolves → color omitted, alignment still defaults to center.
+  assert.deepEqual(cellText(textStyling({}), noTables, textCell(1), 0, 1, 0), { align: "center" });
+});
+
+test("cellText resolves the positional font family alongside color/alignment", () => {
+  const styling = textStyling({ textBody: { color: "#000000", fontFamily: "Shopify Sans" } });
+  assert.deepEqual(cellText(styling, noTables, textCell(1), 0, 1, 0), {
+    color: "#000000",
+    fontFamily: "Shopify Sans",
+    align: "center",
+  });
+  // No positional style → no font family, alignment still centers.
   assert.deepEqual(cellText(textStyling({}), noTables, textCell(1), 0, 1, 0), { align: "center" });
 });
 
@@ -471,9 +483,9 @@ test("tableData resolves positional text color + alignment from the model's text
 
   const registry = buildRegistry([
     mockObject(200n, 6005, { listType: 1, entries: [{ key: 1, string: "Head" }, { key: 2, string: "Body" }] }),
-    // Header text style: white, center (alignment 2). Body: black, with no alignment → default center.
-    mockObject(700n, 2022, { charProperties: { fontColor: { r: 1, g: 1, b: 1, a: 1 } }, paraProperties: { alignment: 2 } }),
-    mockObject(701n, 2022, { charProperties: { fontColor: { r: 0, g: 0, b: 0, a: 1 } }, paraProperties: {} }),
+    // Header text style: white, ShopifySans-Light, center (alignment 2). Body: black, same font, default center.
+    mockObject(700n, 2022, { charProperties: { fontColor: { r: 1, g: 1, b: 1, a: 1 }, fontName: "ShopifySans-Light" }, paraProperties: { alignment: 2 } }),
+    mockObject(701n, 2022, { charProperties: { fontColor: { r: 0, g: 0, b: 0, a: 1 }, fontName: "ShopifySans-Light" }, paraProperties: {} }),
     mockObject(300n, 6002, {
       rowInfos: [
         { tileRowIndex: 0, cellStorageBuffer: textCell(1), cellOffsets: offsets([0]) },
@@ -484,8 +496,8 @@ test("tableData resolves positional text color + alignment from the model's text
 
   assert.deepEqual(tableData(model, registry), {
     rows: [
-      [{ text: "Head", colSpan: 1, rowSpan: 1, color: "#ffffff", align: "center" }],
-      [{ text: "Body", colSpan: 1, rowSpan: 1, color: "#000000", align: "center" }],
+      [{ text: "Head", colSpan: 1, rowSpan: 1, color: "#ffffff", fontFamily: "Shopify Sans", align: "center" }],
+      [{ text: "Body", colSpan: 1, rowSpan: 1, color: "#000000", fontFamily: "Shopify Sans", align: "center" }],
     ],
   });
 });

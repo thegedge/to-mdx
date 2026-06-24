@@ -559,3 +559,41 @@ test("extractSlide leaves a free text box's backgroundColor unset when its shape
 
   assert.equal(firstTextBoxStyle(registry)?.backgroundColor, undefined);
 });
+
+/** A free text shape whose shape style carries arbitrary `shapeProperties`. */
+function styledTextShape(id: bigint, storageId: bigint, text: string, styleId: bigint, shapeProperties: unknown) {
+  return [
+    mockObject(id, T.shapeInfoArchive, { ownedStorage: ref(storageId), super: { style: ref(styleId) } }),
+    mockObject(storageId, T.storageArchive, { text: [text] }),
+    mockObject(styleId, 0, { shapeProperties }),
+  ];
+}
+
+test("extractSlide threads a translucent shape opacity into a free text box's style", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    ...styledTextShape(50n, 51n, "label", 52n, { fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 1 } }, opacity: 0.7 }),
+  ]);
+  assert.equal(firstTextBoxStyle(registry)?.opacity, 0.7);
+});
+
+test("extractSlide converts a free text box's shape drop shadow into a CSS textShadow", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    ...styledTextShape(50n, 51n, "Thanks!", 52n, {
+      shadow: { color: { model: 1, r: 0, g: 0, b: 0, a: 1 }, angle: 90, offset: 2, radius: 16, opacity: 1, isEnabled: true },
+    }),
+  ]);
+  assert.equal(firstTextBoxStyle(registry)?.textShadow, "0px -2px 16px #000000");
+});
+
+test("extractSlide emits no textShadow for a free text box whose shape carries an empty shadow", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
+    ...styledTextShape(50n, 51n, "plain", 52n, { fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 1 } }, shadow: {} }),
+  ]);
+  assert.equal(firstTextBoxStyle(registry)?.textShadow, undefined);
+});

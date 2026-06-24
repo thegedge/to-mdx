@@ -45,6 +45,7 @@ export type ShapeInfoArchive = TSWPArchives.ShapeInfoArchive;
 export type ShapeArchive = TSDArchives.ShapeArchive;
 export type ShapeStyleArchive = TSDArchives.ShapeStyleArchive;
 export type ShapeStylePropertiesArchive = TSDArchives.ShapeStylePropertiesArchive;
+export type ShadowArchive = TSDArchives.ShadowArchive;
 export type MediaStyleArchive = TSDArchives.MediaStyleArchive;
 export type StrokeArchive = TSDArchives.StrokeArchive;
 export type StrokePatternArchive = TSDArchives.StrokePatternArchive;

@@ -386,6 +386,51 @@ test("buildPresentation inherits a master's positioned logo onto the content sli
   assert.ok(!presentation.unplacedImages.includes("logo.png"));
 });
 
+test("buildPresentation marks a master's full-bleed cropped image as a zIndex-0 backdrop and keeps a small one positioned", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] }, size: { width: 1920, height: 1080 } }),
+    mockObject(4n, T.slideArchive, { templateSlide: ref(60n), ownedDrawables: [], drawablesZOrder: [] }),
+    // Master with a full-bleed MASKED backdrop (61/900) and a small corner logo (63).
+    mockObject(60n, T.slideArchive, { ownedDrawables: [], drawablesZOrder: [ref(61n), ref(63n)] }),
+    mockObject(61n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "backdrop",
+        parent: ref(60n),
+        geometry: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } },
+      },
+      data: ref(100n),
+      mask: ref(900n),
+    }),
+    mockObject(900n, T.maskArchive, {
+      super: { parent: ref(61n), geometry: { position: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } } },
+    }),
+    mockObject(63n, T.imageArchive, {
+      super: {
+        accessibilityDescription: "logo",
+        parent: ref(60n),
+        geometry: { position: { x: 1700, y: 950 }, size: { width: 192, height: 108 } },
+      },
+      data: ref(200n),
+    }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/backdrop-100.png", new Uint8Array()],
+    ["Data/logo-200.png", new Uint8Array()],
+  ]);
+
+  const slide = buildPresentation(registry, "x", dataFiles).slides[0];
+  const backdrop = slide.images.find((image) => image.fileName === "backdrop.png");
+  const logo = slide.images.find((image) => image.fileName === "logo.png");
+
+  // Full-bleed cropped master image: kept inline (not promoted to cover) but flagged a backdrop.
+  assert.equal(backdrop?.backdrop, true);
+  assert.ok(backdrop?.crop, "the backdrop keeps its crop");
+  assert.equal(slide.background, undefined);
+  // Small master image keeps its normal positioning (no backdrop flag).
+  assert.equal(logo?.backdrop, undefined);
+});
+
 test("buildPresentation skips a master's sage-tagged image placeholder (e.g. a Media slot), inheriting only untagged decorations", () => {
   const registry = buildRegistry([
     mockObject(1n, T.documentArchive, { show: ref(2n) }),

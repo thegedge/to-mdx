@@ -233,6 +233,10 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
   }
   // A character outline (white-on-black "REQUEST" style text); camelCase JSX key.
   if (style?.textStroke) declarations.push(["WebkitTextStroke", style.textStroke]);
+  // A drop shadow lifted from the backing shape (e.g. the sign-off "Thanks!").
+  if (style?.textShadow) declarations.push(["textShadow", style.textShadow]);
+  // The backing shape's group-level Style-tab opacity (e.g. a translucent label).
+  if (style?.opacity !== undefined) declarations.push(["opacity", style.opacity]);
   // A shape-fill background, with a little breathing room so text isn't flush to
   // the box edge (matching the deck's filled diagram labels).
   if (style?.backgroundColor) {
@@ -385,6 +389,7 @@ function renderShape(shape: SvgPath, slideSize: { width: number; height: number 
 /** A single `<path>` for one vector shape, wiring up any resolved dash/opacity/arrowheads. */
 function renderPath(shape: SvgPath): string {
   const extra =
+    (shape.opacity !== undefined ? ` opacity={${shape.opacity}}` : "") +
     (shape.fillOpacity !== undefined ? ` fillOpacity={${shape.fillOpacity}}` : "") +
     (shape.strokeOpacity !== undefined ? ` strokeOpacity={${shape.strokeOpacity}}` : "") +
     (shape.strokeDasharray ? ` strokeDasharray="${shape.strokeDasharray}"` : "") +
@@ -401,7 +406,9 @@ function renderPath(shape: SvgPath): string {
  * normal flow.
  */
 function renderImage(image: SlideImage): string {
-  const zIndex = positionedZIndex(image.zOrder, 1);
+  // A full-bleed master backdrop sits behind all content at zIndex 0; everything
+  // else stacks by its z-order rank above the slide backdrop.
+  const zIndex = image.backdrop ? 0 : positionedZIndex(image.zOrder, 1);
   if (image.crop) return renderCroppedImage(image.fileName, image.altText, image.crop, zIndex, image.opacity);
   const declarations = image.box ? imageDeclarations(image.box, zIndex) : [];
   if (image.opacity !== undefined) declarations.push(["opacity", image.opacity]);
@@ -606,6 +613,7 @@ function renderCell(cell: TableCell): string {
   const fill = cellFillStyle(cell);
   if (fill) declarations.push(["backgroundColor", fill]);
   if (cell.color !== undefined) declarations.push(["color", cell.color]);
+  if (cell.fontFamily !== undefined) declarations.push(["fontFamily", cell.fontFamily]);
   if (cell.align !== undefined) declarations.push(["textAlign", cell.align]);
   const style = styleAttr(declarations);
   if (style) attrs += ` ${style}`;

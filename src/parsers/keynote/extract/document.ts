@@ -273,15 +273,22 @@ function inheritMasterImages(slide: Slide, masterImages: SlideImage[], useHeuris
     if (result.background === image.fileName) continue;
     if (result.images.some((existing) => existing.fileName === image.fileName)) continue;
 
-    const fullBleed = image.crop === undefined && image.box !== undefined && isFullBleed(image.box);
+    const fullBleed = image.box !== undefined && isFullBleed(image.box);
     if (fullBleed) {
       // Own background wins; a full-bleed decoration would clobber content, so
       // skip it entirely when the slide already has one.
       if (result.background) continue;
-      const className = useHeuristics
-        ? normalizeLayoutClass(cls(result.className, "blank") ?? "") || undefined
-        : result.className;
-      result = { ...result, className, background: image.fileName };
+      if (image.crop === undefined) {
+        // An uncropped full-bleed image becomes the slide's `cover` background.
+        const className = useHeuristics
+          ? normalizeLayoutClass(cls(result.className, "blank") ?? "") || undefined
+          : result.className;
+        result = { ...result, className, background: image.fileName };
+      } else {
+        // A cropped full-bleed image (e.g. the sign-off backdrop) keeps its crop but
+        // sits behind content as a zIndex-0 backdrop rather than a positioned image.
+        result = { ...result, images: [...result.images, { ...image, backdrop: true }] };
+      }
     } else {
       result = { ...result, images: [...result.images, { ...image }] };
     }

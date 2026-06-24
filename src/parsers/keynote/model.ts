@@ -38,6 +38,13 @@ export interface SlideImage {
    */
   crop?: ImageCrop;
   /**
+   * Marks a master-inherited, full-bleed image as a slide backdrop: the renderer
+   * forces its `zIndex` to 0 (behind all slide content) instead of the positioned
+   * default, so it sits behind text like the cover background while keeping its own
+   * geometry/crop. Set only for full-bleed images layered in from the master.
+   */
+  backdrop?: boolean;
+  /**
    * The image's own opacity (0–1, rounded to 3 decimals) from its
    * `MediaStyleArchive` (`mediaProperties.opacity`), i.e. Keynote's Style-tab
    * opacity. Present only when set and translucent (`< 1`); a fully opaque image
@@ -104,6 +111,12 @@ export interface SvgPath {
   fillOpacity?: number;
   /** Stroke alpha (0–1) when the resolved stroke color is translucent. */
   strokeOpacity?: number;
+  /**
+   * The shape's group-level Style-tab opacity (0–1, rounded to 3 decimals) from
+   * `shapeProperties.opacity`, applied to the whole `<path>` (distinct from the
+   * per-channel fill/stroke opacities). Present only when translucent (`< 1`).
+   */
+  opacity?: number;
   markerStart?: boolean;
   markerEnd?: boolean;
   /** Back-to-front rank within the slide's `drawablesZOrder`; see `SlideImage.zOrder`. */
@@ -148,6 +161,18 @@ export interface TextBoxStyle {
    * real stroke is set (an explicit `tsdStrokeNull` yields none).
    */
   textStroke?: string;
+  /**
+   * The backing shape's group-level Style-tab opacity (0–1, rounded to 3 decimals)
+   * from `shapeProperties.opacity`, applied to the whole box. Present only when the
+   * shape is translucent (`< 1`).
+   */
+  opacity?: number;
+  /**
+   * A CSS `text-shadow` (`"<dx>px <dy>px <blur>px <color>"`) lifted from the backing
+   * shape's drop `shadow` (`shapeProperties.shadow`). Present only when the shape
+   * carries a real, enabled shadow (an empty `{}` yields none).
+   */
+  textShadow?: string;
 }
 
 /**
@@ -185,6 +210,12 @@ export interface TableCell {
    * Absent when no text style resolves a solid color.
    */
   color?: string;
+  /**
+   * The cell's resolved CSS font family (e.g. `"Shopify Sans"`), from the positional
+   * header/footer/column/body text style's `charProperties.fontName`. Absent when no
+   * text style resolves a font name.
+   */
+  fontFamily?: string;
   /**
    * The cell's text alignment (`left`/`right`/`center`/`justify`). Defaults to
    * `center` for every extracted cell, with an explicit paragraph alignment from

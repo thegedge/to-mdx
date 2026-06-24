@@ -5,13 +5,14 @@ import type {
   FillArchive,
   LineEndArchive,
   PathElement,
+  ShadowArchive,
   ShapeInfoArchive,
   ShapeStyleArchive,
   ShapeStylePropertiesArchive,
   StrokeArchive,
   StrokePatternArchive,
 } from "../types.ts";
-import { colorToHex } from "./style.ts";
+import { colorToHex, rgba } from "./style.ts";
 
 /** A drawable's frame in slide points, including its rotation. */
 interface Frame {
@@ -58,7 +59,13 @@ export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | unde
   const d = buildPathData(elements, frame);
   if (!d) return undefined;
 
-  return { d, ...resolveStyle(style), ...arrowFlags(style) };
+  const opacity = shapeOpacity(style);
+  return {
+    d,
+    ...resolveStyle(style),
+    ...arrowFlags(style),
+    ...(opacity !== undefined ? { opacity } : {}),
+  };
 }
 
 /**
@@ -204,6 +211,65 @@ export function effectiveShapeProps(style: ShapeStyleArchive | undefined): Shape
 
 function hasShapeProps(props: ShapeStylePropertiesArchive | undefined): props is ShapeStylePropertiesArchive {
   return !!props && (!!props.stroke || !!props.fill || !!props.headLineEnd || !!props.tailLineEnd);
+}
+
+/**
+ * The shape's group-level Style-tab opacity (`shapeProperties.opacity`), rounded to
+ * 3 decimals, or undefined when unset or fully opaque (`>= 1`). This is the
+ * whole-shape opacity that sits beside `fill`/`stroke`, distinct from the
+ * per-channel fill/stroke alphas.
+ */
+export function shapeOpacity(style: ShapeStyleArchive | undefined): number | undefined {
+  const opacity = effectiveShapeProps(style)?.opacity;
+  if (opacity === undefined || opacity >= 1) return undefined;
+  return roundOpacity(opacity);
+}
+
+/**
+ * The first non-empty drop `shadow` along the style chain, or undefined when no
+ * shape-style link carries one. Empty `{}` shadows (the deck's opaque-fill shapes
+ * carry these) are skipped so a real shadow deeper in the chain still wins; the
+ * `super` chain is walked structurally, mirroring `effectiveShapeProps`.
+ */
+function effectiveShadow(style: ShapeStyleArchive | undefined): ShadowArchive | undefined {
+  let node: ShapeStyleNode | undefined = style as unknown as ShapeStyleNode | undefined;
+  while (node) {
+    const shadow = node.shapeProperties?.shadow;
+    if (shadow && Object.keys(shadow).length > 0) return shadow;
+    node = node.super;
+  }
+  return undefined;
+}
+
+/**
+ * The shape's drop shadow as a CSS `text-shadow`/`box-shadow` value
+ * (`"<dx>px <dy>px <blur>px <color>"`), or undefined when there is no real shadow
+ * (absent, empty, explicitly disabled, or carrying no usable geometry/color). The
+ * offset is resolved from the polar `angle`/`offset` pair: `dx = offset·cos(angle)`,
+ * `dy = -offset·sin(angle)` (the `-` maps Keynote's y-up angle onto CSS's y-down
+ * axis, so the stock 315° drop shadow lands bottom-right). `radius` is the blur. The
+ * color combines its own alpha with the shadow's `opacity` (hex when opaque, `rgba`
+ * when translucent), defaulting to opaque black when no color is stored.
+ */
+export function shapeTextShadow(style: ShapeStyleArchive | undefined): string | undefined {
+  const shadow = effectiveShadow(style);
+  if (!shadow || shadow.isEnabled === false) return undefined;
+
+  const offset = shadow.offset ?? 0;
+  const blur = shadow.radius ?? 0;
+  if (offset === 0 && blur === 0 && !hasRgb(shadow.color)) return undefined;
+
+  const angle = ((shadow.angle ?? 0) * Math.PI) / 180;
+  const dx = round(offset * Math.cos(angle));
+  const dy = round(-offset * Math.sin(angle));
+  return `${dx}px ${dy}px ${round(blur)}px ${shadowColor(shadow)}`;
+}
+
+/** A shadow's CSS color: hex when fully opaque, `rgba()` when its combined alpha < 1 (default opaque black). */
+function shadowColor(shadow: ShadowArchive): string {
+  const hex = hasRgb(shadow.color) ? colorToHex(shadow.color) : "#000000";
+  const a = roundOpacity((shadow.color?.a ?? 1) * (shadow.opacity ?? 1));
+  return a >= 1 ? hex : rgba(hex, a);
 }
 
 /** Stroke resolved to render-ready values, plus optional dash/cap/opacity. */

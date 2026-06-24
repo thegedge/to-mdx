@@ -14,7 +14,7 @@ import type {
   TableModelArchive,
   Tile,
 } from "../types.ts";
-import { alignmentToken, colorToHex } from "./style.ts";
+import { alignmentToken, colorToHex, fontFamily } from "./style.ts";
 
 /**
  * Extracts a table's cells from its `TableInfoArchive` (type 6000). The layout is
@@ -180,6 +180,7 @@ function decodeRow(
       ...(background ? { backgroundColor: background.backgroundColor } : {}),
       ...(background?.backgroundOpacity !== undefined ? { backgroundOpacity: background.backgroundOpacity } : {}),
       ...(text.color ? { color: text.color } : {}),
+      ...(text.fontFamily ? { fontFamily: text.fontFamily } : {}),
       align: text.align,
     });
   }
@@ -274,10 +275,12 @@ export interface CellStyling {
   rowCount: number;
 }
 
-/** A resolved cell text style: a hex color and/or a CSS text-alignment token. */
+/** A resolved cell text style: a hex color, CSS font family, and/or a CSS text-alignment token. */
 export interface CellTextStyle {
   /** `#RRGGBB`. */
   color?: string;
+  /** CSS font family from the style's `charProperties.fontName` (e.g. `"Shopify Sans"`). */
+  fontFamily?: string;
   /** CSS `text-align` token (`left`/`right`/`center`/`justify`). */
   align?: "left" | "right" | "center" | "justify";
 }
@@ -360,39 +363,48 @@ function resolveStyling(model: TableModelArchive, registry: Registry): CellStyli
  * the chain structurally (matching the shape/cell-fill super-walk pattern).
  */
 interface ParaStyleNode {
-  charProperties?: { fontColor?: Color };
+  charProperties?: { fontColor?: Color; fontName?: string };
   paraProperties?: { alignment?: number };
   super?: ParaStyleNode;
 }
 
 /**
- * The effective font color + alignment for a paragraph style: the first of each
- * found walking the `super` chain (resolved independently, since a link may carry
- * one without the other). Empty links are skipped rather than stopping the walk.
+ * The effective font color, font name, and alignment for a paragraph style: the
+ * first of each found walking the `super` chain (resolved independently, since a
+ * link may carry one without the others). Empty links are skipped rather than
+ * stopping the walk.
  */
-export function effectiveTextProps(style: ParagraphStyleArchive | undefined): { fontColor?: Color; alignment?: number } {
+export function effectiveTextProps(
+  style: ParagraphStyleArchive | undefined,
+): { fontColor?: Color; fontName?: string; alignment?: number } {
   let node: ParaStyleNode | undefined = style as unknown as ParaStyleNode | undefined;
   let fontColor: Color | undefined;
+  let fontName: string | undefined;
   let alignment: number | undefined;
   while (node) {
     if (fontColor === undefined && node.charProperties?.fontColor) fontColor = node.charProperties.fontColor;
+    if (fontName === undefined && node.charProperties?.fontName) fontName = node.charProperties.fontName;
     if (alignment === undefined && node.paraProperties?.alignment !== undefined) alignment = node.paraProperties.alignment;
-    if (fontColor !== undefined && alignment !== undefined) break;
+    if (fontColor !== undefined && fontName !== undefined && alignment !== undefined) break;
     node = node.super;
   }
-  return { fontColor, alignment };
+  return { fontColor, fontName, alignment };
 }
 
-/** Resolves a text-style reference to its effective color/alignment, or undefined when neither resolves. */
+/** Resolves a text-style reference to its effective color/font/alignment, or undefined when none resolves. */
 function resolveTextStyle(ref: Reference | undefined, registry: Registry): CellTextStyle | undefined {
   const style = registry.resolve<ParagraphStyleArchive>(ref);
   if (!style) return undefined;
-  const { fontColor, alignment } = effectiveTextProps(style);
+  const { fontColor, fontName, alignment } = effectiveTextProps(style);
   const resolved: CellTextStyle = {};
   if (hasRgb(fontColor)) resolved.color = colorToHex(fontColor);
+  const family = fontFamily(fontName);
+  if (family) resolved.fontFamily = family;
   const align = alignmentToken(alignment);
   if (align) resolved.align = align;
-  return resolved.color !== undefined || resolved.align !== undefined ? resolved : undefined;
+  return resolved.color !== undefined || resolved.fontFamily !== undefined || resolved.align !== undefined
+    ? resolved
+    : undefined;
 }
 
 /**
@@ -497,10 +509,12 @@ function richCellColor(buffer: Uint8Array, offset: number, tables: CellTables): 
 }
 
 /**
- * The resolved text color + alignment for the cell at `(r, c)`. The color prefers
- * a per-cell rich-text run color, falling back to the positional text style; it is
- * omitted when neither resolves. The alignment defaults to `center` for every cell
- * (this deck is uniformly centered), with an explicit positional alignment winning.
+ * The resolved text color, font family, and alignment for the cell at `(r, c)`. The
+ * color prefers a per-cell rich-text run color, falling back to the positional text
+ * style; it is omitted when neither resolves. The font family comes from the
+ * positional text style (like the default color). The alignment defaults to `center`
+ * for every cell (this deck is uniformly centered), with an explicit positional
+ * alignment winning.
  */
 export function cellText(
   styling: CellStyling,
@@ -509,9 +523,13 @@ export function cellText(
   offset: number,
   r: number,
   c: number,
-): { color?: string; align: string } {
+): { color?: string; fontFamily?: string; align: string } {
   const positional = positionalTextStyle(styling, r, c);
   const color = richCellColor(buffer, offset, tables) ?? positional?.color;
   const align = positional?.align ?? "center";
-  return color !== undefined ? { color, align } : { align };
+  return {
+    ...(color !== undefined ? { color } : {}),
+    ...(positional?.fontFamily !== undefined ? { fontFamily: positional.fontFamily } : {}),
+    align,
+  };
 }

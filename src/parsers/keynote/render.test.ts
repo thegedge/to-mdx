@@ -960,3 +960,68 @@ test("assembleMdxDocument puts a blank line between the exports and the body, an
   assert.equal(doc, "export const title = 'Deck';\n\n<Slides>\n<Slide />\n</Slides>\n");
   assert.match(doc, /;\n\n<Slides>/);
 });
+
+test("presentationToMdx emits opacity on a shape path with a translucent shapeProperties.opacity, none when opaque", () => {
+  const translucent = presentationToMdx(
+    deck([slide({ shapes: [{ d: "M 0 0 L 10 0", stroke: "none", strokeWidth: 2, fill: "#ffffff", opacity: 0.7 }] })]),
+  );
+  assert.match(translucent, /<path d="M 0 0 L 10 0"[^>]* opacity=\{0\.7\}/);
+
+  const opaque = presentationToMdx(
+    deck([slide({ shapes: [{ d: "M 0 0 L 10 0", stroke: "none", strokeWidth: 2, fill: "#ffffff" }] })]),
+  );
+  assert.doesNotMatch(opaque, /opacity=/);
+});
+
+test("presentationToMdx places a backdrop master image at zIndex 0 and a normal one at its positioned zIndex", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        images: [
+          { fileName: "percy.jpg", altText: "", box: { left: 0, top: 0, width: 100, height: 100 }, backdrop: true },
+          { fileName: "logo.png", altText: "", box: { left: 80, top: 80, width: 10, height: 10 } },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /percy\.jpg`\}[^\n]*/);
+  // Backdrop image carries zIndex 0; the positioned logo falls back to zIndex 1.
+  const percyLine = mdx.split("\n").find((line) => line.includes("percy.jpg"));
+  const logoLine = mdx.split("\n").find((line) => line.includes("logo.png"));
+  assert.match(percyLine ?? "", /zIndex: 0/);
+  assert.match(logoLine ?? "", /zIndex: 1/);
+});
+
+test("presentationToMdx emits textShadow and opacity declarations for a positioned text box", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "Thanks\!" }],
+            box: { left: 10, top: 20, width: 30, height: 40 },
+            style: { color: "#ffffff", textShadow: "0px -2px 16px #000000", opacity: 0.7 },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /textShadow: "0px -2px 16px #000000"/);
+  assert.match(mdx, /opacity: 0\.7/);
+});
+
+test("presentationToMdx emits a cell fontFamily in the td inline style", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        tables: [
+          {
+            rows: [[{ text: "Octet", colSpan: 1, rowSpan: 1, color: "#000000", fontFamily: "Shopify Sans", align: "center" }]],
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /<td style=\{\{ color: "#000000", fontFamily: "Shopify Sans", textAlign: "center" \}\}>Octet<\/td>/);
+});
