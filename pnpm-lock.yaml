@@ -20,6 +20,9 @@ importers:
       json5:
         specifier: ^2.2.3
         version: 2.2.3
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       keynote-archives:
         specifier: ^2.0.1
         version: 2.0.1

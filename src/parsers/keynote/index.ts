@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import * as path from "node:path";
+import JSZip from "jszip";
 import { generateMetadataExports } from "../../generators/mdx.ts";
 import type { Options } from "../../parsers.ts";
 import { decodeKeynote, partialEntriesWarning } from "./decode.ts";
@@ -74,11 +75,31 @@ export async function parse(outputRoot: string, presentationFile: string, option
 }
 
 async function resolveDate(presentationFile: string): Promise<Date> {
-  // Modern Keynote files expose no reliable creation date in the decoded
-  // archive, so fall back to the file's modification time (degrade, don't throw).
+  // The deck has no creation date in its decoded archive, but the `.key` zip
+  // preserves each entry's Keynote save time — the newest entry is the last save
+  // (the real presentation date), and it survives copying/downloading the file
+  // (which only resets the file's own mtime). Fall back to the file mtime when the
+  // archive can't be read.
+  const fromArchive = await archiveDate(presentationFile);
+  if (fromArchive) return fromArchive;
+
   const stats = await stat(presentationFile);
-  console.warn(`⚠️  No presentation date in Keynote metadata; using file mtime ${formatDate(stats.mtime)}`);
+  console.warn(`⚠️  No date in Keynote archive; using file mtime ${formatDate(stats.mtime)}`);
   return stats.mtime;
+}
+
+/** The newest zip-entry timestamp in a `.key` (its last Keynote save), or undefined. */
+async function archiveDate(presentationFile: string): Promise<Date | undefined> {
+  try {
+    const zip = await JSZip.loadAsync(await readFile(presentationFile));
+    let latest: Date | undefined;
+    for (const entry of Object.values(zip.files)) {
+      if (entry.date && (latest === undefined || entry.date > latest)) latest = entry.date;
+    }
+    return latest;
+  } catch {
+    return undefined;
+  }
 }
 
 async function copyImages(

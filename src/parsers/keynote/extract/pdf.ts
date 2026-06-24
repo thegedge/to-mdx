@@ -8,22 +8,43 @@ import * as mupdf from "mupdf";
  * original asset in that case.
  */
 export function pdfToSvg(bytes: Uint8Array): Uint8Array | undefined {
+  return suppressMupdfWarnings(() => {
+    try {
+      const document = mupdf.Document.openDocument(bytes, "application/pdf");
+      if (document.countPages() === 0) return undefined;
+
+      const page = document.loadPage(0);
+      const buffer = new mupdf.Buffer();
+      const writer = new mupdf.DocumentWriter(buffer, "svg", "");
+      const device = writer.beginPage(page.getBounds());
+      page.run(device, mupdf.Matrix.identity);
+      device.close();
+      writer.endPage();
+      writer.close();
+
+      return new TextEncoder().encode(buffer.asString());
+    } catch {
+      return undefined;
+    }
+  });
+}
+
+/**
+ * Runs `fn` with mupdf's stderr chatter ("warning: invalid marked content …")
+ * suppressed. mupdf writes these from its WASM layer straight to `stderr`, below
+ * the `console` API, so we filter `process.stderr.write` for the duration and
+ * always restore it. Our own warnings use a "⚠️" prefix and pass through.
+ */
+function suppressMupdfWarnings<T>(fn: () => T): T {
+  const original = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((chunk: string | Uint8Array, ...rest: unknown[]): boolean => {
+    if (/^warning:/m.test(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString())) return true;
+    return (original as (c: string | Uint8Array, ...a: unknown[]) => boolean)(chunk, ...rest);
+  }) as typeof process.stderr.write;
   try {
-    const document = mupdf.Document.openDocument(bytes, "application/pdf");
-    if (document.countPages() === 0) return undefined;
-
-    const page = document.loadPage(0);
-    const buffer = new mupdf.Buffer();
-    const writer = new mupdf.DocumentWriter(buffer, "svg", "");
-    const device = writer.beginPage(page.getBounds());
-    page.run(device, mupdf.Matrix.identity);
-    device.close();
-    writer.endPage();
-    writer.close();
-
-    return new TextEncoder().encode(buffer.asString());
-  } catch {
-    return undefined;
+    return fn();
+  } finally {
+    process.stderr.write = original;
   }
 }
 
