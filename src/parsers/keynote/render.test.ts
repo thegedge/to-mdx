@@ -791,47 +791,51 @@ test("presentationToMdx anchors a positioned auto-size box without emitting widt
   assert.doesNotMatch(mdx, /top:/);
 });
 
-test("presentationToMdx renders a vector shape as its own <svg> sized to the slide", () => {
+test("presentationToMdx renders a vector shape as a <use> in an <svg> sized to the slide, defining the path once", () => {
   const mdx = presentationToMdx(
-    deck([slide({ shapes: [{ d: "M 100 200 L 816 200", stroke: "#000000", strokeWidth: 2 }] })]),
+    deck([slide({ shapes: [{ localD: "M 0 0 L 100 0", transform: "translate(100 200) scale(7.16 0)", stroke: "#000000", strokeWidth: 2 }] })]),
   );
 
+  // The unique local path is defined once in a hidden document-level <defs>.
+  assert.match(mdx, /<svg width="0" height="0" aria-hidden="true" style=\{\{ position: "absolute" \}\}>/);
+  assert.match(mdx, /<defs>\n\s*<path id="kn-p1" d="M 0 0 L 100 0" \/>\n\s*<\/defs>/);
+  // The shape instance references it via <use> in the slide overlay, carrying its transform + style.
   assert.match(mdx, /<svg viewBox="0 0 1920 1080"/);
-  assert.match(mdx, /<path d="M 100 200 L 816 200" fill="none" stroke="#000000" strokeWidth=\{2\} \/>/);
+  assert.match(mdx, /<use href="#kn-p1" transform="translate\(100 200\) scale\(7\.16 0\)" fill="none" stroke="#000000" strokeWidth=\{2\} \/>/);
   // An unranked shape falls back to the prior fixed z-index 1.
   assert.match(mdx, /zIndex: 1/);
   assert.match(mdx, /pointerEvents: "none"/);
   assert.doesNotMatch(mdx, /kn-arrow/);
 });
 
-test("presentationToMdx renders each shape as its own <svg> (not one shared overlay), arrows keep the marker", () => {
+test("presentationToMdx groups a run of consecutive shapes into one overlay <svg>, marker in the document defs", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
         shapes: [
-          { d: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, markerEnd: true },
-          { d: "M 5 5 C 6 6 7 7 8 8", stroke: "#111111", strokeWidth: 3 },
+          { localD: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, markerEnd: true },
+          { localD: "M 5 5 C 6 6 7 7 8 8", stroke: "#111111", strokeWidth: 3 },
         ],
       }),
     ]),
   );
 
-  // Two separate <svg> elements, one per shape (no single multi-path overlay).
-  assert.equal(mdx.match(/<svg /g)?.length, 2);
-  assert.match(mdx, /<path d="M 0 0 L 100 0"[^>]*markerEnd="url\(#kn-arrow\)"/);
-  assert.match(mdx, /<path d="M 5 5 C 6 6 7 7 8 8"/);
-  // The arrow shape's own svg carries the marker defs once (id + markerEnd ref); the plain one has none.
-  assert.equal(mdx.match(/kn-arrow/g)?.length, 2);
+  // Two contiguous shapes share ONE overlay <svg> (plus the hidden defs <svg>).
+  assert.equal(mdx.match(/viewBox="0 0 1920 1080"/g)?.length, 1);
+  assert.match(mdx, /<use href="#kn-p1"[^>]*markerEnd="url\(#kn-arrow\)"/);
+  assert.match(mdx, /<use href="#kn-p2"/);
+  // The arrow marker is defined exactly once, in the shared document defs.
   assert.equal(mdx.match(/<marker /g)?.length, 1);
+  assert.ok(mdx.indexOf("<marker ") < mdx.indexOf("<Slides"), "marker lives in the leading document defs");
 });
 
-test("presentationToMdx stacks a later-z shape above a label box and an earlier-z shape below it", () => {
+test("presentationToMdx splits a shape run around a label box into two overlays at different z", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
         shapes: [
-          { d: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, zOrder: 1 },
-          { d: "M 5 5 C 6 6 7 7 8 8", stroke: "#000000", strokeWidth: 2, zOrder: 5 },
+          { localD: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, zOrder: 1 },
+          { localD: "M 5 5 C 6 6 7 7 8 8", stroke: "#000000", strokeWidth: 2, zOrder: 5 },
         ],
         textBoxes: [
           {
@@ -846,10 +850,29 @@ test("presentationToMdx stacks a later-z shape above a label box and an earlier-
     ]),
   );
 
-  // zIndex = 1 + zOrder: line(2) < box(4) < icon(6).
-  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 2,[^>]*>\n\s*<path d="M 0 0 L 100 0"/);
-  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 6,[^>]*>\n\s*<path d="M 5 5 C/);
+  // A barrier (the box at rank 3) between the two shapes (ranks 1, 5) splits them
+  // into two overlays. zIndex = 1 + zOrder: line(2) < box(4) < icon(6).
+  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 2,[^>]*>\n\s*<use href="#kn-p1"/);
+  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 6,[^>]*>\n\s*<use href="#kn-p2"/);
   assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 4[^}]*\}\}>\n\s*verifier/);
+});
+
+test("presentationToMdx dedupes identical local paths into one def, referenced by <use> with differing transforms", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({ shapes: [{ localD: "M 0 0 L 50 0", transform: "translate(10 20)", stroke: "#000000", strokeWidth: 2 }] }),
+      slide({ shapes: [{ localD: "M 0 0 L 50 0", transform: "translate(80 90) rotate(45 25 0)", stroke: "#000000", strokeWidth: 2 }] }),
+    ]),
+  );
+
+  // One <defs> for the whole document, with the shared path defined exactly once.
+  assert.equal(mdx.match(/<defs>/g)?.length, 1);
+  assert.equal(mdx.match(/<path id="kn-p1"/g)?.length, 1);
+  assert.equal(mdx.match(/d="M 0 0 L 50 0"/g)?.length, 1);
+  // Both instances reference the same def, each with its own transform.
+  assert.equal(mdx.match(/href="#kn-p1"/g)?.length, 2);
+  assert.match(mdx, /<use href="#kn-p1" transform="translate\(10 20\)"/);
+  assert.match(mdx, /<use href="#kn-p1" transform="translate\(80 90\) rotate\(45 25 0\)"/);
 });
 
 test("presentationToMdx derives positioned image and box zIndex from drawablesZOrder rank", () => {
@@ -869,10 +892,10 @@ test("presentationToMdx derives positioned image and box zIndex from drawablesZO
   assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 1 \}\}>/);
 });
 
-test("presentationToMdx uses the deck slideSize for the shape viewBox", () => {
+test("presentationToMdx uses the deck slideSize for the shape overlay viewBox", () => {
   const mdx = presentationToMdx({
     title: "Deck",
-    slides: [slide({ shapes: [{ d: "M 0 0 L 10 10", stroke: "currentColor", strokeWidth: 2 }] })],
+    slides: [slide({ shapes: [{ localD: "M 0 0 L 10 10", stroke: "currentColor", strokeWidth: 2 }] })],
     unplacedImages: [],
     slideSize: { width: 1280, height: 720 },
   });
@@ -882,34 +905,34 @@ test("presentationToMdx uses the deck slideSize for the shape viewBox", () => {
 
 test("presentationToMdx emits the shared arrow marker and wires markerEnd for arrow shapes", () => {
   const mdx = presentationToMdx(
-    deck([slide({ shapes: [{ d: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, markerEnd: true }] })]),
+    deck([slide({ shapes: [{ localD: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, markerEnd: true }] })]),
   );
 
   assert.match(mdx, /<marker id="kn-arrow"/);
-  assert.match(mdx, /markerEnd="url\(#kn-arrow\)"/);
+  assert.match(mdx, /<use [^>]*markerEnd="url\(#kn-arrow\)"/);
 });
 
 test("presentationToMdx sizes the arrow marker in user space so thick strokes don't bloat the head", () => {
   const mdx = presentationToMdx(
-    deck([slide({ shapes: [{ d: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 8, markerEnd: true }] })]),
+    deck([slide({ shapes: [{ localD: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 8, markerEnd: true }] })]),
   );
   assert.match(mdx, /markerUnits="userSpaceOnUse"/);
   assert.match(mdx, /markerWidth="12" markerHeight="12"/);
   assert.doesNotMatch(mdx, /markerWidth="6"/);
 });
 
-test("presentationToMdx omits the shape overlay when a slide has no shapes", () => {
+test("presentationToMdx omits the shape overlay (and defs) when a slide has no shapes", () => {
   const mdx = presentationToMdx(deck([slide({ title: "Plain" })]));
   assert.doesNotMatch(mdx, /<svg/);
 });
 
-test("presentationToMdx emits dash, linecap, and opacity attrs on a shape path when present", () => {
+test("presentationToMdx emits dash, linecap, and opacity attrs on a shape <use> when present", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
         shapes: [
           {
-            d: "M 0 0 L 100 0",
+            localD: "M 0 0 L 100 0",
             stroke: "#213373",
             strokeWidth: 5,
             strokeDasharray: "0.005,10",
@@ -923,7 +946,7 @@ test("presentationToMdx emits dash, linecap, and opacity attrs on a shape path w
     ]),
   );
 
-  assert.match(mdx, /strokeDasharray="0.005,10"/);
+  assert.match(mdx, /<use [^>]*strokeDasharray="0.005,10"/);
   assert.match(mdx, /strokeLinecap="round"/);
   assert.match(mdx, /strokeOpacity=\{0.5\}/);
   assert.match(mdx, /fillOpacity=\{0.25\}/);
@@ -961,14 +984,14 @@ test("assembleMdxDocument puts a blank line between the exports and the body, an
   assert.match(doc, /;\n\n<Slides>/);
 });
 
-test("presentationToMdx emits opacity on a shape path with a translucent shapeProperties.opacity, none when opaque", () => {
+test("presentationToMdx emits opacity on a shape <use> with a translucent shapeProperties.opacity, none when opaque", () => {
   const translucent = presentationToMdx(
-    deck([slide({ shapes: [{ d: "M 0 0 L 10 0", stroke: "none", strokeWidth: 2, fill: "#ffffff", opacity: 0.7 }] })]),
+    deck([slide({ shapes: [{ localD: "M 0 0 L 10 0", stroke: "none", strokeWidth: 2, fill: "#ffffff", opacity: 0.7 }] })]),
   );
-  assert.match(translucent, /<path d="M 0 0 L 10 0"[^>]* opacity=\{0\.7\}/);
+  assert.match(translucent, /<use href="#kn-p1"[^>]* opacity=\{0\.7\}/);
 
   const opaque = presentationToMdx(
-    deck([slide({ shapes: [{ d: "M 0 0 L 10 0", stroke: "none", strokeWidth: 2, fill: "#ffffff" }] })]),
+    deck([slide({ shapes: [{ localD: "M 0 0 L 10 0", stroke: "none", strokeWidth: 2, fill: "#ffffff" }] })]),
   );
   assert.doesNotMatch(opaque, /opacity=/);
 });

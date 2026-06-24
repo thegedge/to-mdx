@@ -81,7 +81,11 @@ export function assembleMdxDocument(metadataExports: string, content: string): s
 
 export function presentationToMdx(presentation: Presentation): string {
   const slideSize = presentation.slideSize ?? DEFAULT_SLIDE_SIZE;
-  const slides = presentation.slides.map((slide) => renderSlide(slide, slideSize)).join("\n\n");
+  // Document-wide dedupe: every shape's LOCAL path is stored once in a leading
+  // `<defs>` and referenced by `<use>`, so repeated shapes (cars, arrows, every
+  // straight connector) collapse to one definition keyed on the local `d`.
+  const pathIds = collectPathIds(presentation);
+  const slides = presentation.slides.map((slide) => renderSlide(slide, slideSize, pathIds)).join("\n\n");
 
   // `backgroundRoot={imageRoot}` references the exported `imageRoot` const (a JSX
   // expression), not a string literal.
@@ -89,10 +93,52 @@ export function presentationToMdx(presentation: Presentation): string {
 
   const wrapper = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
 
-  // Tables share one scoped stylesheet emitted once for the whole document (and
-  // before `<Slides>`, since the scoped selectors still match). HTML `<table>`s
-  // depend on it; spanless markdown tables get default styling but it is harmless.
-  return hasRenderableTable(presentation) ? `${tableStyleBlock(className)}\n\n${wrapper}` : wrapper;
+  // Document-level heads emitted before `<Slides>` (their selectors/ids still
+  // match document-wide): the shared shape `<defs>`, then the scoped table
+  // stylesheet. HTML `<table>`s depend on the latter; spanless markdown tables get
+  // default styling but it is harmless.
+  const heads: string[] = [];
+  const defs = shapeDefsBlock(presentation, pathIds);
+  if (defs) heads.push(defs);
+  if (hasRenderableTable(presentation)) heads.push(tableStyleBlock(className));
+  return [...heads, wrapper].join("\n\n");
+}
+
+/**
+ * The document-wide map from a shape's local `d` string to its shared `<defs>` id
+ * (`kn-p1`, `kn-p2`, …), assigned in first-seen order across all slides. Keyed on
+ * the local `d` only — style/transform live on each `<use>`, so two shapes that
+ * differ only in colour or placement still share one definition.
+ */
+function collectPathIds(presentation: Presentation): Map<string, string> {
+  const ids = new Map<string, string>();
+  for (const slide of presentation.slides) {
+    for (const shape of slide.shapes ?? []) {
+      if (!ids.has(shape.localD)) ids.set(shape.localD, `kn-p${ids.size + 1}`);
+    }
+  }
+  return ids;
+}
+
+/**
+ * The single hidden, document-level `<svg>` holding each unique local shape path
+ * once (`<path id="kn-pN" d=…>`) plus the shared arrowhead marker, all referenced
+ * by the per-shape `<use>` elements. Width/height 0 and absolute positioning keep
+ * it out of layout. Returns "" when the deck carries no shapes; the marker is
+ * included only when some shape uses an arrowhead.
+ */
+function shapeDefsBlock(presentation: Presentation, pathIds: Map<string, string>): string {
+  if (pathIds.size === 0) return "";
+  const entries: string[] = [];
+  if (anyShapeMarker(presentation)) entries.push(ARROW_MARKER);
+  for (const [d, id] of pathIds) entries.push(`<path id="${id}" d="${d}" />`);
+  const body = entries.map((entry) => `${INDENT.repeat(2)}${entry}`).join("\n");
+  return `<svg width="0" height="0" aria-hidden="true" ${styleAttr([["position", "absolute"]])}>\n${INDENT}<defs>\n${body}\n${INDENT}</defs>\n</svg>`;
+}
+
+/** Whether any shape in the deck resolves an arrowhead (so the shared marker is worth emitting). */
+function anyShapeMarker(presentation: Presentation): boolean {
+  return presentation.slides.some((slide) => (slide.shapes ?? []).some((shape) => shape.markerStart || shape.markerEnd));
 }
 
 /**
@@ -254,9 +300,9 @@ function percent(value: number): number {
   return Number(value.toFixed(1));
 }
 
-function renderSlide(slide: Slide, slideSize: { width: number; height: number }): string {
+function renderSlide(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string {
   const attributes = slideAttributes(slide);
-  const blocks = slideBlocks(slide, slideSize);
+  const blocks = slideBlocks(slide, slideSize, pathIds);
   if (blocks.length === 0) return attributes ? `<Slide ${attributes} />` : "<Slide />";
 
   const open = attributes ? `<Slide ${attributes}>` : "<Slide>";
@@ -284,7 +330,7 @@ function slideAttributes(slide: Slide): string {
   return parts.join(" ");
 }
 
-function slideBlocks(slide: Slide, slideSize: { width: number; height: number }): string[] {
+function slideBlocks(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string[] {
   const blocks: string[] = [];
 
   // A full-bleed tint over the background image (zIndex 0): above the cover
@@ -294,8 +340,10 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number })
   if (slide.title) blocks.push(`# ${escapeMdxText(slide.title)}`);
   if (slide.body.length > 0) blocks.push(renderBullets(slide.body));
 
-  for (const shape of slide.shapes ?? []) {
-    blocks.push(renderShape(shape, slideSize));
+  // Shapes are grouped into one `<svg>` per contiguous z-order run, so a slide of
+  // identical icons collapses to a single overlay instead of dozens.
+  for (const run of groupShapeRuns(slide.shapes ?? [], shapeBarriers(slide))) {
+    blocks.push(renderShapeRun(run, slideSize, pathIds));
   }
 
   for (const textBox of slide.textBoxes) {
@@ -360,34 +408,97 @@ function shapeOverlayDeclarations(zIndex: number): Declaration[] {
 }
 
 /**
- * The shared arrowhead marker, emitted once per slide when any shape uses an
- * arrow. `markerUnits="userSpaceOnUse"` fixes the arrowhead at a constant
- * slide-point size (12×12) regardless of the line's stroke width, so a thick
- * (stroke-width 8) connector no longer renders a giant ~48px head; the default
- * `strokeWidth` units would scale the marker with the line. The `viewBox` keeps
- * the triangle's own 0–10 coordinate space, so `refX`/`refY` are unchanged.
+ * The shared arrowhead marker, emitted once in the document-level `<defs>` when
+ * any shape uses an arrow. `markerUnits="userSpaceOnUse"` fixes the arrowhead at a
+ * constant slide-point size (12×12) regardless of the line's stroke width, so a
+ * thick (stroke-width 8) connector no longer renders a giant ~48px head; the
+ * default `strokeWidth` units would scale the marker with the line. The `viewBox`
+ * keeps the triangle's own 0–10 coordinate space, so `refX`/`refY` are unchanged.
  */
 const ARROW_MARKER =
-  '<defs><marker id="kn-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" ' +
+  '<marker id="kn-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" ' +
   'markerWidth="12" markerHeight="12" orient="auto-start-reverse">' +
-  '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker></defs>';
+  '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker>';
 
-/**
- * One vector shape as its own absolutely-positioned, full-slide `<svg>` (baked
- * slide-point coordinates matched by the `viewBox`), stacked by its own
- * `drawablesZOrder` rank — so icons can sit above label boxes while connector
- * lines sit below. The shared arrowhead marker is emitted in each svg that needs
- * it; un-ranked shapes fall back to z-index 1.
- */
-function renderShape(shape: SvgPath, slideSize: { width: number; height: number }): string {
-  const zIndex = positionedZIndex(shape.zOrder, 1);
-  const defs = shape.markerStart || shape.markerEnd ? `\n${INDENT}${ARROW_MARKER}` : "";
-  const open = `<svg viewBox="0 0 ${percent(slideSize.width)} ${percent(slideSize.height)}" ${styleAttr(shapeOverlayDeclarations(zIndex))}>`;
-  return `${open}${defs}\n${INDENT}${renderPath(shape)}\n</svg>`;
+/** One contiguous z-order run of shapes sharing a single overlay `<svg>`. */
+interface ShapeRun {
+  /** The overlay's CSS `zIndex` (the run's first/lowest rank). */
+  zIndex: number;
+  shapes: SvgPath[];
 }
 
-/** A single `<path>` for one vector shape, wiring up any resolved dash/opacity/arrowheads. */
-function renderPath(shape: SvgPath): string {
+/**
+ * The z-order ranks of a slide's NON-shape drawables (positioned text boxes,
+ * images, videos). A shape run breaks wherever one of these ranks falls between
+ * two shapes, so a label box between connector lines and icons splits them into
+ * separate stacking layers — preserving today's z-order behaviour.
+ */
+function shapeBarriers(slide: Slide): number[] {
+  const barriers: number[] = [];
+  for (const textBox of slide.textBoxes) {
+    if (textBox.kind === "text" && textBox.zOrder !== undefined) barriers.push(textBox.zOrder);
+  }
+  for (const image of slide.images) if (image.zOrder !== undefined) barriers.push(image.zOrder);
+  for (const video of slide.videos) if (video.zOrder !== undefined) barriers.push(video.zOrder);
+  return barriers;
+}
+
+/**
+ * Groups a slide's shapes (already in back-to-front z-order) into maximal runs of
+ * consecutive shapes with no other drawable's z-rank between them. Each run shares
+ * one overlay `<svg>` stacked at the run's first (lowest) rank — so a slide of 47
+ * identical cars collapses to a single overlay, while a label between two shapes
+ * splits them into two overlays at different z. Shapes with no rank (older decks
+ * with no `drawablesZOrder`) carry no barriers either, so they form one run.
+ */
+function groupShapeRuns(shapes: SvgPath[], barriers: number[]): ShapeRun[] {
+  const runs: ShapeRun[] = [];
+  let current: SvgPath[] = [];
+  let previousZ: number | undefined;
+  for (const shape of shapes) {
+    if (current.length > 0 && splitsRun(previousZ, shape.zOrder, barriers)) {
+      runs.push(makeRun(current));
+      current = [];
+    }
+    current.push(shape);
+    previousZ = shape.zOrder;
+  }
+  if (current.length > 0) runs.push(makeRun(current));
+  return runs;
+}
+
+/** True when a non-shape drawable's z-rank lies strictly between two consecutive shapes' ranks. */
+function splitsRun(previousZ: number | undefined, z: number | undefined, barriers: number[]): boolean {
+  if (previousZ === undefined || z === undefined) return false;
+  const lo = Math.min(previousZ, z);
+  const hi = Math.max(previousZ, z);
+  return barriers.some((barrier) => barrier > lo && barrier < hi);
+}
+
+function makeRun(shapes: SvgPath[]): ShapeRun {
+  return { zIndex: positionedZIndex(shapes[0].zOrder, 1), shapes };
+}
+
+/**
+ * One contiguous z-run of shapes as a single absolutely-positioned, full-slide
+ * `<svg>` (its `viewBox` matching the slide so each `<use>` transform lands in
+ * slide-point space), stacked at the run's z-rank. Every shape is a `<use>` of its
+ * shared `<defs>` path, in z-order so later shapes paint on top.
+ */
+function renderShapeRun(run: ShapeRun, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string {
+  const open = `<svg viewBox="0 0 ${percent(slideSize.width)} ${percent(slideSize.height)}" ${styleAttr(shapeOverlayDeclarations(run.zIndex))}>`;
+  const uses = run.shapes.map((shape) => `${INDENT}${renderUse(shape, pathIds)}`).join("\n");
+  return `${open}\n${uses}\n</svg>`;
+}
+
+/**
+ * A `<use>` referencing a shape's shared `<defs>` path, carrying its per-instance
+ * `transform` (position/rotation/scale) and presentation style (fill/stroke/dash/
+ * caps/opacities/arrowheads) — all of which apply to the referenced path.
+ */
+function renderUse(shape: SvgPath, pathIds: Map<string, string>): string {
+  const id = pathIds.get(shape.localD) ?? "";
+  const transform = shape.transform ? ` transform="${shape.transform}"` : "";
   const extra =
     (shape.opacity !== undefined ? ` opacity={${shape.opacity}}` : "") +
     (shape.fillOpacity !== undefined ? ` fillOpacity={${shape.fillOpacity}}` : "") +
@@ -396,7 +507,7 @@ function renderPath(shape: SvgPath): string {
     (shape.strokeLinecap ? ` strokeLinecap="${shape.strokeLinecap}"` : "");
   const markers =
     (shape.markerStart ? ' markerStart="url(#kn-arrow)"' : "") + (shape.markerEnd ? ' markerEnd="url(#kn-arrow)"' : "");
-  return `<path d="${shape.d}" fill="${shape.fill ?? "none"}" stroke="${shape.stroke}" strokeWidth={${shape.strokeWidth}}${extra}${markers} />`;
+  return `<use href="#${id}"${transform} fill="${shape.fill ?? "none"}" stroke="${shape.stroke}" strokeWidth={${shape.strokeWidth}}${extra}${markers} />`;
 }
 
 /**

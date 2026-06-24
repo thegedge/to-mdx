@@ -369,7 +369,9 @@ test("extractSlide collects a no-text stroked shape as a vector path and not a t
   assert.ok(slide.shapes);
   assert.equal(slide.shapes.length, 1);
   assert.equal(slide.shapes[0].stroke, "#000000");
-  assert.match(slide.shapes[0].d, /^M 100 200 L 816 200$/);
+  // Local path at the origin; the frame position/scale rides the transform.
+  assert.equal(slide.shapes[0].localD, "M 0 0 L 100 0");
+  assert.equal(slide.shapes[0].transform, "translate(100 200) scale(7.16 0)");
 });
 
 test("extractSlide renders a no-text frame with a path as a currentColor outline when its style resolves to nothing visible", () => {

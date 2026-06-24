@@ -45,10 +45,13 @@ const DEFAULT_STROKE = "currentColor";
 const DEFAULT_STROKE_WIDTH = 2;
 
 /**
- * Turns a no-text shape into one SVG path baked into absolute slide coordinates.
- * A shape with a drawable path ALWAYS renders: when its style is missing or
- * resolves to nothing visible we fall back to a plain outline (see resolveStyle).
- * Returns undefined only when the shape carries no drawable path at all.
+ * Turns a no-text shape into a LOCAL-coordinate SVG path plus a per-instance
+ * `transform` that positions/rotates/scales it onto the slide. A shape with a
+ * drawable path ALWAYS renders: when its style is missing or resolves to nothing
+ * visible we fall back to a plain outline (see resolveStyle). Returns undefined
+ * only when the shape carries no drawable path at all. Keeping the path in local
+ * coordinates lets identical shapes (every connector line, each repeated arrow or
+ * icon) share one `<defs>` entry, with only the cheap `transform` differing.
  */
 export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | undefined): SvgPath | undefined {
   const bezier = bezierSource(shape);
@@ -56,30 +59,53 @@ export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | unde
   if (!bezier || !elements?.length) return undefined;
 
   const frame = shapeFrame(shape);
-  const d = buildPathData(elements, frame);
-  if (!d) return undefined;
+  const { localD, transform } = buildLocalPath(elements, frame);
+  if (!localD) return undefined;
 
   const opacity = shapeOpacity(style);
   return {
-    d,
+    localD,
+    ...(transform ? { transform } : {}),
     ...resolveStyle(style),
     ...arrowFlags(style),
     ...(opacity !== undefined ? { opacity } : {}),
   };
 }
 
+/** A shape's geometry split into a reusable local path and its placing transform. */
+export interface LocalPath {
+  /** SVG `d` in the path's own coordinate space, normalized so its (endpoint) bounding box starts at (0,0). */
+  localD: string;
+  /** SVG `transform` mapping the local path onto the slide; empty when the mapping is the identity. */
+  transform: string;
+}
+
 /**
- * Builds an SVG `d` string from path elements, baking each point into absolute
- * slide coordinates: scale the path's own bounding box to the frame size, rotate
- * around the frame centre by the frame's angle, then translate by the frame
- * origin. (Keynote's `naturalSize` mirrors the frame size, not the path's
- * coordinate space, so the path bounds are the right reference.) A cubic-bezier
- * element (type 4) carries its two control points and endpoint as `[c1, c2, end]`,
- * all baked through the same pipeline and emitted as an SVG `C`; a malformed curve
- * with fewer than three points falls back to a straight segment to its last point.
+ * Splits a shape's path into (a) a normalized LOCAL `d` and (b) a `transform`
+ * that reproduces the old baked geometry exactly. The local path translates every
+ * point so the (endpoint) bounding box starts at (0,0); the transform then maps
+ * local → slide as `translate(frameX frameY) rotate(angle cx cy) scale(sx sy)`,
+ * with `cx,cy` the frame centre and `sx,sy = frameW/boundsW, frameH/boundsH`
+ * (Keynote's `naturalSize` mirrors the frame, so the path bounds are the right
+ * reference). SVG applies the list right-to-left — scale, then rotate around the
+ * frame centre, then translate to the frame origin — which is precisely the old
+ * per-point pipeline. Identity components are dropped so a plain placed path emits
+ * a short transform (or none).
  */
-export function buildPathData(elements: PathElement[], frame: Frame): string {
+export function buildLocalPath(elements: PathElement[], frame: Frame): LocalPath {
   const bounds = pathBounds(elements);
+  return { localD: buildLocalD(elements, bounds), transform: buildTransform(frame, bounds) };
+}
+
+/**
+ * The local `d` string: each point translated by the bounding box's origin so the
+ * path's drawn extent starts at (0,0). A cubic-bezier element (type 4) carries its
+ * two control points and endpoint as `[c1, c2, end]`, emitted as an SVG `C`; a
+ * malformed curve with fewer than three points falls back to a straight segment to
+ * its last point. (Control points may go slightly negative — bounds are measured
+ * over endpoints only, matching the old baking.)
+ */
+function buildLocalD(elements: PathElement[], bounds: Bounds): string {
   const commands: string[] = [];
 
   for (const element of elements) {
@@ -89,19 +115,37 @@ export function buildPathData(elements: PathElement[], frame: Frame): string {
     }
     if (element.type === ELEMENT_CURVE_TO && element.points.length >= 3) {
       const [c1, c2, end] = element.points;
-      const [c1x, c1y] = toSlidePoint(c1.x, c1.y, bounds, frame);
-      const [c2x, c2y] = toSlidePoint(c2.x, c2.y, bounds, frame);
-      const [ex, ey] = toSlidePoint(end.x, end.y, bounds, frame);
-      commands.push(`C ${round(c1x)} ${round(c1y)} ${round(c2x)} ${round(c2y)} ${round(ex)} ${round(ey)}`);
+      commands.push(`C ${localPoint(c1, bounds)} ${localPoint(c2, bounds)} ${localPoint(end, bounds)}`);
       continue;
     }
     const point = element.points.at(-1);
     if (!point) continue;
-    const [x, y] = toSlidePoint(point.x, point.y, bounds, frame);
-    commands.push(`${element.type === ELEMENT_MOVE_TO ? "M" : "L"} ${round(x)} ${round(y)}`);
+    commands.push(`${element.type === ELEMENT_MOVE_TO ? "M" : "L"} ${localPoint(point, bounds)}`);
   }
 
   return commands.join(" ");
+}
+
+/** One point translated into local space (bounding-box origin → (0,0)), rounded. */
+function localPoint(point: { x: number; y: number }, bounds: Bounds): string {
+  return `${round(point.x - bounds.minX)} ${round(point.y - bounds.minY)}`;
+}
+
+/**
+ * The `transform` mapping a local path onto the slide. Scales the local bounds to
+ * the frame size, rotates around the frame centre, and translates to the frame
+ * origin. A degenerate axis (zero path width or height) scales to 0, mirroring the
+ * old `bounds.width ? … : 0` guard (the local coordinate is 0 there anyway).
+ * Identity translate/rotate/scale parts are omitted for a compact attribute.
+ */
+function buildTransform(frame: Frame, bounds: Bounds): string {
+  const sx = bounds.width ? frame.width / bounds.width : 0;
+  const sy = bounds.height ? frame.height / bounds.height : 0;
+  const parts: string[] = [];
+  if (frame.x !== 0 || frame.y !== 0) parts.push(`translate(${round(frame.x)} ${round(frame.y)})`);
+  if (frame.angle !== 0) parts.push(`rotate(${round(frame.angle)} ${round(frame.width / 2)} ${round(frame.height / 2)})`);
+  if (sx !== 1 || sy !== 1) parts.push(`scale(${roundScale(sx)} ${roundScale(sy)})`);
+  return parts.join(" ");
 }
 
 /** Bounding box of a path's drawn (endpoint) coordinates. */
@@ -125,22 +169,6 @@ function pathBounds(elements: PathElement[]): Bounds {
   const minX = Math.min(...xs);
   const minY = Math.min(...ys);
   return { minX, minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
-}
-
-function toSlidePoint(lx: number, ly: number, bounds: Bounds, frame: Frame): [number, number] {
-  const fx = bounds.width ? ((lx - bounds.minX) * frame.width) / bounds.width : 0;
-  const fy = bounds.height ? ((ly - bounds.minY) * frame.height) / bounds.height : 0;
-
-  const cx = frame.width / 2;
-  const cy = frame.height / 2;
-  const a = (frame.angle * Math.PI) / 180;
-  const cos = Math.cos(a);
-  const sin = Math.sin(a);
-
-  const rx = cx + (fx - cx) * cos - (fy - cy) * sin;
-  const ry = cy + (fx - cx) * sin + (fy - cy) * cos;
-
-  return [frame.x + rx, frame.y + ry];
 }
 
 /** Reads the shape's frame geometry (position, size, angle) from its drawable super chain. */
@@ -393,6 +421,15 @@ function hasLineEnd(end: LineEndArchive | undefined): boolean {
 /** Rounds to 2 decimals, dropping a trailing `.0` (so whole numbers stay clean). */
 function round(value: number): number {
   return Number(value.toFixed(2));
+}
+
+/**
+ * Rounds a scale factor to 4 decimals. The factor multiplies local coordinates
+ * (up to the path's bounds, often hundreds of units), so it keeps more precision
+ * than `round` to hold sub-pixel placement once scaled up.
+ */
+function roundScale(value: number): number {
+  return Number(value.toFixed(4));
 }
 
 /**

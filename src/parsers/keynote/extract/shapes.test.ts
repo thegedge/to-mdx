@@ -1,7 +1,35 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ShapeInfoArchive, ShapeStyleArchive, StrokePatternArchive } from "../types.ts";
-import { buildPathData, effectiveShapeProps, shapeBorderRadius, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
+import { buildLocalPath, effectiveShapeProps, shapeBorderRadius, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
+
+/**
+ * Applies an SVG `transform` (translate/rotate/scale, right-to-left as SVG does)
+ * to a point, so a local path's corner can be checked against the old baked
+ * absolute coordinate.
+ */
+function applyTransform(transform: string, p: { x: number; y: number }): { x: number; y: number } {
+  let { x, y } = p;
+  const ops = [...transform.matchAll(/(translate|rotate|scale)\(([^)]*)\)/g)].reverse();
+  for (const [, op, argStr] of ops) {
+    const args = argStr.trim().split(/[\s,]+/).map(Number);
+    if (op === "translate") {
+      x += args[0];
+      y += args[1] ?? 0;
+    } else if (op === "scale") {
+      x *= args[0];
+      y *= args[1] ?? args[0];
+    } else {
+      const [deg, cx = 0, cy = 0] = args;
+      const a = (deg * Math.PI) / 180;
+      const dx = x - cx;
+      const dy = y - cy;
+      x = cx + dx * Math.cos(a) - dy * Math.sin(a);
+      y = cy + dx * Math.sin(a) + dy * Math.cos(a);
+    }
+  }
+  return { x, y };
+}
 
 /** A two-point horizontal line in a frame, with optional rotation. */
 function line(frame: { x: number; y: number; width: number; height: number; angle?: number }): ShapeInfoArchive {
@@ -32,8 +60,8 @@ const STROKE_STYLE: ShapeStyleArchive = {
   shapeProperties: { stroke: { color: { model: 1, r: 1, g: 0, b: 0 }, width: 3 } },
 } as unknown as ShapeStyleArchive;
 
-test("buildPathData maps a 0deg line straight across the frame", () => {
-  const d = buildPathData(
+test("buildLocalPath places a 0deg line's local corners where the old baked path was", () => {
+  const { localD, transform } = buildLocalPath(
     [
       { type: 1, points: [{ x: 0, y: 0 }] },
       { type: 2, points: [{ x: 100, y: 0 }] },
@@ -41,13 +69,18 @@ test("buildPathData maps a 0deg line straight across the frame", () => {
     { x: 100, y: 200, width: 716, height: 0, angle: 0 },
   );
 
-  const [a, b] = points(d);
-  assert.deepEqual(a, { x: 100, y: 200 });
-  assert.deepEqual(b, { x: 816, y: 200 });
+  // Local path starts at the origin; no rotation (0deg) so no rotate() in the transform.
+  assert.equal(localD, "M 0 0 L 100 0");
+  assert.doesNotMatch(transform, /rotate/);
+
+  // The transformed corners land at the old absolute slide coordinates.
+  const [a, b] = points(localD).map((p) => applyTransform(transform, p));
+  assert.deepEqual({ x: Math.round(a.x), y: Math.round(a.y) }, { x: 100, y: 200 });
+  assert.deepEqual({ x: Math.round(b.x), y: Math.round(b.y) }, { x: 816, y: 200 });
 });
 
-test("buildPathData rotates a 90deg line to near-vertical", () => {
-  const d = buildPathData(
+test("buildLocalPath rotates via an explicit rotate() about the frame centre (90deg → near-vertical)", () => {
+  const { localD, transform } = buildLocalPath(
     [
       { type: 1, points: [{ x: 0, y: 0 }] },
       { type: 2, points: [{ x: 100, y: 0 }] },
@@ -55,13 +88,33 @@ test("buildPathData rotates a 90deg line to near-vertical", () => {
     { x: 100, y: 200, width: 716, height: 0, angle: 90 },
   );
 
-  const [a, b] = points(d);
+  assert.equal(localD, "M 0 0 L 100 0");
+  // rotate(angle, cx, cy) with cx = frameW/2 = 358, cy = frameH/2 = 0.
+  assert.match(transform, /rotate\(90 358 0\)/);
+
+  const [a, b] = points(localD).map((p) => applyTransform(transform, p));
   assert.ok(Math.abs(a.x - b.x) < 0.01, `x's should be ~equal: ${a.x} vs ${b.x}`);
   assert.ok(Math.abs(Math.abs(b.y - a.y) - 716) < 0.01, `y's should differ by ~716: got ${Math.abs(b.y - a.y)}`);
 });
 
-test("buildPathData emits a cubic bezier (C) for a curve element (type 4), baking all three points", () => {
-  const d = buildPathData(
+test("buildLocalPath normalizes a path so its (endpoint) bounding box starts at (0,0), placement from the frame", () => {
+  const { localD, transform } = buildLocalPath(
+    [
+      { type: 1, points: [{ x: 50, y: 60 }] },
+      { type: 2, points: [{ x: 150, y: 60 }] },
+    ],
+    { x: 200, y: 300, width: 100, height: 0, angle: 0 },
+  );
+
+  // The source offset (50, 60) is normalized away; the local box starts at origin
+  // and the frame origin (not the source coords) places it — matching the old baking.
+  assert.equal(localD, "M 0 0 L 100 0");
+  const a = applyTransform(transform, { x: 0, y: 0 });
+  assert.deepEqual({ x: Math.round(a.x), y: Math.round(a.y) }, { x: 200, y: 300 });
+});
+
+test("buildLocalPath emits a local cubic bezier (C) for a curve element, with an identity transform", () => {
+  const { localD, transform } = buildLocalPath(
     [
       { type: 1, points: [{ x: 0, y: 0 }] },
       {
@@ -76,11 +129,13 @@ test("buildPathData emits a cubic bezier (C) for a curve element (type 4), bakin
     { x: 0, y: 0, width: 100, height: 100, angle: 0 },
   );
 
-  assert.equal(d, "M 0 0 C 10 50 90 50 100 100");
+  assert.equal(localD, "M 0 0 C 10 50 90 50 100 100");
+  // frame origin (0,0), 0deg, frameW/boundsW = frameH/boundsH = 1 → no transform at all.
+  assert.equal(transform, "");
 });
 
-test("buildPathData falls back to a lineTo when a curve element has fewer than three points", () => {
-  const d = buildPathData(
+test("buildLocalPath falls back to a lineTo when a curve element has fewer than three points", () => {
+  const { localD } = buildLocalPath(
     [
       { type: 1, points: [{ x: 0, y: 0 }] },
       { type: 4, points: [{ x: 100, y: 100 }] },
@@ -88,13 +143,13 @@ test("buildPathData falls back to a lineTo when a curve element has fewer than t
     { x: 0, y: 0, width: 100, height: 100, angle: 0 },
   );
 
-  assert.equal(d, "M 0 0 L 100 100");
+  assert.equal(localD, "M 0 0 L 100 100");
 });
 
-test("buildPathData renders a closed four-curve circle as cubic beziers, not straight segments", () => {
+test("buildLocalPath renders a closed four-curve circle as cubic beziers, not straight segments", () => {
   // A circle approximated by four cubic beziers (one per quadrant) around a
   // 100x100 box: each curve's points are [control1, control2, endpoint].
-  const d = buildPathData(
+  const { localD } = buildLocalPath(
     [
       { type: 1, points: [{ x: 50, y: 0 }] },
       { type: 4, points: [{ x: 78, y: 0 }, { x: 100, y: 22 }, { x: 100, y: 50 }] },
@@ -106,13 +161,13 @@ test("buildPathData renders a closed four-curve circle as cubic beziers, not str
     { x: 0, y: 0, width: 100, height: 100, angle: 0 },
   );
 
-  assert.equal((d.match(/C /g) ?? []).length, 4);
-  assert.doesNotMatch(d, / L /);
-  assert.match(d, /Z$/);
+  assert.equal((localD.match(/C /g) ?? []).length, 4);
+  assert.doesNotMatch(localD, / L /);
+  assert.match(localD, /Z$/);
 });
 
-test("buildPathData emits Z for a close element", () => {
-  const d = buildPathData(
+test("buildLocalPath emits Z for a close element", () => {
+  const { localD } = buildLocalPath(
     [
       { type: 1, points: [{ x: 0, y: 0 }] },
       { type: 2, points: [{ x: 10, y: 0 }] },
@@ -121,7 +176,7 @@ test("buildPathData emits Z for a close element", () => {
     { x: 0, y: 0, width: 10, height: 10, angle: 0 },
   );
 
-  assert.equal(d, "M 0 0 L 10 0 Z");
+  assert.equal(localD, "M 0 0 L 10 0 Z");
 });
 
 test("svgPath yields a path with the resolved stroke color and width", () => {
@@ -130,7 +185,9 @@ test("svgPath yields a path with the resolved stroke color and width", () => {
   assert.equal(path.stroke, "#ff0000");
   assert.equal(path.strokeWidth, 3);
   assert.equal(path.fill, undefined);
-  assert.match(path.d, /^M 100 200 L 816 200$/);
+  // Local path at the origin, positioned by the transform (not baked into `d`).
+  assert.equal(path.localD, "M 0 0 L 100 0");
+  assert.equal(path.transform, "translate(100 200) scale(7.16 0)");
 });
 
 test("svgPath defaults to currentColor width 2 when no style resolves", () => {

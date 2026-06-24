@@ -94,12 +94,16 @@ export interface SlideVideo {
 }
 
 /**
- * A vector shape (line, arrow, icon path) baked into absolute slide-point
- * coordinates, ready to render as one SVG `<path>`. `markerStart`/`markerEnd`
- * flag a resolved line-end arrowhead.
+ * A vector shape (line, arrow, icon path) in LOCAL coordinates, positioned by a
+ * per-instance `transform`. The local `d` is deduped into a document-level
+ * `<defs>` and referenced by `<use>`; the transform (and the style fields below)
+ * ride the `<use>`. `markerStart`/`markerEnd` flag a resolved line-end arrowhead.
  */
 export interface SvgPath {
-  d: string;
+  /** SVG `d` in the path's own coordinate space (bounding box at origin); shared via `<defs>`/`<use>`. */
+  localD: string;
+  /** SVG `transform` placing the local path on the slide; absent when it is the identity. */
+  transform?: string;
   stroke: string;
   strokeWidth: number;
   fill?: string;
