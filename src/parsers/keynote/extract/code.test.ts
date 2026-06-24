@@ -1,18 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Paragraph } from "../model.ts";
-import { asTextBox, isEbpfCode } from "./code.ts";
-
-test("isEbpfCode matches BPF map macros, kprobe entrypoints, and bpf_* helper calls", () => {
-  assert.equal(isEbpfCode("BPF_HASH(start, u32);"), true);
-  assert.equal(isEbpfCode("int kprobe__tcp_v4_connect(struct pt_regs *ctx) {"), true);
-  assert.equal(isEbpfCode("u64 ts = bpf_ktime_get_ns();"), true);
-});
-
-test("isEbpfCode does not flag ordinary prose", () => {
-  assert.equal(isEbpfCode("The quick brown fox jumps over the lazy dog."), false);
-  assert.equal(isEbpfCode("We measured BPF performance across the fleet."), false);
-});
+import { asTextBox } from "./code.ts";
 
 test("asTextBox fences eBPF source as c", () => {
   const paragraphs: Paragraph[] = [

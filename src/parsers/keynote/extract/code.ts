@@ -2,34 +2,21 @@ import { LanguageDetector } from "../../../detectors/language-detector.ts";
 import type { Paragraph, TextBox } from "../model.ts";
 
 /**
- * Decides whether a run of paragraphs is source code and, if so, returns a
- * fenced-code `TextBox`. The on-slide ODP path keys code detection off a
- * monospace font, which Keynote text storage does not surface here, so we reuse
- * the shared `LanguageDetector` for the language label and fall back to a
- * conservative structural check (punctuation/keyword density) to decide the
- * fence itself — that catches code in languages the detector doesn't know (e.g.
- * the BPF slide) without flagging ordinary bullet prose.
+ * Returns a fenced-code `TextBox` when a run of paragraphs is source code, else a
+ * plain text box. Keynote storage doesn't surface the monospace font the ODP path
+ * keys off, so the language comes from the shared `LanguageDetector` and the fence
+ * decision falls back to a structural check (`looksLikeCode`) for languages the
+ * detector doesn't label.
  */
 export function asTextBox(paragraphs: Paragraph[]): TextBox {
-  // Use `raw` (leading whitespace preserved) so indentation survives inside the
-  // fence; fall back to the trimmed `text` for un-indented lines.
+  // `raw` keeps leading whitespace so indentation survives inside the fence.
   const text = paragraphs.map((paragraph) => paragraph.raw ?? paragraph.text).join("\n");
-  const language = LanguageDetector.detect(text) ?? (isEbpfCode(text) ? "c" : null);
+  const language = LanguageDetector.detect(text);
 
   if (language || looksLikeCode(paragraphs)) {
     return { kind: "code", language: language ?? "", text };
   }
   return { kind: "text", paragraphs };
-}
-
-/**
- * True when the text is an eBPF program. eBPF is written in C but uses BPF-specific
- * helpers/macros; starry-night (linguist) has no "eBPF" grammar, so we fence such
- * snippets as plain `c`. Keyed off BPF map macros (`BPF_HASH`), kprobe entrypoint
- * names (`kprobe__...`), and `bpf_*` helper calls.
- */
-export function isEbpfCode(text: string): boolean {
-  return /\bBPF_HASH\b|\bkprobe__|\bbpf_[a-z_]+\(/.test(text);
 }
 
 // A line that carries code-ish syntax at all...

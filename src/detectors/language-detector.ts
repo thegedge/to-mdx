@@ -13,23 +13,41 @@ const LANGUAGE_PATTERNS = {
   ],
 };
 
+// Languages identified by a single distinctive marker. eBPF is C with BPF macros
+// and helpers (`BPF_HASH`, `kprobe__…`, `bpf_*()`); linguist has no eBPF grammar,
+// so it's labelled `c`.
+const STRONG_PATTERNS: Record<string, RegExp> = {
+  c: /\bBPF_HASH\b|\bkprobe__|\bbpf_[a-z_]+\(/,
+};
+
 export class LanguageDetector {
   static detect(content: string): string | null {
-    let bestLanguage: string | null = null;
-    let bestScore = 0;
-
-    for (const [language, patterns] of Object.entries(LANGUAGE_PATTERNS)) {
-      const score = patterns.reduce((sum, pattern) => {
-        const matches = pattern.test(content);
-        return matches ? sum + 1 : sum;
-      }, 0);
-
-      if (score >= MIN_SCORE && score > bestScore) {
-        bestLanguage = language;
-        bestScore = score;
-      }
+    const scored = bestScoredLanguage(content);
+    if (scored) {
+      return scored;
     }
 
-    return bestLanguage;
+    for (const [language, pattern] of Object.entries(STRONG_PATTERNS)) {
+      if (pattern.test(content)) {
+        return language;
+      }
+    }
+    return null;
   }
+}
+
+/** The highest-scoring multi-pattern language, or null if none reaches the threshold. */
+function bestScoredLanguage(content: string): string | null {
+  let bestLanguage: string | null = null;
+  let bestScore = 0;
+
+  for (const [language, patterns] of Object.entries(LANGUAGE_PATTERNS)) {
+    const score = patterns.reduce((sum, pattern) => (pattern.test(content) ? sum + 1 : sum), 0);
+    if (score >= MIN_SCORE && score > bestScore) {
+      bestLanguage = language;
+      bestScore = score;
+    }
+  }
+
+  return bestLanguage;
 }
