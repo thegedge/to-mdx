@@ -396,7 +396,7 @@ test("shapeTextShadow returns undefined for an empty, disabled, or absent shadow
   assert.equal(shapeTextShadow(undefined), undefined);
 });
 
-test("shapeBorderRadius expresses a rounded-rect scalar as a percent of the smaller natural side", () => {
+test("shapeBorderRadius expresses a rounded-rect scalar as a px length (uniform corners)", () => {
   const roundedRect = {
     super: {
       pathsource: {
@@ -404,8 +404,7 @@ test("shapeBorderRadius expresses a rounded-rect scalar as a percent of the smal
       },
     },
   } as unknown as ShapeInfoArchive;
-  // 15 / min(168, 200) * 100 = 8.928… → "8.9%"
-  assert.equal(shapeBorderRadius(roundedRect), "8.9%");
+  assert.equal(shapeBorderRadius(roundedRect), "15px");
 });
 
 test("shapeBorderRadius returns undefined when the shape has no scalar path source", () => {

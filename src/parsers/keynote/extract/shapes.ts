@@ -211,23 +211,18 @@ function bezierSource(shape: ShapeInfoArchive): BezierPathSourceArchive | undefi
 }
 
 /**
- * The CSS `border-radius` for a rounded-rectangle text-box shape, or undefined
- * otherwise. Keynote stores the corner radius as a `scalarPathSource.scalar` in
- * natural units; expressing it as a percentage of the box's *smaller* natural
- * dimension keeps the rounding scale-independent when the box is resized.
+ * The CSS `border-radius` (px) for a rounded-rectangle text-box shape, or
+ * undefined otherwise. Keynote stores the corner radius as a `scalarPathSource.
+ * scalar` in slide points; we emit a px length, NOT a `%` — a percentage radius is
+ * resolved per-axis (X% of width, Y% of height), so wide/tall boxes get stretched,
+ * elliptical corners.
  */
 export function shapeBorderRadius(shape: ShapeInfoArchive): string | undefined {
-  const scalarSource = shape.super?.pathsource?.scalarPathSource;
-  const scalar = scalarSource?.scalar;
+  const scalar = shape.super?.pathsource?.scalarPathSource?.scalar;
   if (!scalar) {
     return undefined;
   }
-  const natural = scalarSource.naturalSize;
-  const min = Math.min(natural?.width ?? 0, natural?.height ?? 0);
-  if (min <= 0) {
-    return undefined;
-  }
-  return `${Number(((scalar / min) * 100).toFixed(1))}%`;
+  return `${Math.round(scalar)}px`;
 }
 
 /**
