@@ -10,11 +10,14 @@ export interface RawBox {
   y: number;
   width: number;
   height: number;
+  /** Rotation in degrees (Keynote's counter-clockwise, y-up); absent/0 when unrotated. */
+  angle?: number;
 }
 
 interface GeometryLike {
   position?: { x?: number; y?: number };
   size?: { width?: number; height?: number };
+  angle?: number;
 }
 
 /**
@@ -34,7 +37,7 @@ export function drawableGeometry(message: unknown): RawBox | undefined {
       size?.width !== undefined &&
       size.height !== undefined
     ) {
-      return { x: position.x, y: position.y, width: size.width, height: size.height };
+      return { x: position.x, y: position.y, width: size.width, height: size.height, angle: geometry?.angle };
     }
     node = (node as { super?: unknown }).super;
   }

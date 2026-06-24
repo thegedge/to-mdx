@@ -157,6 +157,42 @@ test("presentationToMdx flex-centers a filled diagram-label box both ways with t
   assert.match(mdx, /borderRadius: "8\.9%"/);
 });
 
+test("presentationToMdx rotates a rotated text box about its centre via transform", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "SYN" }],
+            box: { left: 30, top: 40, width: 8, height: 0 },
+            style: { rotation: 9.8 },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /transform: "rotate\(9\.8deg\)"/);
+});
+
+test("presentationToMdx composes the auto-size centre shift and rotation into one transform", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "Data 1" }],
+            box: { left: 30, top: 40, width: 0, height: 0 },
+            style: { backgroundColor: "#ffffff", rotation: 3.6 },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /transform: "translate\(-50%, -50%\) rotate\(3\.6deg\)"/);
+});
+
 test("presentationToMdx does not flex-center an unfilled (flow-style) text box", () => {
   const mdx = presentationToMdx(
     deck([

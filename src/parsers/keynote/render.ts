@@ -355,6 +355,28 @@ function axisRules(near: string, far: string, sizeProp: string, start: number, s
  * paragraphs are sized individually (see `renderProse`), so the single shared
  * size doesn't fight the per-paragraph ones.
  */
+/**
+ * The box's CSS `transform` (about its centre): re-anchor an auto-sized (0-dim)
+ * centered label onto its point with `translate(-50%)` per collapsed axis, then
+ * `rotate()` when the box is rotated. Empty when neither applies.
+ */
+function boxTransform(box: TextBoxGeometry | undefined, centered: boolean, rotation: number | undefined): string {
+  const parts: string[] = [];
+
+  if (box && centered) {
+    const shiftX = box.width <= SIZE_EPSILON;
+    const shiftY = box.height <= SIZE_EPSILON;
+    if (shiftX || shiftY) {
+      parts.push(`translate(${shiftX ? "-50%" : "0"}, ${shiftY ? "-50%" : "0"})`);
+    }
+  }
+  if (rotation) {
+    parts.push(`rotate(${rotation}deg)`);
+  }
+
+  return parts.join(" ");
+}
+
 function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSize = false): Declaration[] {
   const declarations: Declaration[] = [];
 
@@ -388,20 +410,15 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
     declarations.push(["justifyContent", "center"]);
     declarations.push(["alignItems", "center"]);
     declarations.push(["textAlign", "center"]);
-    // An auto-sized (0-dimension) filled label is anchored on its CENTER in
-    // Keynote, but with no width/height to emit it would render top/left-anchored
-    // (the label's edge landing on the anchor). Shift it back onto the point per
-    // collapsed axis (e.g. the "retransmission timer" box onto its sender line).
-    const box = textBox.box;
-    if (box) {
-      const shiftX = box.width <= SIZE_EPSILON;
-      const shiftY = box.height <= SIZE_EPSILON;
-      if (shiftX || shiftY) {
-        declarations.push(["transform", `translate(${shiftX ? "-50%" : "0"}, ${shiftY ? "-50%" : "0"})`]);
-      }
-    }
   } else if (style?.textAlign) {
     declarations.push(["textAlign", style.textAlign]);
+  }
+  // Combine the box's transforms about its centre: re-anchor an auto-sized (0-dim)
+  // centered label onto its point, then rotate to match Keynote (e.g. the "SYN"/
+  // "Data" labels aligned to the diagonal arrows).
+  const transform = boxTransform(textBox.box, centered, style?.rotation);
+  if (transform) {
+    declarations.push(["transform", transform]);
   }
   // A character outline (white-on-black "REQUEST" style text); camelCase JSX key.
   if (style?.textStroke) {

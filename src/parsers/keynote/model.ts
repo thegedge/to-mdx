@@ -134,6 +134,13 @@ export type TextBoxGeometry = LayoutBox;
 
 /** Dominant visual styling extracted from a free text box's first paragraph/run. */
 export interface TextBoxStyle {
+  /**
+   * The box's rotation in CSS degrees (clockwise, y-down — converted from Keynote's
+   * counter-clockwise y-up angle), applied as a `rotate()` about the box centre.
+   * Present only when the box is rotated (e.g. a "SYN"/"Data" label aligned to a
+   * diagonal arrow); omitted when axis-aligned.
+   */
+  rotation?: number;
   /** A `var(--text-*)` token nearest the box's point size. */
   fontSizeToken?: string;
   /** CSS font family lifted from the run's PostScript font name (e.g. "Shopify Sans"). */
