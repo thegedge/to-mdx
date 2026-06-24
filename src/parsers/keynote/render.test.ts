@@ -89,6 +89,51 @@ test("presentationToMdx emits a free text box's shape-fill background (with padd
   assert.match(mdx, /padding: "0\.2em 0\.4em"/);
 });
 
+test("presentationToMdx renders a smart-brush border as a rough-filtered SVG overlay, with the filter emitted once and no CSS border", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "retransmission timer" }],
+            box: { left: 10, top: 20, width: 15, height: 8 },
+            style: { brushBorder: { color: "#223274", width: 4 } },
+          },
+        ],
+      }),
+    ]),
+  );
+  // The inner overlay: an <svg> holding a single rough-filtered <rect>.
+  assert.match(mdx, /<svg aria-hidden="true"[^>]*>\s*<rect[^>]*filter="url\(#kn-rough\)"/);
+  assert.match(mdx, /stroke="#223274" strokeWidth=\{4\}/);
+  // No flat CSS border on a brush-bordered box.
+  assert.doesNotMatch(mdx, /border: "/);
+  // The filter def appears exactly once in the document defs.
+  const filters = mdx.match(/<filter id="kn-rough"/g) ?? [];
+  assert.equal(filters.length, 1);
+});
+
+test("presentationToMdx gives a plain-stroke box a CSS border and emits no brush overlay or rough filter", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "plain box" }],
+            box: { left: 10, top: 20, width: 15, height: 8 },
+            style: { border: "2px solid #223274" },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /border: "2px solid #223274"/);
+  assert.doesNotMatch(mdx, /kn-rough/);
+  assert.doesNotMatch(mdx, /<rect/);
+});
+
 test("presentationToMdx flex-centers a filled diagram-label box both ways with textAlign center", () => {
   const mdx = presentationToMdx(
     deck([

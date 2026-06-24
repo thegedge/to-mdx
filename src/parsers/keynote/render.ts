@@ -167,10 +167,16 @@ function collectPathIds(presentation: Presentation): Map<string, string> {
  * included only when some shape uses an arrowhead.
  */
 function shapeDefsBlock(presentation: Presentation, pathIds: Map<string, string>): string {
-  if (pathIds.size === 0) {
+  const brush = anyBrushBorder(presentation);
+  // Brush-border boxes need the shared `<filter>` even on a deck with no shapes,
+  // so the defs `<svg>` is still emitted when only brush borders are present.
+  if (pathIds.size === 0 && !brush) {
     return "";
   }
   const entries: string[] = [];
+  if (brush) {
+    entries.push(ROUGH_FILTER);
+  }
   if (anyShapeMarker(presentation)) {
     entries.push(ARROW_MARKER);
   }
@@ -223,6 +229,25 @@ function linearPoints(d: string): Array<[number, number]> | null {
 function anyShapeMarker(presentation: Presentation): boolean {
   return presentation.slides.some((slide) => (slide.shapes ?? []).some((shape) => shape.markerStart || shape.markerEnd));
 }
+
+/** Whether any text box in the deck carries a smart-brush border (so the shared rough filter is emitted). */
+function anyBrushBorder(presentation: Presentation): boolean {
+  return presentation.slides.some((slide) =>
+    slide.textBoxes.some((box) => box.kind === "text" && box.style?.brushBorder !== undefined),
+  );
+}
+
+/**
+ * The shared "rough" displacement filter, emitted once in the document `<defs>`
+ * when any box uses a smart-brush border. `feTurbulence` makes fractal noise that
+ * `feDisplacementMap` uses to wobble the rect's straight edges into a hand-drawn
+ * line; the filter region is widened (`-20%`…`140%`) so displaced edges aren't
+ * clipped.
+ */
+const ROUGH_FILTER =
+  '<filter id="kn-rough" x="-20%" y="-20%" width="140%" height="140%">' +
+  '<feTurbulence type="fractalNoise" baseFrequency="0.012 0.02" numOctaves="3" seed="0" result="noise" />' +
+  '<feDisplacementMap in="SourceGraphic" in2="noise" scale="6" /></filter>';
 
 /**
  * The base added to a drawable's back-to-front `zOrder` rank to form its stacking
@@ -786,7 +811,39 @@ function renderTextBox(textBox: TextBox): string {
   // normal flow with no wrapper (there is nothing to style). When the paragraphs
   // carry their own sizes, drop the box-level `fontSize` so it doesn't override them.
   const style = styleAttr(boxDeclarations(textBox, perParagraphSizes));
-  return style ? `<div ${style}>\n${content}\n</div>` : content;
+  // A smart-brush border draws as a rough-filtered SVG overlay filling the box
+  // (the first child, behind the flow text); the box div is the containing block.
+  const brush = textBox.style?.brushBorder;
+  const body = brush ? `${brushBorderOverlay(brush)}\n${content}` : content;
+  return style ? `<div ${style}>\n${body}\n</div>` : content;
+}
+
+/** Edge-to-edge declarations for a brush-border overlay `<svg>` filling its box (no pointer/paint impact). */
+function brushBorderOverlayDeclarations(): Declaration[] {
+  return [
+    ["position", "absolute"],
+    ["left", 0],
+    ["top", 0],
+    ["right", 0],
+    ["bottom", 0],
+    ["width", "100%"],
+    ["height", "100%"],
+    ["overflow", "visible"],
+    ["pointerEvents", "none"],
+  ];
+}
+
+/**
+ * A box's smart-brush border as an absolutely-positioned `<svg>` filling the box,
+ * holding one `<rect>` outline distorted by the shared `#kn-rough` filter so it
+ * reads as a hand-drawn line. `aria-hidden` since it is decorative.
+ */
+function brushBorderOverlay(brush: { color: string; width: number }): string {
+  const svgStyle = styleAttr(brushBorderOverlayDeclarations());
+  const rect =
+    `<rect x="0" y="0" width="100%" height="100%" fill="none" ` +
+    `stroke="${brush.color}" strokeWidth={${brush.width}} filter="url(#kn-rough)" />`;
+  return `<svg aria-hidden="true" ${svgStyle}>${rect}</svg>`;
 }
 
 /**

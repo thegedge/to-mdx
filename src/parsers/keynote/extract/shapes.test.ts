@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ShapeInfoArchive, ShapeStyleArchive, StrokePatternArchive } from "../types.ts";
-import { buildLocalPath, effectiveShapeProps, shapeBorder, shapeBorderRadius, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
+import { buildLocalPath, effectiveShapeProps, shapeBorder, shapeBorderRadius, shapeBrushBorder, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
 
 /**
  * Applies an SVG `transform` (translate/rotate/scale, right-to-left as SVG does)
@@ -236,6 +236,27 @@ test("shapeBorder renders a shape stroke as a CSS border shorthand (solid, dashe
     shapeProperties: { stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 1, pattern: { type: 2 } } },
   } as unknown as ShapeStyleArchive;
   assert.equal(shapeBorder(emptyPattern), undefined);
+});
+
+test("shapeBrushBorder resolves a smart (brush) stroke to {color,width}, and is mutually exclusive with shapeBorder", () => {
+  const smart = {
+    shapeProperties: {
+      stroke: { color: { model: 1, r: 0, g: 0, b: 1 }, width: 4, smartStroke: { strokeName: "Pen" } },
+    },
+  } as unknown as ShapeStyleArchive;
+  assert.deepEqual(shapeBrushBorder(smart), { color: "#0000ff", width: 4 });
+  // A smart stroke never also yields a flat CSS border (no double border).
+  assert.equal(shapeBorder(smart), undefined);
+
+  // A plain stroke yields a CSS border but no brush border.
+  const plain = {
+    shapeProperties: { stroke: { color: { model: 1, r: 1, g: 0, b: 0 }, width: 3 } },
+  } as unknown as ShapeStyleArchive;
+  assert.equal(shapeBrushBorder(plain), undefined);
+  assert.equal(shapeBorder(plain), "3px solid #ff0000");
+
+  // No stroke at all yields neither.
+  assert.equal(shapeBrushBorder({ shapeProperties: {} } as unknown as ShapeStyleArchive), undefined);
 });
 
 test("svgPath emits a fill-only path when the style has a fill but no stroke", () => {

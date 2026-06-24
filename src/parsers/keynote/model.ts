@@ -156,6 +156,14 @@ export interface TextBoxStyle {
    */
   border?: string;
   /**
+   * The box's shape stroke when it is a SMART (artistic "brush") stroke, e.g. the
+   * named `"Pen"` stroke, as a `{ color, width }` pair. Mutually exclusive with
+   * `border`: a brush stroke renders as a hand-drawn "rough"-filtered SVG `<rect>`
+   * overlay instead of a flat CSS border. Present only for free text boxes whose
+   * shape carries a smart stroke.
+   */
+  brushBorder?: { color: string; width: number };
+  /**
    * The box's corner radius as a CSS `border-radius` percentage (e.g. `"8.9%"`),
    * lifted from a rounded-rectangle shape's `scalarPathSource` (its corner-radius
    * scalar over the box's smaller natural dimension). Present only for free text

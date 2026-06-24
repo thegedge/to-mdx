@@ -356,14 +356,42 @@ function resolveStyle(
   };
 }
 
-/** The backing shape's stroke as a CSS `border` shorthand (e.g. `"2px solid #223274"`), or undefined when it has none. */
+/**
+ * The backing shape's stroke as a CSS `border` shorthand (e.g. `"2px solid #223274"`),
+ * or undefined when it has none — OR when the stroke is a SMART (artistic brush)
+ * stroke, which `shapeBrushBorder` renders instead (a box never gets both).
+ */
 export function shapeBorder(style: ShapeStyleArchive | undefined): string | undefined {
-  const stroke = resolveStroke(effectiveShapeProps(style)?.stroke);
+  const archiveStroke = effectiveShapeProps(style)?.stroke;
+  if (isSmartStroke(archiveStroke)) {
+    return undefined;
+  }
+  const stroke = resolveStroke(archiveStroke);
   if (!stroke) {
     return undefined;
   }
   const lineStyle = stroke.dasharray ? "dashed" : "solid";
   return `${trimNumber(stroke.width)}px ${lineStyle} ${stroke.color}`;
+}
+
+/**
+ * The backing shape's SMART stroke (an iWork artistic "brush", e.g. the named
+ * `"Pen"` stroke) resolved to a brush border `{ color, width }`, or undefined when
+ * the stroke is plain or absent. A smart stroke is a textured hand-drawn line, so
+ * the renderer draws it as a rough-filtered SVG outline rather than a flat border.
+ */
+export function shapeBrushBorder(style: ShapeStyleArchive | undefined): { color: string; width: number } | undefined {
+  const archiveStroke = effectiveShapeProps(style)?.stroke;
+  if (!isSmartStroke(archiveStroke)) {
+    return undefined;
+  }
+  const stroke = resolveStroke(archiveStroke);
+  return stroke ? { color: stroke.color, width: stroke.width } : undefined;
+}
+
+/** True when a stroke is a smart (artistic brush) stroke, i.e. it carries a named `smartStroke`. */
+function isSmartStroke(stroke: StrokeArchive | undefined): boolean {
+  return stroke?.smartStroke?.strokeName !== undefined;
 }
 
 function resolveStroke(stroke: StrokeArchive | undefined): ResolvedStroke | undefined {
