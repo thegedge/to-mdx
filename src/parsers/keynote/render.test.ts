@@ -262,7 +262,7 @@ test("presentationToMdx wraps a masked image in an overflow:hidden clip wrapper 
 
   assert.match(
     mdx,
-    /<div style=\{\{ position: "absolute", left: "10%", top: "20%", width: "30%", height: "40%", overflow: "hidden", zIndex: 1 \}\}>/,
+    /<div style=\{\{ position: "absolute", left: "10%", top: "20%", width: "30%", height: "40%", overflow: "hidden" \}\}>/,
   );
   assert.match(
     mdx,
@@ -276,7 +276,7 @@ test("presentationToMdx renders a maskless image as a plain <Image>, with no cli
     deck([slide({ images: [{ fileName: "pic.png", altText: "alt", box: { left: 0, top: 0, width: 50, height: 50 } }] })]),
   );
 
-  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: "0%", width: "50%", top: "0%", height: "50%", zIndex: 1 \}\} src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
+  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: "0%", width: "50%", top: "0%", height: "50%" \}\} src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
   assert.doesNotMatch(mdx, /overflow: "hidden"/);
 });
 
@@ -285,7 +285,7 @@ test("presentationToMdx emits a translucent image's opacity in its inline style"
     deck([slide({ images: [{ fileName: "pic.png", altText: "alt", box: { left: 0, top: 0, width: 50, height: 50 }, opacity: 0.15 }] })]),
   );
 
-  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: "0%", width: "50%", top: "0%", height: "50%", zIndex: 1, opacity: 0\.15 \}\} src=/);
+  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: "0%", width: "50%", top: "0%", height: "50%", opacity: 0\.15 \}\} src=/);
 });
 
 test("presentationToMdx emits opacity on an unpositioned image, and none when opaque", () => {
@@ -315,7 +315,7 @@ test("presentationToMdx puts a cropped image's opacity on the inner <Image>", ()
 
   // The opacity rides the inner image, not the clip container.
   assert.match(mdx, /<Image style=\{\{ position: "absolute", left: "-50%", top: "-25%", width: "200%", height: "150%", opacity: 0\.15 \}\} src=/);
-  assert.doesNotMatch(mdx, /overflow: "hidden", zIndex: 1, opacity/);
+  assert.doesNotMatch(mdx, /overflow: "hidden", opacity/);
 });
 
 test("presentationToMdx sizes each paragraph of a mixed-size text box, dropping the box-level fontSize", () => {
@@ -338,7 +338,7 @@ test("presentationToMdx sizes each paragraph of a mixed-size text box, dropping 
   );
 
   // The box div keeps position/color but no fontSize; each paragraph carries its own.
-  assert.match(mdx, /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", zIndex: 2, color: "#ffffff" \}\}>/);
+  assert.match(mdx, /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", color: "#ffffff" \}\}>/);
   assert.doesNotMatch(mdx, /<div style=[^>]*fontSize/);
   assert.match(mdx, /<p style=\{\{ fontSize: "var\(--text-8xl\)" \}\}>83k<\/p>/);
   assert.match(mdx, /<p style=\{\{ fontSize: "var\(--text-sm\)" \}\}>average requests per second<\/p>/);
@@ -364,7 +364,7 @@ test("presentationToMdx keeps a single box-level fontSize for a uniform-size tex
   );
 
   // One box-level size, prose joined by a blank line, no per-paragraph <p> wrappers.
-  assert.match(mdx, /zIndex: 2, fontSize: "var\(--text-lg\)" \}\}>\n\s*one\n\n\s*two\n\s*<\/div>/);
+  assert.match(mdx, /fontSize: "var\(--text-lg\)" \}\}>\n\s*one\n\n\s*two\n\s*<\/div>/);
   assert.doesNotMatch(mdx, /<p style/);
 });
 
@@ -388,28 +388,28 @@ test("presentationToMdx still renders a real movie 'video' as a <video controls>
   assert.doesNotMatch(mdx, /<Image/);
 });
 
-test("presentationToMdx renders a full-bleed video as an objectFit:cover layer at zIndex 0", () => {
+test("presentationToMdx renders a full-bleed video as an objectFit:cover backdrop layer", () => {
   const mdx = presentationToMdx(
     deck([slide({ videos: [{ fileName: "clip.mp4", box: { left: 0, top: 0, width: 100, height: 100 } }] })]),
   );
   assert.match(
     mdx,
-    /<video controls style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
+    /<video controls style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", objectFit: "cover" \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
   );
 });
 
-test("presentationToMdx positions a non-full-bleed video via its box (absolute, zIndex 1)", () => {
+test("presentationToMdx positions a non-full-bleed video via its box (absolute, no objectFit)", () => {
   const mdx = presentationToMdx(
     deck([slide({ videos: [{ fileName: "clip.mp4", box: { left: 10, top: 20, width: 30, height: 40 } }] })]),
   );
   assert.match(
     mdx,
-    /<video controls style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", zIndex: 1 \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
+    /<video controls style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%" \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
   );
   assert.doesNotMatch(mdx, /objectFit/);
 });
 
-test("presentationToMdx keeps the cover background, tint, and cover video at zIndex 0 beneath z-ordered content", () => {
+test("presentationToMdx keeps the tint and cover video at the backdrop, with z-ordered content painting after them in document order", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -422,19 +422,23 @@ test("presentationToMdx keeps the cover background, tint, and cover video at zIn
       }),
     ]),
   );
-  // Tint overlay stays at the backdrop layer.
-  assert.match(mdx, /<div style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", backgroundColor: "rgba\(0, 0, 0, 0\.5\)", zIndex: 0 \}\} \/>/);
-  // A full-bleed cover video stays at zIndex 0 even though it carries a zOrder.
-  assert.match(mdx, /<video controls style=\{\{[^}]*objectFit: "cover", zIndex: 0 \}\}/);
-  // Content above the backdrop derives its zIndex from its rank (4 -> 5).
-  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 5 \}\}>\n\s*over/);
+  // The tint overlay and full-bleed cover video both sit at the backdrop rank (0)
+  // and carry no zIndex; the rank-5 content paints above them via document order.
+  const tintIdx = mdx.indexOf('backgroundColor: "rgba(0, 0, 0, 0.5)"');
+  const videoIdx = mdx.indexOf('objectFit: "cover"');
+  const overIdx = mdx.indexOf(">\n  over");
+  assert.ok(tintIdx >= 0 && videoIdx >= 0 && overIdx >= 0);
+  // Backdrop (tint, then full-bleed cover video) precedes the higher-ranked text.
+  assert.ok(tintIdx < videoIdx, "tint precedes the cover video");
+  assert.ok(videoIdx < overIdx, "the cover video precedes the over-text so the text paints on top");
+  assert.doesNotMatch(mdx, /zIndex/);
 });
 
 test("presentationToMdx renders a full-bleed animated image 'video' as an <Image> cover layer", () => {
   const mdx = presentationToMdx(
     deck([slide({ videos: [{ fileName: "clip.gif", box: { left: 0, top: 0, width: 100, height: 100 } }] })]),
   );
-  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", objectFit: "cover", zIndex: 0 \}\} src=\{`\$\{imageRoot\}\/clip\.gif`\}/);
+  assert.match(mdx, /<Image style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", objectFit: "cover" \}\} src=\{`\$\{imageRoot\}\/clip\.gif`\}/);
 });
 
 function cell(text: string, colSpan = 1, rowSpan = 1) {
@@ -681,7 +685,7 @@ test("presentationToMdx renders a positioned, styled text box as an inline-style
 
   assert.match(
     mdx,
-    /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", zIndex: 2, fontSize: "var\(--text-4xl\)", color: "#ff0000", fontWeight: 700, textAlign: "center" \}\}>\n\s*99\.9%\n\s*<\/div>/,
+    /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", fontSize: "var\(--text-4xl\)", color: "#ff0000", fontWeight: 700, textAlign: "center" \}\}>\n\s*99\.9%\n\s*<\/div>/,
   );
 });
 
@@ -776,7 +780,7 @@ test("presentationToMdx renders a promoted full-bleed image as a bare-filename b
   assert.doesNotMatch(mdx, /backgroundContain/);
 });
 
-test("presentationToMdx layers positioned text (zIndex 2) above positioned images (zIndex 1) via inline style", () => {
+test("presentationToMdx layers positioned text (rank 2) above positioned images (rank 1) via document order", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -789,13 +793,18 @@ test("presentationToMdx layers positioned text (zIndex 2) above positioned image
   );
 
   assert.doesNotMatch(mdx, /<style>/);
-  // The image carries an inline absolute style (zIndex 1) and comes before src.
+  assert.doesNotMatch(mdx, /zIndex/);
+  // The image carries a bare absolute style (no zIndex).
   assert.match(
     mdx,
-    /<Image style=\{\{ position: "absolute", left: "10%", width: "50%", top: "10%", height: "50%", zIndex: 1 \}\} src=\{`\$\{imageRoot\}\/diagram\.png`\}/,
+    /<Image style=\{\{ position: "absolute", left: "10%", width: "50%", top: "10%", height: "50%" \}\} src=\{`\$\{imageRoot\}\/diagram\.png`\}/,
   );
-  // The text box is layered above it (zIndex 2).
-  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 2 \}\}>/);
+  // Stacking is document order: the rank-1 image precedes the rank-2 text box, so
+  // the text paints on top.
+  const imageIdx = mdx.indexOf("diagram.png");
+  const labelIdx = mdx.indexOf(">\n  label");
+  assert.ok(imageIdx >= 0 && labelIdx >= 0);
+  assert.ok(imageIdx < labelIdx, "the rank-1 image precedes the rank-2 text box");
 });
 
 test("presentationToMdx leaves an unpositioned, unstyled text box in normal flow with no wrapper or <style>", () => {
@@ -866,7 +875,7 @@ test("presentationToMdx anchors a positioned auto-size box without emitting widt
     ]),
   );
 
-  assert.match(mdx, /<div style=\{\{ position: "absolute", right: "5\.6%", bottom: "2\.8%", zIndex: 2 \}\}>/);
+  assert.match(mdx, /<div style=\{\{ position: "absolute", right: "5\.6%", bottom: "2\.8%" \}\}>/);
   assert.doesNotMatch(mdx, /width: "0%"/);
   assert.doesNotMatch(mdx, /height: "0%"/);
   assert.doesNotMatch(mdx, /left:/);
@@ -884,8 +893,8 @@ test("presentationToMdx renders a vector shape as a <use> in an <svg> sized to t
   // The shape instance references it via <use> in the slide overlay, carrying its transform + style.
   assert.match(mdx, /<svg viewBox="0 0 1920 1080"/);
   assert.match(mdx, /<use href="#kn-p1" transform="translate\(100 200\) scale\(7\.16 0\)" style=\{\{ fill: "none", stroke: "#000000", strokeWidth: 2 \}\} \/>/);
-  // An unranked shape falls back to the prior fixed z-index 1.
-  assert.match(mdx, /zIndex: 1/);
+  // The overlay carries no zIndex; its stacking comes from document order.
+  assert.doesNotMatch(mdx, /zIndex/);
   assert.match(mdx, /pointerEvents: "none"/);
   assert.doesNotMatch(mdx, /kn-arrow/);
 });
@@ -933,10 +942,17 @@ test("presentationToMdx splits a shape run around a label box into two overlays 
   );
 
   // A barrier (the box at rank 3) between the two shapes (ranks 1, 5) splits them
-  // into two overlays. zIndex = 1 + zOrder: line(2) < box(4) < icon(6).
-  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 2,[^>]*>\n\s*<use [^>]*href="#kn-p1"/);
-  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 6,[^>]*>\n\s*<use [^>]*href="#kn-p2"/);
-  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 4[^}]*\}\}>\n\s*verifier/);
+  // into TWO overlays (still grouped per run). Stacking is document order, rank =
+  // 1 + zOrder: line(2) < box(4) < icon(6), so the emitted order is
+  // line-overlay, then the label box, then the icon-overlay.
+  assert.equal(mdx.match(/viewBox="0 0 1920 1080"/g)?.length, 2, "two separate overlays");
+  assert.doesNotMatch(mdx, /zIndex/);
+  const lineIdx = mdx.indexOf('href="#kn-p1"');
+  const boxIdx = mdx.indexOf(">\n  verifier");
+  const iconIdx = mdx.indexOf('href="#kn-p2"');
+  assert.ok(lineIdx >= 0 && boxIdx >= 0 && iconIdx >= 0);
+  assert.ok(lineIdx < boxIdx, "the rank-2 line overlay precedes the rank-4 label box");
+  assert.ok(boxIdx < iconIdx, "the rank-4 label box precedes the rank-6 icon overlay");
 });
 
 test("presentationToMdx dedupes identical local paths into one def, referenced by <use> with differing transforms", () => {
@@ -969,7 +985,7 @@ test("presentationToMdx defines an all-L path as a <polyline> and a curved/close
   assert.match(mdx, /<path id="kn-p2" d="M 0 0 C 1 1 2 2 3 3 Z" \/>/);
 });
 
-test("presentationToMdx derives positioned image and box zIndex from drawablesZOrder rank", () => {
+test("presentationToMdx orders positioned image and box by drawablesZOrder rank in the document", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -981,9 +997,14 @@ test("presentationToMdx derives positioned image and box zIndex from drawablesZO
     ]),
   );
 
-  // Image (zOrder 2 -> zIndex 3) renders above the box (zOrder 0 -> zIndex 1).
-  assert.match(mdx, /<Image style=\{\{ position: "absolute"[^}]*zIndex: 3 \}\} src=\{`\$\{imageRoot\}\/p\.png`\}/);
-  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 1 \}\}>/);
+  // No zIndex anywhere; stacking is document order. The box (zOrder 0 -> rank 1)
+  // precedes the image (zOrder 2 -> rank 3), so the image paints on top — even
+  // though the box is emitted from a later category (text boxes after images).
+  assert.doesNotMatch(mdx, /zIndex/);
+  const boxIdx = mdx.indexOf(">\n  t");
+  const imageIdx = mdx.indexOf("p.png");
+  assert.ok(boxIdx >= 0 && imageIdx >= 0);
+  assert.ok(boxIdx < imageIdx, "the rank-1 box precedes the rank-3 image");
 });
 
 test("presentationToMdx uses the deck slideSize for the shape overlay viewBox", () => {
@@ -1056,19 +1077,20 @@ test("presentationToMdx renders a slide carrying only a background color", () =>
   assert.match(mdx, /<Slide style=\{\{ backgroundColor: "#213373" \}\} \/>/);
 });
 
-test("presentationToMdx emits a zIndex-0 full-bleed tint overlay div when a slide has a backgroundTint", () => {
+test("presentationToMdx emits a full-bleed tint overlay div (backdrop rank, no zIndex) when a slide has a backgroundTint", () => {
   const mdx = presentationToMdx(
     deck([slide({ background: "universe.jpg", backgroundTint: "rgba(33, 51, 115, 0.756)", title: "Hi" })]),
   );
   assert.match(
     mdx,
-    /<div style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", backgroundColor: "rgba\(33, 51, 115, 0\.756\)", zIndex: 0 \}\} \/>/,
+    /<div style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", backgroundColor: "rgba\(33, 51, 115, 0\.756\)" \}\} \/>/,
   );
 });
 
 test("presentationToMdx omits the tint overlay div when a slide has no backgroundTint", () => {
   const mdx = presentationToMdx(deck([slide({ background: "universe.jpg", title: "Hi" })]));
-  assert.doesNotMatch(mdx, /zIndex: 0/);
+  // No full-bleed backdrop tint div is emitted.
+  assert.doesNotMatch(mdx, /position: "absolute", left: 0, top: 0, width: "100%", height: "100%", backgroundColor/);
 });
 
 test("assembleMdxDocument puts a blank line between the exports and the body, and ends with a newline", () => {
@@ -1090,7 +1112,7 @@ test("presentationToMdx emits opacity on a shape <use> with a translucent shapeP
   assert.doesNotMatch(opaque, /opacity:/);
 });
 
-test("presentationToMdx places a backdrop master image at zIndex 0 and a normal one at its positioned zIndex", () => {
+test("presentationToMdx places a backdrop master image first (rank 0), a normal one after it, in document order", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -1101,12 +1123,12 @@ test("presentationToMdx places a backdrop master image at zIndex 0 and a normal 
       }),
     ]),
   );
-  assert.match(mdx, /percy\.jpg`\}[^\n]*/);
-  // Backdrop image carries zIndex 0; the positioned logo falls back to zIndex 1.
-  const percyLine = mdx.split("\n").find((line) => line.includes("percy.jpg"));
-  const logoLine = mdx.split("\n").find((line) => line.includes("logo.png"));
-  assert.match(percyLine ?? "", /zIndex: 0/);
-  assert.match(logoLine ?? "", /zIndex: 1/);
+  assert.doesNotMatch(mdx, /zIndex/);
+  // The backdrop image (rank 0) precedes the rank-1 logo, so the logo paints on top.
+  const percyIdx = mdx.indexOf("percy.jpg");
+  const logoIdx = mdx.indexOf("logo.png");
+  assert.ok(percyIdx >= 0 && logoIdx >= 0);
+  assert.ok(percyIdx < logoIdx, "the rank-0 backdrop precedes the rank-1 logo");
 });
 
 test("presentationToMdx emits textShadow and opacity declarations for a positioned text box", () => {

@@ -225,29 +225,31 @@ function anyShapeMarker(presentation: Presentation): boolean {
 }
 
 /**
- * The base added to a drawable's back-to-front `zOrder` rank to form its CSS
- * `zIndex`. ≥ 1 so every positioned drawable stays above the zIndex-0 slide
- * backdrop (cover background image, tint overlay, full-bleed cover video).
+ * The base added to a drawable's back-to-front `zOrder` rank to form its stacking
+ * rank. ≥ 1 so every positioned drawable ranks above the rank-0 slide backdrop
+ * (cover background image, tint overlay, full-bleed cover video).
  */
 const POSITION_Z_BASE = 1;
 
 /**
- * A positioned drawable's CSS `zIndex` from its `drawablesZOrder` rank (higher =
+ * A positioned drawable's stacking rank from its `drawablesZOrder` rank (higher =
  * nearer the front). Falls back to the type-based default when the slide declares
- * no z-order (older decks), preserving the prior fixed layering.
+ * no z-order (older decks), preserving the prior fixed layering. The rank is used
+ * only to sort drawables into document order — later siblings paint on top — so no
+ * explicit `zIndex` style is emitted.
  */
 function positionedZIndex(zOrder: number | undefined, fallback: number): number {
   return zOrder === undefined ? fallback : POSITION_Z_BASE + zOrder;
 }
 
-/** Absolute-positioning declarations for a placed image at the given stacking `zIndex`. */
-function imageDeclarations(box: TextBoxGeometry, zIndex: number): Declaration[] {
-  return [["position", "absolute"], ...positionRules(box), ["zIndex", zIndex]];
+/** Absolute-positioning declarations for a placed image (stacking comes from document order). */
+function imageDeclarations(box: TextBoxGeometry): Declaration[] {
+  return [["position", "absolute"], ...positionRules(box)];
 }
 
 /**
- * Edge-to-edge `cover` declarations for a full-bleed video, layered at the very
- * back (zIndex 0) so the slide's text boxes (zIndex ≥ 2) overlay it as attribution.
+ * Edge-to-edge `cover` declarations for a full-bleed video. Emitted first in
+ * document order (rank 0) so the slide's later content overlays it as attribution.
  */
 function videoCoverDeclarations(): Declaration[] {
   return [
@@ -257,7 +259,6 @@ function videoCoverDeclarations(): Declaration[] {
     ["width", "100%"],
     ["height", "100%"],
     ["objectFit", "cover"],
-    ["zIndex", 0],
   ];
 }
 
@@ -272,7 +273,7 @@ function renderVideo(video: SlideVideo): string {
   const declarations = video.box
     ? isFullBleed(video.box)
       ? videoCoverDeclarations()
-      : imageDeclarations(video.box, positionedZIndex(video.zOrder, 1))
+      : imageDeclarations(video.box)
     : [];
   const attr = declarations.length > 0 ? styleAttr(declarations) : "";
 
@@ -335,9 +336,6 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
   if (textBox.box) {
     declarations.push(["position", "absolute"]);
     declarations.push(...positionRules(textBox.box));
-    // Stacking from the box's authoritative z-order; falls back to 2 (above
-    // positioned images) for decks that declare no order.
-    declarations.push(["zIndex", positionedZIndex(textBox.zOrder, 2)]);
   }
 
   const style = textBox.style;
@@ -435,43 +433,86 @@ function slideAttributes(slide: Slide): string {
   return parts.join(" ");
 }
 
-function slideBlocks(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string[] {
-  const blocks: string[] = [];
+/** A positioned drawable's rendered HTML paired with its stacking rank (the sort key). */
+interface PositionedBlock {
+  z: number;
+  html: string;
+}
 
-  // A full-bleed tint over the background image (zIndex 0): above the cover
-  // background, below the figure (zIndex 1) and text (zIndex >= 2).
+function slideBlocks(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string[] {
+  // The static markdown base layer: title and body bullets, plus any drawable that
+  // carries no absolute position (flow images/videos/text/markdown tables). The
+  // positioned drawables always paint above this base, so its relative order is
+  // unaffected by their stacking.
+  const base: string[] = [];
+  // Positioned drawables paired with their stacking rank. Pushed in this type order
+  // (tint, shape runs, text boxes, images, videos, tables) so a stable sort keeps
+  // today's paint sequence among equal ranks.
+  const positioned: PositionedBlock[] = [];
+
+  // A full-bleed tint over the background image (rank 0): above the cover
+  // background, below the figure (rank 1) and text (rank >= 2).
   if (slide.backgroundTint) {
-    blocks.push(backgroundTintOverlay(slide.backgroundTint));
+    positioned.push({ z: 0, html: backgroundTintOverlay(slide.backgroundTint) });
   }
 
   if (slide.title) {
-    blocks.push(`# ${escapeMdxText(slide.title)}`);
+    base.push(`# ${escapeMdxText(slide.title)}`);
   }
   if (slide.body.length > 0) {
-    blocks.push(renderBullets(slide.body));
+    base.push(renderBullets(slide.body));
   }
 
   // Shapes are grouped into one `<svg>` per contiguous z-order run, so a slide of
   // identical icons collapses to a single overlay instead of dozens.
   for (const run of groupShapeRuns(slide.shapes ?? [], shapeBarriers(slide))) {
-    blocks.push(renderShapeRun(run, slideSize, pathIds));
+    positioned.push({ z: run.z, html: renderShapeRun(run, slideSize, pathIds) });
   }
 
   for (const textBox of slide.textBoxes) {
-    blocks.push(renderTextBox(textBox));
+    const html = renderTextBox(textBox);
+    if (textBox.kind === "text" && textBox.box) {
+      // Falls back to rank 2 (above positioned images) for decks with no z-order.
+      positioned.push({ z: positionedZIndex(textBox.zOrder, 2), html });
+    } else {
+      base.push(html);
+    }
   }
 
   for (const image of slide.images) {
-    blocks.push(renderImage(image));
+    const html = renderImage(image);
+    if (image.box || image.crop) {
+      // A backdrop master sits behind all content at rank 0.
+      positioned.push({ z: image.backdrop ? 0 : positionedZIndex(image.zOrder, 1), html });
+    } else {
+      base.push(html);
+    }
   }
 
   for (const video of slide.videos) {
-    blocks.push(renderVideo(video));
+    const html = renderVideo(video);
+    if (video.box) {
+      // A full-bleed cover video stays at the backdrop rank (0) regardless of zOrder.
+      positioned.push({ z: isFullBleed(video.box) ? 0 : positionedZIndex(video.zOrder, 1), html });
+    } else {
+      base.push(html);
+    }
   }
 
   for (const table of slide.tables) {
-    blocks.push(renderPositionedTable(table));
+    const html = renderPositionedTable(table);
+    if (table.box && html) {
+      positioned.push({ z: 1, html });
+    } else {
+      base.push(html);
+    }
   }
+
+  // Stable-sort by ascending rank so document order encodes stacking: a later
+  // sibling paints on top, reproducing the old explicit `zIndex` without it.
+  positioned.sort((a, b) => a.z - b.z);
+
+  const blocks = [...base, ...positioned.map((block) => block.html)];
 
   if (slide.tableCount > 0) {
     blocks.push(`{/* ${slide.tableCount} table(s) on this slide could not be extracted */}`);
@@ -486,9 +527,9 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number },
 }
 
 /**
- * A full-bleed `<div>` tint overlay laid over the slide's background image at
- * zIndex 0 — above the `cover` background image, below the figure (zIndex 1) and
- * text (zIndex >= 2). The tint is a CSS color (`#rrggbb` or `rgba(...)`).
+ * A full-bleed `<div>` tint overlay laid over the slide's background image at the
+ * backdrop layer (rank 0, emitted first) — above the `cover` background image,
+ * below the figures and text. The tint is a CSS color (`#rrggbb` or `rgba(...)`).
  */
 function backgroundTintOverlay(tint: string): string {
   return `<div ${styleAttr(tintOverlayDeclarations(tint))} />`;
@@ -502,12 +543,11 @@ function tintOverlayDeclarations(tint: string): Declaration[] {
     ["width", "100%"],
     ["height", "100%"],
     ["backgroundColor", tint],
-    ["zIndex", 0],
   ];
 }
 
-/** The inline style placing one shape's edge-to-edge `<svg>` at the given stacking `zIndex`. */
-function shapeOverlayDeclarations(zIndex: number): Declaration[] {
+/** The inline style placing one shape's edge-to-edge `<svg>` (stacking comes from document order). */
+function shapeOverlayDeclarations(): Declaration[] {
   return [
     ["position", "absolute"],
     ["left", 0],
@@ -515,7 +555,6 @@ function shapeOverlayDeclarations(zIndex: number): Declaration[] {
     ["width", "100%"],
     ["height", "100%"],
     ["overflow", "visible"],
-    ["zIndex", zIndex],
     ["pointerEvents", "none"],
   ];
 }
@@ -535,8 +574,8 @@ const ARROW_MARKER =
 
 /** One contiguous z-order run of shapes sharing a single overlay `<svg>`. */
 interface ShapeRun {
-  /** The overlay's CSS `zIndex` (the run's first/lowest rank). */
-  zIndex: number;
+  /** The run's stacking rank (its first/lowest shape rank), used as the sort key. */
+  z: number;
   shapes: SvgPath[];
 }
 
@@ -603,17 +642,18 @@ function splitsRun(previousZ: number | undefined, z: number | undefined, barrier
 }
 
 function makeRun(shapes: SvgPath[]): ShapeRun {
-  return { zIndex: positionedZIndex(shapes[0].zOrder, 1), shapes };
+  return { z: positionedZIndex(shapes[0].zOrder, 1), shapes };
 }
 
 /**
  * One contiguous z-run of shapes as a single absolutely-positioned, full-slide
  * `<svg>` (its `viewBox` matching the slide so each `<use>` transform lands in
- * slide-point space), stacked at the run's z-rank. Every shape is a `<use>` of its
- * shared `<defs>` path, in z-order so later shapes paint on top.
+ * slide-point space); the overlay's document position carries the run's stacking.
+ * Every shape is a `<use>` of its shared `<defs>` path, in z-order so later shapes
+ * paint on top.
  */
 function renderShapeRun(run: ShapeRun, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string {
-  const open = `<svg viewBox="0 0 ${percent(slideSize.width)} ${percent(slideSize.height)}" ${styleAttr(shapeOverlayDeclarations(run.zIndex))}>`;
+  const open = `<svg viewBox="0 0 ${percent(slideSize.width)} ${percent(slideSize.height)}" ${styleAttr(shapeOverlayDeclarations())}>`;
   const uses = run.shapes.map((shape) => `${INDENT}${renderUse(shape, pathIds)}`).join("\n");
   return `${open}\n${uses}\n</svg>`;
 }
@@ -658,13 +698,12 @@ function renderUse(shape: SvgPath, pathIds: Map<string, string>): string {
  * normal flow.
  */
 function renderImage(image: SlideImage): string {
-  // A full-bleed master backdrop sits behind all content at zIndex 0; everything
-  // else stacks by its z-order rank above the slide backdrop.
-  const zIndex = image.backdrop ? 0 : positionedZIndex(image.zOrder, 1);
+  // Stacking (backdrop behind all content, otherwise by z-order rank) comes from the
+  // block's document position, set by `slideBlocks`; nothing here emits a zIndex.
   if (image.crop) {
-    return renderCroppedImage(image.fileName, image.altText, image.crop, zIndex, image.opacity);
+    return renderCroppedImage(image.fileName, image.altText, image.crop, image.opacity);
   }
-  const declarations = image.box ? imageDeclarations(image.box, zIndex) : [];
+  const declarations = image.box ? imageDeclarations(image.box) : [];
   if (image.opacity !== undefined) {
     declarations.push(["opacity", image.opacity]);
   }
@@ -673,7 +712,7 @@ function renderImage(image: SlideImage): string {
 }
 
 /** The container-rectangle declarations for a masked image's clipping wrapper. */
-function cropContainerDeclarations(crop: ImageCrop, zIndex: number): Declaration[] {
+function cropContainerDeclarations(crop: ImageCrop): Declaration[] {
   return [
     ["position", "absolute"],
     ["left", `${percent(crop.left)}%`],
@@ -681,7 +720,6 @@ function cropContainerDeclarations(crop: ImageCrop, zIndex: number): Declaration
     ["width", `${percent(crop.width)}%`],
     ["height", `${percent(crop.height)}%`],
     ["overflow", "hidden"],
-    ["zIndex", zIndex],
   ];
 }
 
@@ -700,8 +738,8 @@ function cropImageDeclarations(crop: ImageCrop): Declaration[] {
  * A masked image: an `overflow:"hidden"` container placed on the slide, wrapping
  * the full `<Image>` offset/sized so only the mask's sub-rectangle shows.
  */
-function renderCroppedImage(fileName: string, altText: string, crop: ImageCrop, zIndex: number, opacity?: number): string {
-  const container = styleAttr(cropContainerDeclarations(crop, zIndex));
+function renderCroppedImage(fileName: string, altText: string, crop: ImageCrop, opacity?: number): string {
+  const container = styleAttr(cropContainerDeclarations(crop));
   const innerDeclarations = cropImageDeclarations(crop);
   if (opacity !== undefined) {
     innerDeclarations.push(["opacity", opacity]);
@@ -790,7 +828,7 @@ function renderPositionedTable(table: TableData): string {
   if (!table.box || !rendered) {
     return rendered;
   }
-  const declarations: Declaration[] = [["position", "absolute"], ...positionRules(table.box), ["zIndex", 1]];
+  const declarations: Declaration[] = [["position", "absolute"], ...positionRules(table.box)];
   return `<div ${styleAttr(declarations)}>\n${indent(rendered)}\n</div>`;
 }
 
