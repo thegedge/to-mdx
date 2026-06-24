@@ -59,7 +59,13 @@ export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | unde
   if (!bezier || !elements?.length) return undefined;
 
   const frame = shapeFrame(shape);
-  const { localD, transform } = buildLocalPath(elements, frame);
+  // An SVG marker inherits its element's transform, so a non-uniform scale (a line
+  // is scaled along its length) would stretch the arrowhead. For shapes that carry
+  // an arrowhead we bake the scale into the path instead, leaving the transform
+  // scale-free; everything else keeps the scale on the transform so identical
+  // shapes still dedupe to one <defs> path.
+  const markers = arrowFlags(style);
+  const { localD, transform } = buildLocalPath(elements, frame, markers.markerStart === true || markers.markerEnd === true);
   if (!localD) return undefined;
 
   const opacity = shapeOpacity(style);
@@ -67,7 +73,7 @@ export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | unde
     localD,
     ...(transform ? { transform } : {}),
     ...resolveStyle(style),
-    ...arrowFlags(style),
+    ...markers,
     ...(opacity !== undefined ? { opacity } : {}),
   };
 }
@@ -92,9 +98,17 @@ export interface LocalPath {
  * per-point pipeline. Identity components are dropped so a plain placed path emits
  * a short transform (or none).
  */
-export function buildLocalPath(elements: PathElement[], frame: Frame): LocalPath {
+export function buildLocalPath(elements: PathElement[], frame: Frame, bakeScale = false): LocalPath {
   const bounds = pathBounds(elements);
-  return { localD: buildLocalD(elements, bounds), transform: buildTransform(frame, bounds) };
+  const sx = bounds.width ? frame.width / bounds.width : 1;
+  const sy = bounds.height ? frame.height / bounds.height : 1;
+  // When baking, the scale folds into the path coordinates and the transform keeps
+  // only translate + rotate (both leave a marker undistorted); otherwise the local
+  // path is the bare normalized shape and the scale rides the transform (so it can
+  // be shared across differently-sized instances).
+  const localD = buildLocalD(elements, bounds, bakeScale ? sx : 1, bakeScale ? sy : 1);
+  const transform = buildTransform(frame, bakeScale ? 1 : sx, bakeScale ? 1 : sy);
+  return { localD, transform };
 }
 
 /**
@@ -105,8 +119,9 @@ export function buildLocalPath(elements: PathElement[], frame: Frame): LocalPath
  * its last point. (Control points may go slightly negative — bounds are measured
  * over endpoints only, matching the old baking.)
  */
-function buildLocalD(elements: PathElement[], bounds: Bounds): string {
+function buildLocalD(elements: PathElement[], bounds: Bounds, sx: number, sy: number): string {
   const commands: string[] = [];
+  const at = (point: { x: number; y: number }): string => localPoint(point, bounds, sx, sy);
 
   for (const element of elements) {
     if (element.type === ELEMENT_CLOSE) {
@@ -115,20 +130,20 @@ function buildLocalD(elements: PathElement[], bounds: Bounds): string {
     }
     if (element.type === ELEMENT_CURVE_TO && element.points.length >= 3) {
       const [c1, c2, end] = element.points;
-      commands.push(`C ${localPoint(c1, bounds)} ${localPoint(c2, bounds)} ${localPoint(end, bounds)}`);
+      commands.push(`C ${at(c1)} ${at(c2)} ${at(end)}`);
       continue;
     }
     const point = element.points.at(-1);
     if (!point) continue;
-    commands.push(`${element.type === ELEMENT_MOVE_TO ? "M" : "L"} ${localPoint(point, bounds)}`);
+    commands.push(`${element.type === ELEMENT_MOVE_TO ? "M" : "L"} ${at(point)}`);
   }
 
   return commands.join(" ");
 }
 
-/** One point translated into local space (bounding-box origin → (0,0)), rounded. */
-function localPoint(point: { x: number; y: number }, bounds: Bounds): string {
-  return `${round(point.x - bounds.minX)} ${round(point.y - bounds.minY)}`;
+/** One point translated to the bounding-box origin and optionally scaled, rounded. */
+function localPoint(point: { x: number; y: number }, bounds: Bounds, sx: number, sy: number): string {
+  return `${round((point.x - bounds.minX) * sx)} ${round((point.y - bounds.minY) * sy)}`;
 }
 
 /**
@@ -140,9 +155,7 @@ function localPoint(point: { x: number; y: number }, bounds: Bounds): string {
  * matrix that makes SVG renderers drop the element entirely (this is what made the
  * connector lines/arrows vanish). Identity translate/rotate/scale parts are omitted.
  */
-function buildTransform(frame: Frame, bounds: Bounds): string {
-  const sx = bounds.width ? frame.width / bounds.width : 1;
-  const sy = bounds.height ? frame.height / bounds.height : 1;
+function buildTransform(frame: Frame, sx: number, sy: number): string {
   const parts: string[] = [];
   if (frame.x !== 0 || frame.y !== 0) parts.push(`translate(${round(frame.x)} ${round(frame.y)})`);
   if (frame.angle !== 0) parts.push(`rotate(${round(frame.angle)} ${round(frame.width / 2)} ${round(frame.height / 2)})`);
