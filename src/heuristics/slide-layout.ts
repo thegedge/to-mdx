@@ -33,6 +33,20 @@ export function centeringLayoutClass(box: LayoutBox): "centered" | "centered bla
   return null;
 }
 
+/**
+ * Normalizes a slide's layout-class list: dedupes tokens (first-seen order) and
+ * lets `blank` (a full-bleed slide with no content layout) override any content
+ * class (`two-column`, `centered`, …) — a blank slide is just blank.
+ */
+export function normalizeLayoutClass(className: string): string {
+  const seen = new Set<string>();
+  const tokens = className.split(/\s+/).filter((token) => token.length > 0 && !seen.has(token) && seen.add(token));
+  if (seen.has("blank")) {
+    return "blank";
+  }
+  return tokens.join(" ");
+}
+
 const FULL_BLEED = { minCoverage: 90, maxInset: 2, minExtent: 98 } as const;
 
 /** Whether a box is large enough to serve as the slide's background (full-bleed). */

@@ -1,8 +1,8 @@
-import { centeringLayoutClass, isFullBleed, type LayoutBox } from "../../../heuristics/slide-layout.ts";
+import { centeringLayoutClass, isFullBleed, type LayoutBox, normalizeLayoutClass } from "../../../heuristics/slide-layout.ts";
 import { cls } from "../../../utils.ts";
 
-// Re-exported so the Keynote extractors/renderer keep importing it from here.
-export { isFullBleed };
+// Re-exported so the Keynote extractors/renderer keep importing them from here.
+export { isFullBleed, normalizeLayoutClass };
 
 /** A drawable's geometry in slide (point) coordinates, as decoded from the archive. */
 export interface RawBox {
@@ -89,25 +89,6 @@ export function slideLayoutClass({ masterName, title, contentBox }: SlideLayoutI
 
   const className = normalizeLayoutClass(cls(fromMaster, fromTitle, fromCentering));
   return className.length > 0 ? className : undefined;
-}
-
-/**
- * Normalizes a combined Keynote layout class: splits into tokens, dedupes
- * (preserving first-seen order), and resolves the `centered`/`blank` conflict by
- * dropping `centered` when `blank` is also present (a blank/full-bleed slide wins
- * over a centering hint). So `"blank centered blank"` → `"blank"` and
- * `"two-column centered blank"` → `"two-column blank"`. Pure.
- */
-export function normalizeLayoutClass(className: string): string {
-  const seen = new Set<string>();
-  const tokens = className.split(/\s+/).filter((token) => token.length > 0 && !seen.has(token) && seen.add(token));
-  // `blank` is a full-bleed slide with no content layout, so it overrides any
-  // content-layout class (`two-column`, `centered`, …) the master name or a
-  // heuristic inferred — a blank slide is just blank.
-  if (seen.has("blank")) {
-    return "blank";
-  }
-  return tokens.join(" ");
 }
 
 /**
