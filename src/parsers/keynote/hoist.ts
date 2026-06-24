@@ -21,7 +21,7 @@ const STYLE_RE = /style=\{\{ ([^}]*) \}\}/;
 const CLASS_RE = /className="([^"]*)"/;
 
 /** One JSX inline-style declaration: a camelCase property and its raw value token. */
-interface Declaration {
+interface StyleDecl {
   property: string;
   /** The raw value as written: a quoted string (`"10%"`) or a bare number (`700`). */
   value: string;
@@ -32,8 +32,8 @@ interface Declaration {
  * declarations. Quoted values are taken whole (so an `rgba(…)`'s internal commas
  * don't split a declaration); bare values run to the next comma.
  */
-export function parseStyleDeclarations(body: string): Declaration[] {
-  const declarations: Declaration[] = [];
+export function parseStyleDeclarations(body: string): StyleDecl[] {
+  const declarations: StyleDecl[] = [];
   for (const match of body.matchAll(/(\w+): ("[^"]*"|[^,]+)/g)) {
     declarations.push({ property: match[1], value: match[2].trim() });
   }

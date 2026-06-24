@@ -12,7 +12,8 @@ import type {
   StrokeArchive,
   StrokePatternArchive,
 } from "../types.ts";
-import { colorToHex, rgba } from "./style.ts";
+import { colorToHex, hasRgb, rgba, roundAlpha } from "./style.ts";
+import { firstInSuperChain, type SuperChainNode } from "./super-chain.ts";
 
 /** A drawable's frame in slide points, including its rotation. */
 interface Frame {
@@ -235,9 +236,11 @@ export function shapeBorderRadius(shape: ShapeInfoArchive): string | undefined {
  * but shape-style-shaped at runtime), so we model it structurally to walk it
  * without casts.
  */
-interface ShapeStyleNode {
-  shapeProperties?: ShapeStylePropertiesArchive;
-  super?: ShapeStyleNode;
+type ShapeStyleNode = SuperChainNode<{ shapeProperties?: ShapeStylePropertiesArchive }>;
+
+/** Reinterprets a resolved shape style as the structural `super`-chain node it is at runtime. */
+function shapeStyleNode(style: ShapeStyleArchive | undefined): ShapeStyleNode | undefined {
+  return style as unknown as ShapeStyleNode | undefined;
 }
 
 /**
@@ -245,14 +248,9 @@ interface ShapeStyleNode {
  * (stroke, fill, or line-end); empty links are skipped.
  */
 export function effectiveShapeProps(style: ShapeStyleArchive | undefined): ShapeStylePropertiesArchive | undefined {
-  let node: ShapeStyleNode | undefined = style as unknown as ShapeStyleNode | undefined;
-  while (node) {
-    if (hasShapeProps(node.shapeProperties)) {
-      return node.shapeProperties;
-    }
-    node = node.super;
-  }
-  return undefined;
+  return firstInSuperChain(shapeStyleNode(style), (node) =>
+    hasShapeProps(node.shapeProperties) ? node.shapeProperties : undefined,
+  );
 }
 
 function hasShapeProps(props: ShapeStylePropertiesArchive | undefined): props is ShapeStylePropertiesArchive {
@@ -269,7 +267,7 @@ export function shapeOpacity(style: ShapeStyleArchive | undefined): number | und
   if (opacity === undefined || opacity >= 1) {
     return undefined;
   }
-  return roundOpacity(opacity);
+  return roundAlpha(opacity);
 }
 
 /**
@@ -277,15 +275,10 @@ export function shapeOpacity(style: ShapeStyleArchive | undefined): number | und
  * `{}` shadows are skipped so a real shadow deeper in the chain still wins.
  */
 function effectiveShadow(style: ShapeStyleArchive | undefined): ShadowArchive | undefined {
-  let node: ShapeStyleNode | undefined = style as unknown as ShapeStyleNode | undefined;
-  while (node) {
+  return firstInSuperChain(shapeStyleNode(style), (node) => {
     const shadow = node.shapeProperties?.shadow;
-    if (shadow && Object.keys(shadow).length > 0) {
-      return shadow;
-    }
-    node = node.super;
-  }
-  return undefined;
+    return shadow && Object.keys(shadow).length > 0 ? shadow : undefined;
+  });
 }
 
 /**
@@ -316,7 +309,7 @@ export function shapeTextShadow(style: ShapeStyleArchive | undefined): string | 
 /** A shadow's CSS color: hex when fully opaque, `rgba()` when its combined alpha < 1 (default opaque black). */
 function shadowColor(shadow: ShadowArchive): string {
   const hex = hasRgb(shadow.color) ? colorToHex(shadow.color) : "#000000";
-  const a = roundOpacity((shadow.color?.a ?? 1) * (shadow.opacity ?? 1));
+  const a = roundAlpha((shadow.color?.a ?? 1) * (shadow.opacity ?? 1));
   return a >= 1 ? hex : rgba(hex, a);
 }
 
@@ -382,14 +375,9 @@ function resolveStroke(stroke: StrokeArchive | undefined): ResolvedStroke | unde
   }
   const a = alpha(stroke.color);
   if (a < 1) {
-    resolved.opacity = roundOpacity(a);
+    resolved.opacity = roundAlpha(a);
   }
   return resolved;
-}
-
-/** Rounds an alpha to 3 decimals so emitted opacity stays clean (0.851, not 0.8500608…). */
-function roundOpacity(a: number): number {
-  return Math.round(a * 1000) / 1000;
 }
 
 /**
@@ -422,7 +410,7 @@ export function resolveFill(fill: FillArchive | undefined): ResolvedFill | undef
   const resolved: ResolvedFill = { color: colorToHex(color) };
   const a = alpha(color);
   if (a < 1) {
-    resolved.opacity = roundOpacity(a);
+    resolved.opacity = roundAlpha(a);
   }
   return resolved;
 }
@@ -430,10 +418,6 @@ export function resolveFill(fill: FillArchive | undefined): ResolvedFill | undef
 /** A color's alpha channel (0–1), defaulting to fully opaque when unset. */
 function alpha(color: Color | undefined): number {
   return color?.a ?? 1;
-}
-
-function hasRgb(color: Color | undefined): color is Color {
-  return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
 }
 
 /** Marks arrowheads when the style exposes a head (start) or tail (end) line-end other than "none". */

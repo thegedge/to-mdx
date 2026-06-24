@@ -14,7 +14,8 @@ import type {
   TableModelArchive,
   Tile,
 } from "../types.ts";
-import { alignmentToken, colorToHex, fontFamily } from "./style.ts";
+import { alignmentToken, colorToHex, fontFamily, hasRgb, roundAlpha } from "./style.ts";
+import { firstInSuperChain, type SuperChainNode } from "./super-chain.ts";
 
 /**
  * Extracts a table's cells from its `TableInfoArchive` (type 6000). The layout is
@@ -347,10 +348,7 @@ export interface CellTextStyle {
  * as a bare `TSS.StyleArchive`, but at runtime each link is cell-style-shaped, so
  * we model the chain structurally to walk it without casts.
  */
-interface CellStyleNode {
-  cellProperties?: { cellFill?: FillArchive };
-  super?: CellStyleNode;
-}
+type CellStyleNode = SuperChainNode<{ cellProperties?: { cellFill?: FillArchive } }>;
 
 /**
  * The effective cell fill for a style: the first `cellProperties.cellFill` found
@@ -358,14 +356,7 @@ interface CellStyleNode {
  * so empty links are skipped rather than stopping at the top-level properties).
  */
 export function effectiveCellFill(style: CellStyleArchive | undefined): FillArchive | undefined {
-  let node: CellStyleNode | undefined = style as unknown as CellStyleNode | undefined;
-  while (node) {
-    if (node.cellProperties?.cellFill) {
-      return node.cellProperties.cellFill;
-    }
-    node = node.super;
-  }
-  return undefined;
+  return firstInSuperChain(style as unknown as CellStyleNode | undefined, (node) => node.cellProperties?.cellFill);
 }
 
 /** Converts a fill to a render-ready background (hex + optional rounded alpha), or undefined when not a solid color. */
@@ -377,13 +368,9 @@ export function fillToBackground(fill: FillArchive | undefined): CellBackground 
   const background: CellBackground = { backgroundColor: colorToHex(color) };
   const a = color.a ?? 1;
   if (a < 1) {
-    background.backgroundOpacity = Math.round(a * 1000) / 1000;
+    background.backgroundOpacity = roundAlpha(a);
   }
   return background;
-}
-
-function hasRgb(color: Color | undefined): color is Color {
-  return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
 }
 
 /** Resolves a style reference to its effective background fill (or undefined). */
@@ -428,11 +415,10 @@ function resolveStyling(model: TableModelArchive, registry: Registry): CellStyli
  * `TSS.StyleArchive`, but at runtime each link is paragraph-style-shaped, so we walk
  * the chain structurally (matching the shape/cell-fill super-walk pattern).
  */
-interface ParaStyleNode {
+type ParaStyleNode = SuperChainNode<{
   charProperties?: { fontColor?: Color; fontName?: string; bold?: boolean };
   paraProperties?: { alignment?: number };
-  super?: ParaStyleNode;
-}
+}>;
 
 /**
  * The effective font color, font name, alignment, and bold flag for a paragraph
@@ -443,30 +429,14 @@ interface ParaStyleNode {
 export function effectiveTextProps(
   style: ParagraphStyleArchive | undefined,
 ): { fontColor?: Color; fontName?: string; alignment?: number; bold?: boolean } {
-  let node: ParaStyleNode | undefined = style as unknown as ParaStyleNode | undefined;
-  let fontColor: Color | undefined;
-  let fontName: string | undefined;
-  let alignment: number | undefined;
-  let bold: boolean | undefined;
-  while (node) {
-    if (fontColor === undefined && node.charProperties?.fontColor) {
-      fontColor = node.charProperties.fontColor;
-    }
-    if (fontName === undefined && node.charProperties?.fontName) {
-      fontName = node.charProperties.fontName;
-    }
-    if (alignment === undefined && node.paraProperties?.alignment !== undefined) {
-      alignment = node.paraProperties.alignment;
-    }
-    if (bold === undefined && node.charProperties?.bold !== undefined) {
-      bold = node.charProperties.bold;
-    }
-    if (fontColor !== undefined && fontName !== undefined && alignment !== undefined && bold !== undefined) {
-      break;
-    }
-    node = node.super;
-  }
-  return { fontColor, fontName, alignment, bold };
+  const node = style as unknown as ParaStyleNode | undefined;
+  return {
+    fontColor: firstInSuperChain(node, (link) => link.charProperties?.fontColor),
+    // A blank `fontName` is falsy, so keep looking up the chain (matches the prior walk).
+    fontName: firstInSuperChain(node, (link) => link.charProperties?.fontName || undefined),
+    alignment: firstInSuperChain(node, (link) => link.paraProperties?.alignment),
+    bold: firstInSuperChain(node, (link) => link.charProperties?.bold),
+  };
 }
 
 /** Resolves a text-style reference to its effective color/font/alignment/bold, or undefined when none resolves. */

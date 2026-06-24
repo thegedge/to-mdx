@@ -5,8 +5,4 @@ export abstract class OpenDocumentBase extends BaseElement {
   constructor(element: Element, context: ParseContext, parent: BaseElement | null) {
     super(element, context, parent);
   }
-
-  static escapeForMdx(text: string): string {
-    return text.replace(/{/g, "\\{");
-  }
 }

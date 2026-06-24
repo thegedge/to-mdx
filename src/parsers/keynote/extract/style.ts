@@ -10,6 +10,7 @@ import type {
 } from "../types.ts";
 import type { RawBox } from "./layout.ts";
 import type { ResolvedFill } from "./shapes.ts";
+import { firstInSuperChain, type SuperChainNode } from "./super-chain.ts";
 
 /**
  * The zoom-relative `--text-*` font-size tokens used by the slides stylesheet,
@@ -74,6 +75,16 @@ export function colorToHex(color: Pick<Color, "r" | "g" | "b">): string {
   return `#${channelHex(color.r)}${channelHex(color.g)}${channelHex(color.b)}`;
 }
 
+/** True when a color carries at least one RGB channel (so it renders, rather than being absent). */
+export function hasRgb(color: Color | undefined): color is Color {
+  return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
+}
+
+/** Rounds an alpha to 3 decimals so emitted opacity/fill values stay clean (0.851, not 0.8500608…). */
+export function roundAlpha(a: number): number {
+  return Math.round(a * 1000) / 1000;
+}
+
 /** Composes a CSS `rgba()` string from a `#RRGGBB` hex and a 0–1 alpha. */
 export function rgba(hex: string, alpha: number): string {
   const r = Number.parseInt(hex.slice(1, 3), 16);
@@ -117,10 +128,7 @@ export function fontFamily(name: string | undefined): string | undefined {
  * instance or one level down its `super` (typed as a bare `TSS.StyleArchive` but
  * media-style-shaped at runtime), so we model it structurally to walk without casts.
  */
-interface MediaStyleNode {
-  mediaProperties?: { opacity?: number };
-  super?: MediaStyleNode;
-}
+type MediaStyleNode = SuperChainNode<{ mediaProperties?: { opacity?: number } }>;
 
 /**
  * The effective image opacity (0–1) from a `MediaStyleArchive`: the first
@@ -128,15 +136,8 @@ interface MediaStyleNode {
  * Undefined when unset or fully opaque.
  */
 export function mediaOpacity(style: MediaStyleArchive | undefined): number | undefined {
-  let node = style as MediaStyleNode | undefined;
-  while (node) {
-    const opacity = node.mediaProperties?.opacity;
-    if (opacity !== undefined) {
-      return opacity < 1 ? Number(opacity.toFixed(3)) : undefined;
-    }
-    node = node.super;
-  }
-  return undefined;
+  const opacity = firstInSuperChain(style as MediaStyleNode | undefined, (node) => node.mediaProperties?.opacity);
+  return opacity !== undefined && opacity < 1 ? roundAlpha(opacity) : undefined;
 }
 
 /** iWork `TextAlignmentType` enum → CSS `text-align`; unknown values yield undefined. */
@@ -271,8 +272,4 @@ function strokeToCss(stroke: StrokeArchive): string | undefined {
   }
   const width = Number((stroke.width ?? 1).toFixed(2));
   return `${width}px ${colorToHex(stroke.color)}`;
-}
-
-function hasRgb(color: Color | undefined): color is Color {
-  return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
 }

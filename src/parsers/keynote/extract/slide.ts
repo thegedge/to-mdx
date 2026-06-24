@@ -3,7 +3,6 @@ import type { Registry } from "../registry.ts";
 import { isType } from "../type_ids.ts";
 import { PlaceholderKind } from "../types.ts";
 import type {
-  Color,
   FillArchive,
   GroupArchive,
   NoteArchive,
@@ -21,7 +20,8 @@ import { extractTable } from "./table.ts";
 import { effectiveShapeProps, resolveFill, shapeBorderRadius, shapeOpacity, shapeTextShadow, svgPath } from "./shapes.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
-import { boxPercent, colorToHex, fillColorCss, textBoxStyle } from "./style.ts";
+import { boxPercent, colorToHex, fillColorCss, hasRgb, textBoxStyle } from "./style.ts";
+import { firstInSuperChain, type SuperChainNode } from "./super-chain.ts";
 import { extractParagraphs, storageForShape } from "./text.ts";
 
 /** Title/body text inherited from a slide's master, treated as "empty" if unchanged. */
@@ -122,10 +122,7 @@ function classifyLayout(
  * `TSS.StyleArchive` but slide-style-shaped at runtime), so we model it
  * structurally to walk it without casts.
  */
-interface SlideStyleNode {
-  slideProperties?: SlideStylePropertiesArchive;
-  super?: SlideStyleNode;
-}
+type SlideStyleNode = SuperChainNode<{ slideProperties?: SlideStylePropertiesArchive }>;
 
 /**
  * A slide's resolved background, merged onto the `Slide`: either a solid
@@ -154,34 +151,29 @@ function slideBackground(
 ): SlideBackground {
   // `super` is typed as a bare `TSS.StyleArchive` but is slide-style-shaped at
   // runtime, so we reinterpret the resolved style as a `SlideStyleNode`.
-  let node: SlideStyleNode | undefined = registry.resolve<SlideStyleArchive>(slide.style) as unknown as
-    | SlideStyleNode
-    | undefined;
-  while (node) {
-    const fill = node.slideProperties?.fill;
-    if (fill) {
-      if (hasRgb(fill.color)) {
-        return { backgroundColor: colorToHex(fill.color) };
-      }
-      const fileName = imageFillFileName(fill, dataFileNames);
-      if (fileName) {
-        const tint = fillColorCss(resolveFill(fill));
-        return { background: fileName, ...(tint ? { backgroundTint: tint } : {}) };
-      }
+  const node = registry.resolve<SlideStyleArchive>(slide.style) as unknown as SlideStyleNode | undefined;
+  const background = firstInSuperChain(node, (link): SlideBackground | undefined => {
+    const fill = link.slideProperties?.fill;
+    if (!fill) {
+      return undefined;
     }
-    node = node.super;
-  }
-  return {};
+    if (hasRgb(fill.color)) {
+      return { backgroundColor: colorToHex(fill.color) };
+    }
+    const fileName = imageFillFileName(fill, dataFileNames);
+    if (fileName) {
+      const tint = fillColorCss(resolveFill(fill));
+      return { background: fileName, ...(tint ? { backgroundTint: tint } : {}) };
+    }
+    return undefined;
+  });
+  return background ?? {};
 }
 
 /** Resolves an image fill's backing data file via `imagedata.identifier`; undefined when it can't. */
 function imageFillFileName(fill: FillArchive, dataFileNames: Map<number, string>): string | undefined {
   const id = fill.image?.imagedata?.identifier;
   return id === undefined ? undefined : dataFileNames.get(Number(id));
-}
-
-function hasRgb(color: Color | undefined): color is Color {
-  return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
 }
 
 /** The slide's master ("template") name, used to map to a layout class. */

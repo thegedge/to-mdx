@@ -766,7 +766,6 @@ function tableStyleRules(scope: string): string[] {
   ];
 }
 
-/**
 /** Renders a table, wrapped in an absolutely-positioned div at its slide box when it has one. */
 function renderPositionedTable(table: TableData): string {
   const rendered = renderTable(table);
