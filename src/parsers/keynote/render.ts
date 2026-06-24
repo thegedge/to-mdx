@@ -363,6 +363,18 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
     declarations.push(["justifyContent", "center"]);
     declarations.push(["alignItems", "center"]);
     declarations.push(["textAlign", "center"]);
+    // An auto-sized (0-dimension) filled label is anchored on its CENTER in
+    // Keynote, but with no width/height to emit it would render top/left-anchored
+    // (the label's edge landing on the anchor). Shift it back onto the point per
+    // collapsed axis (e.g. the "retransmission timer" box onto its sender line).
+    const box = textBox.box;
+    if (box) {
+      const shiftX = box.width <= SIZE_EPSILON;
+      const shiftY = box.height <= SIZE_EPSILON;
+      if (shiftX || shiftY) {
+        declarations.push(["transform", `translate(${shiftX ? "-50%" : "0"}, ${shiftY ? "-50%" : "0"})`]);
+      }
+    }
   } else if (style?.textAlign) {
     declarations.push(["textAlign", style.textAlign]);
   }
