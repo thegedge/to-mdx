@@ -187,7 +187,7 @@ test("svgPath yields a path with the resolved stroke color and width", () => {
   assert.equal(path.fill, undefined);
   // Local path at the origin, positioned by the transform (not baked into `d`).
   assert.equal(path.localD, "M 0 0 L 100 0");
-  assert.equal(path.transform, "translate(100 200) scale(7.16 0)");
+  assert.equal(path.transform, "translate(100 200) scale(7.16 1)");
 });
 
 test("svgPath defaults to currentColor width 2 when no style resolves", () => {

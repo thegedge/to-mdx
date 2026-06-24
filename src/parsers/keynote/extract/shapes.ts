@@ -134,13 +134,15 @@ function localPoint(point: { x: number; y: number }, bounds: Bounds): string {
 /**
  * The `transform` mapping a local path onto the slide. Scales the local bounds to
  * the frame size, rotates around the frame centre, and translates to the frame
- * origin. A degenerate axis (zero path width or height) scales to 0, mirroring the
- * old `bounds.width ? … : 0` guard (the local coordinate is 0 there anyway).
- * Identity translate/rotate/scale parts are omitted for a compact attribute.
+ * origin. A degenerate axis (zero path width or height — e.g. a straight line is
+ * flat in one axis) scales by 1, NOT 0: every local coordinate on that axis is
+ * already 0 so the factor doesn't move anything, but `scale(x, 0)` is a singular
+ * matrix that makes SVG renderers drop the element entirely (this is what made the
+ * connector lines/arrows vanish). Identity translate/rotate/scale parts are omitted.
  */
 function buildTransform(frame: Frame, bounds: Bounds): string {
-  const sx = bounds.width ? frame.width / bounds.width : 0;
-  const sy = bounds.height ? frame.height / bounds.height : 0;
+  const sx = bounds.width ? frame.width / bounds.width : 1;
+  const sy = bounds.height ? frame.height / bounds.height : 1;
   const parts: string[] = [];
   if (frame.x !== 0 || frame.y !== 0) parts.push(`translate(${round(frame.x)} ${round(frame.y)})`);
   if (frame.angle !== 0) parts.push(`rotate(${round(frame.angle)} ${round(frame.width / 2)} ${round(frame.height / 2)})`);
