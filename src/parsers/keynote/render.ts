@@ -95,9 +95,25 @@ export function presentationToMdx(presentation: Presentation): string {
   return hasRenderableTable(presentation) ? `${tableStyleBlock(className)}\n\n${wrapper}` : wrapper;
 }
 
-/** Absolute-positioning declarations for a placed image, layered below text. */
-function imageDeclarations(box: TextBoxGeometry): Declaration[] {
-  return [["position", "absolute"], ...positionRules(box), ["zIndex", 1]];
+/**
+ * The base added to a drawable's back-to-front `zOrder` rank to form its CSS
+ * `zIndex`. ≥ 1 so every positioned drawable stays above the zIndex-0 slide
+ * backdrop (cover background image, tint overlay, full-bleed cover video).
+ */
+const POSITION_Z_BASE = 1;
+
+/**
+ * A positioned drawable's CSS `zIndex` from its `drawablesZOrder` rank (higher =
+ * nearer the front). Falls back to the type-based default when the slide declares
+ * no z-order (older decks), preserving the prior fixed layering.
+ */
+function positionedZIndex(zOrder: number | undefined, fallback: number): number {
+  return zOrder === undefined ? fallback : POSITION_Z_BASE + zOrder;
+}
+
+/** Absolute-positioning declarations for a placed image at the given stacking `zIndex`. */
+function imageDeclarations(box: TextBoxGeometry, zIndex: number): Declaration[] {
+  return [["position", "absolute"], ...positionRules(box), ["zIndex", zIndex]];
 }
 
 /**
@@ -127,7 +143,7 @@ function renderVideo(video: SlideVideo): string {
   const declarations = video.box
     ? isFullBleed(video.box)
       ? videoCoverDeclarations()
-      : imageDeclarations(video.box)
+      : imageDeclarations(video.box, positionedZIndex(video.zOrder, 1))
     : [];
   const style = declarations.length > 0 ? `${styleAttr(declarations)} ` : "";
 
@@ -190,8 +206,9 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
   if (textBox.box) {
     declarations.push(["position", "absolute"]);
     declarations.push(...positionRules(textBox.box));
-    // Above positioned images (z-index 1) so text labels stay on top of media.
-    declarations.push(["zIndex", 2]);
+    // Stacking from the box's authoritative z-order; falls back to 2 (above
+    // positioned images) for decks that declare no order.
+    declarations.push(["zIndex", positionedZIndex(textBox.zOrder, 2)]);
   }
 
   const style = textBox.style;
@@ -273,7 +290,9 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number })
   if (slide.title) blocks.push(`# ${escapeMdxText(slide.title)}`);
   if (slide.body.length > 0) blocks.push(renderBullets(slide.body));
 
-  if (slide.shapes?.length) blocks.push(renderShapes(slide.shapes, slideSize));
+  for (const shape of slide.shapes ?? []) {
+    blocks.push(renderShape(shape, slideSize));
+  }
 
   for (const textBox of slide.textBoxes) {
     blocks.push(renderTextBox(textBox));
@@ -322,8 +341,8 @@ function tintOverlayDeclarations(tint: string): Declaration[] {
   ];
 }
 
-/** The inline style placing the shape overlay edge-to-edge, below text (z-index 1). */
-function shapeOverlayDeclarations(): Declaration[] {
+/** The inline style placing one shape's edge-to-edge `<svg>` at the given stacking `zIndex`. */
+function shapeOverlayDeclarations(zIndex: number): Declaration[] {
   return [
     ["position", "absolute"],
     ["left", 0],
@@ -331,7 +350,7 @@ function shapeOverlayDeclarations(): Declaration[] {
     ["width", "100%"],
     ["height", "100%"],
     ["overflow", "visible"],
-    ["zIndex", 1],
+    ["zIndex", zIndex],
     ["pointerEvents", "none"],
   ];
 }
@@ -350,15 +369,17 @@ const ARROW_MARKER =
   '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker></defs>';
 
 /**
- * One absolutely-positioned `<svg>` overlay holding the slide's vector shapes as
- * `<path>`s, in baked slide-point coordinates matched by the `viewBox`. Layered
- * below text (z-index 1); arrowheads reference a shared marker emitted once.
+ * One vector shape as its own absolutely-positioned, full-slide `<svg>` (baked
+ * slide-point coordinates matched by the `viewBox`), stacked by its own
+ * `drawablesZOrder` rank — so icons can sit above label boxes while connector
+ * lines sit below. The shared arrowhead marker is emitted in each svg that needs
+ * it; un-ranked shapes fall back to z-index 1.
  */
-function renderShapes(shapes: SvgPath[], slideSize: { width: number; height: number }): string {
-  const defs = shapes.some((shape) => shape.markerStart || shape.markerEnd) ? `\n${INDENT}${ARROW_MARKER}` : "";
-  const paths = shapes.map((shape) => `${INDENT}${renderPath(shape)}`).join("\n");
-  const open = `<svg viewBox="0 0 ${percent(slideSize.width)} ${percent(slideSize.height)}" ${styleAttr(shapeOverlayDeclarations())}>`;
-  return `${open}${defs}\n${paths}\n</svg>`;
+function renderShape(shape: SvgPath, slideSize: { width: number; height: number }): string {
+  const zIndex = positionedZIndex(shape.zOrder, 1);
+  const defs = shape.markerStart || shape.markerEnd ? `\n${INDENT}${ARROW_MARKER}` : "";
+  const open = `<svg viewBox="0 0 ${percent(slideSize.width)} ${percent(slideSize.height)}" ${styleAttr(shapeOverlayDeclarations(zIndex))}>`;
+  return `${open}${defs}\n${INDENT}${renderPath(shape)}\n</svg>`;
 }
 
 /** A single `<path>` for one vector shape, wiring up any resolved dash/opacity/arrowheads. */
@@ -380,15 +401,16 @@ function renderPath(shape: SvgPath): string {
  * normal flow.
  */
 function renderImage(image: SlideImage): string {
-  if (image.crop) return renderCroppedImage(image.fileName, image.altText, image.crop, image.opacity);
-  const declarations = image.box ? imageDeclarations(image.box) : [];
+  const zIndex = positionedZIndex(image.zOrder, 1);
+  if (image.crop) return renderCroppedImage(image.fileName, image.altText, image.crop, zIndex, image.opacity);
+  const declarations = image.box ? imageDeclarations(image.box, zIndex) : [];
   if (image.opacity !== undefined) declarations.push(["opacity", image.opacity]);
   const style = declarations.length > 0 ? `${styleAttr(declarations)} ` : "";
   return `<Image ${style}${imageSrc(image.fileName)} role="presentation" alt="${escapeMdxText(image.altText)}" />`;
 }
 
 /** The container-rectangle declarations for a masked image's clipping wrapper. */
-function cropContainerDeclarations(crop: ImageCrop): Declaration[] {
+function cropContainerDeclarations(crop: ImageCrop, zIndex: number): Declaration[] {
   return [
     ["position", "absolute"],
     ["left", `${percent(crop.left)}%`],
@@ -396,7 +418,7 @@ function cropContainerDeclarations(crop: ImageCrop): Declaration[] {
     ["width", `${percent(crop.width)}%`],
     ["height", `${percent(crop.height)}%`],
     ["overflow", "hidden"],
-    ["zIndex", 1],
+    ["zIndex", zIndex],
   ];
 }
 
@@ -415,8 +437,8 @@ function cropImageDeclarations(crop: ImageCrop): Declaration[] {
  * A masked image: an `overflow:"hidden"` container placed on the slide, wrapping
  * the full `<Image>` offset/sized so only the mask's sub-rectangle shows.
  */
-function renderCroppedImage(fileName: string, altText: string, crop: ImageCrop, opacity?: number): string {
-  const container = styleAttr(cropContainerDeclarations(crop));
+function renderCroppedImage(fileName: string, altText: string, crop: ImageCrop, zIndex: number, opacity?: number): string {
+  const container = styleAttr(cropContainerDeclarations(crop, zIndex));
   const innerDeclarations = cropImageDeclarations(crop);
   if (opacity !== undefined) innerDeclarations.push(["opacity", opacity]);
   const inner = `<Image ${styleAttr(innerDeclarations)} ${imageSrc(fileName)} role="presentation" alt="${escapeMdxText(altText)}" />`;

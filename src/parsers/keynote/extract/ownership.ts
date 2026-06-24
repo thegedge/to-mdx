@@ -45,3 +45,31 @@ export function owningSlideId(
 
   return undefined;
 }
+
+/**
+ * A drawable's back-to-front rank within its slide, from the slide's
+ * `drawablesZOrder` (id → index map). Returns the index of the first drawable in
+ * its parent chain (itself, else its top-most z-ordered ancestor — e.g. the group
+ * a nested image belongs to) that appears in `order`; `undefined` when none does.
+ * Guards against reference cycles with a seen-set.
+ */
+export function drawableZOrder(
+  entry: RegistryEntry,
+  registry: Registry,
+  order: Map<bigint, number>,
+): number | undefined {
+  const seen = new Set<bigint>();
+  let current: RegistryEntry | undefined = entry;
+
+  while (current) {
+    const rank = order.get(current.id);
+    if (rank !== undefined) return rank;
+    if (seen.has(current.id)) return undefined;
+    seen.add(current.id);
+    const parentId = parentReference(current.message);
+    if (parentId === undefined) return undefined;
+    current = registry.get(parentId);
+  }
+
+  return undefined;
+}

@@ -44,6 +44,13 @@ export interface SlideImage {
    * omits it so the renderer emits no `opacity`.
    */
   opacity?: number;
+  /**
+   * The drawable's back-to-front rank within its slide's `drawablesZOrder`
+   * (higher = nearer the front), resolved via its top-most z-ordered ancestor for
+   * grouped images. Drives the rendered `zIndex`; absent when the slide declares
+   * no z-order (older decks) so the renderer keeps its type-based default.
+   */
+  zOrder?: number;
 }
 
 /**
@@ -75,6 +82,8 @@ export interface SlideVideo {
   fileName: string;
   /** The video's bounding box as slide-size percentages; present only when geometry resolved. */
   box?: TextBoxGeometry;
+  /** Back-to-front rank within the slide's `drawablesZOrder`; see `SlideImage.zOrder`. */
+  zOrder?: number;
 }
 
 /**
@@ -97,6 +106,8 @@ export interface SvgPath {
   strokeOpacity?: number;
   markerStart?: boolean;
   markerEnd?: boolean;
+  /** Back-to-front rank within the slide's `drawablesZOrder`; see `SlideImage.zOrder`. */
+  zOrder?: number;
 }
 
 /** A free text box's bounding box, expressed as percentages of the slide size. */
@@ -145,7 +156,7 @@ export interface TextBoxStyle {
  * from the slide so the renderer can place them absolutely; code boxes do not.
  */
 export type TextBox =
-  | { kind: "text"; paragraphs: Paragraph[]; box?: TextBoxGeometry; style?: TextBoxStyle }
+  | { kind: "text"; paragraphs: Paragraph[]; box?: TextBoxGeometry; style?: TextBoxStyle; zOrder?: number }
   | { kind: "code"; language: string; text: string };
 
 /**

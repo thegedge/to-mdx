@@ -242,10 +242,14 @@ function collectFromSlide(
   processRef(slide.titlePlaceholder, "title", registry, collected, handled);
   processRef(slide.bodyPlaceholder, "body", registry, collected, handled);
 
-  const drawables = slide.drawablesZOrder.length > 0 ? slide.drawablesZOrder : slide.ownedDrawables;
-  for (const ref of drawables) {
-    processRef(ref, undefined, registry, collected, handled);
-  }
+  // `drawablesZOrder` is authoritative back-to-front order (later = nearer front),
+  // so each free box/shape carries its index as `zOrder`. The `ownedDrawables`
+  // fallback has no authoritative order, so its drawables stay unranked.
+  const zOrdered = slide.drawablesZOrder.length > 0;
+  const drawables = zOrdered ? slide.drawablesZOrder : slide.ownedDrawables;
+  drawables.forEach((ref, index) => {
+    processRef(ref, undefined, registry, collected, handled, zOrdered ? index : undefined);
+  });
 
   return collected;
 }
@@ -258,6 +262,7 @@ function processRef(
   registry: Registry,
   collected: Collected,
   handled: Set<bigint>,
+  zOrder?: number,
 ): void {
   if (!ref || handled.has(ref.identifier)) return;
   handled.add(ref.identifier);
@@ -266,8 +271,9 @@ function processRef(
   if (!entry) return;
 
   if (isType(entry.type, "GroupArchive")) {
+    // Grouped children share their group's z-order rank.
     for (const child of (entry.message as GroupArchive).children) {
-      processRef(child, undefined, registry, collected, handled);
+      processRef(child, undefined, registry, collected, handled, zOrder);
     }
     return;
   }
@@ -292,7 +298,7 @@ function processRef(
     // A non-title/body placeholder can surface as a free positioned text box, so
     // resolve per-paragraph sizes (slide-height-relative) for the mixed-size case.
     const paragraphs = extractParagraphs(storage, registry, collected.slideSize.height);
-    collectText(resolvedRole, paragraphs, placeholder, storage, registry, collected);
+    collectText(resolvedRole, paragraphs, placeholder, storage, registry, collected, undefined, undefined, zOrder);
     if (paragraphs.length > 0) pushGeometry(placeholder, collected);
     return;
   }
@@ -304,23 +310,23 @@ function processRef(
     // small label), so resolve each paragraph's own slide-height-relative token.
     const paragraphs = extractParagraphs(storage, registry, collected.slideSize.height);
     if (paragraphs.length === 0) {
-      collectShape(shape, registry, collected);
+      collectShape(shape, registry, collected, zOrder);
       return;
     }
     // A free shape-backed text box can carry its shape's fill as a background and
     // a rounded-rect corner radius; placeholder boxes pass neither, so their flow
     // text stays unstyled (#1).
     const shapeStyle = registry.resolve<ShapeStyleArchive>(shape.super?.style);
-    collectText(role, paragraphs, shape, storage, registry, collected, shapeStyle, shapeBorderRadius(shape));
+    collectText(role, paragraphs, shape, storage, registry, collected, shapeStyle, shapeBorderRadius(shape), zOrder);
     pushGeometry(shape, collected);
   }
 }
 
 /** Collects a no-text shape's vector path (a line/arrow/icon); any shape with a drawable path renders. */
-function collectShape(shape: ShapeInfoArchive, registry: Registry, collected: Collected): void {
+function collectShape(shape: ShapeInfoArchive, registry: Registry, collected: Collected, zOrder?: number): void {
   const style = registry.resolve<ShapeStyleArchive>(shape.super?.style);
   const path = svgPath(shape, style);
-  if (path) collected.shapes.push(path);
+  if (path) collected.shapes.push(zOrder === undefined ? path : { ...path, zOrder });
 }
 
 /**
@@ -337,10 +343,11 @@ function collectText(
   collected: Collected,
   shapeStyle?: ShapeStyleArchive,
   borderRadius?: string,
+  zOrder?: number,
 ): void {
   if (bucketParagraphs(role, paragraphs, collected) || paragraphs.length === 0) return;
   collected.textBoxes.push(
-    freeTextBox(paragraphs, message, storage, registry, collected.slideSize, shapeStyle, borderRadius),
+    freeTextBox(paragraphs, message, storage, registry, collected.slideSize, shapeStyle, borderRadius, zOrder),
   );
 }
 
@@ -358,6 +365,7 @@ function freeTextBox(
   slideSize: { width: number; height: number },
   shapeStyle?: ShapeStyleArchive,
   borderRadius?: string,
+  zOrder?: number,
 ): TextBox {
   const textBox = asTextBox(paragraphs);
   if (textBox.kind !== "text") return textBox;
@@ -370,7 +378,12 @@ function freeTextBox(
     ...(backgroundColor ? { backgroundColor } : {}),
     ...(borderRadius ? { borderRadius } : {}),
   };
-  return { ...textBox, ...(box ? { box } : {}), ...(Object.keys(style).length > 0 ? { style } : {}) };
+  return {
+    ...textBox,
+    ...(box ? { box } : {}),
+    ...(Object.keys(style).length > 0 ? { style } : {}),
+    ...(zOrder !== undefined ? { zOrder } : {}),
+  };
 }
 
 /** Records a drawable's geometry (walked through its `super` chain) for layout heuristics. */

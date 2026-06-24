@@ -20,6 +20,64 @@ function placeholder(id: bigint, storageId: bigint, kind: number, text: string) 
   ];
 }
 
+/** A no-text two-point line shape with a stroke style, producing one SVG path. */
+function lineShape(id: bigint, styleId: bigint) {
+  return [
+    mockObject(id, T.shapeInfoArchive, {
+      super: {
+        super: { geometry: { position: { x: 0, y: 0 }, size: { width: 100, height: 0 }, angle: 0 } },
+        style: ref(styleId),
+        pathsource: {
+          bezierPathSource: {
+            naturalSize: { width: 100, height: 0 },
+            path: {
+              elements: [
+                { type: 1, points: [{ x: 0, y: 0 }] },
+                { type: 2, points: [{ x: 100, y: 0 }] },
+              ],
+            },
+          },
+        },
+      },
+    }),
+    mockObject(styleId, T.shapeStyleArchive, {
+      shapeProperties: { stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 2 } },
+    }),
+  ];
+}
+
+test("extractSlide stamps each free shape and text box with its drawablesZOrder rank (shape above/below the box)", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, {
+      ownedDrawables: [],
+      // back-to-front: line (0) under the box (1) under the icon line (2).
+      drawablesZOrder: [ref(60n), ref(40n), ref(70n)],
+    }),
+    ...lineShape(60n, 61n),
+    ...placeholder(40n, 41n, PlaceholderKind.object, "verifier"),
+    ...lineShape(70n, 71n),
+  ]);
+
+  const slide = buildPresentation(registry, "x").slides[0];
+
+  const box = slide.textBoxes[0];
+  assert.equal(box.kind === "text" ? box.zOrder : undefined, 1);
+  const shapeOrders = (slide.shapes ?? []).map((shape) => shape.zOrder).sort((a, b) => Number(a) - Number(b));
+  assert.deepEqual(shapeOrders, [0, 2]);
+});
+
+test("extractSlide leaves zOrder unset when a slide declares no drawablesZOrder (ownedDrawables fallback)", () => {
+  const registry = buildRegistry([
+    ...show(10n),
+    mockObject(10n, T.slideArchive, { ownedDrawables: [ref(40n)], drawablesZOrder: [] }),
+    ...placeholder(40n, 41n, PlaceholderKind.object, "caption"),
+  ]);
+
+  const slide = buildPresentation(registry, "x").slides[0];
+  assert.deepEqual(slide.textBoxes, [{ kind: "text", paragraphs: [{ depth: 0, text: "caption" }] }]);
+});
+
 test("extractSlide classifies title/body placeholders by kind and keeps them out of textBoxes", () => {
   const registry = buildRegistry([
     ...show(10n),

@@ -67,6 +67,27 @@ test("buildPresentation resolves images through the Data/ filenames when given d
   ]);
 });
 
+test("buildPresentation ranks placed images by drawablesZOrder, resolving a grouped image via its group ancestor", () => {
+  const registry = buildRegistry([
+    mockObject(1n, T.documentArchive, { show: ref(2n) }),
+    mockObject(2n, T.showArchive, { slideTree: { slides: [ref(4n)] }, size: { width: 1920, height: 1080 } }),
+    mockObject(4n, T.slideArchive, { ownedDrawables: [], drawablesZOrder: [ref(9n), ref(30n)] }),
+    mockObject(9n, T.imageArchive, { super: { accessibilityDescription: "direct", parent: ref(4n) }, data: ref(100n) }),
+    mockObject(30n, T.groupArchive, { parent: ref(4n), children: [ref(10n)] }),
+    mockObject(10n, T.imageArchive, { super: { accessibilityDescription: "grouped", parent: ref(30n) }, data: ref(200n) }),
+  ]);
+  const dataFiles = new Map<string, Uint8Array>([
+    ["Data/direct-100.png", new Uint8Array()],
+    ["Data/grouped-200.png", new Uint8Array()],
+  ]);
+
+  const images = buildPresentation(registry, "x", dataFiles).slides[0].images;
+  const byName = (name: string) => images.find((image) => image.fileName === name);
+  // The direct image takes its own z-order rank; the grouped image inherits its group's.
+  assert.equal(byName("direct.png")?.zOrder, 0);
+  assert.equal(byName("grouped.png")?.zOrder, 1);
+});
+
 test("buildPresentation uses the first slide title, falling back to the given title", () => {
   assert.equal(buildPresentation(fullDeck(), "fallback").title, "My Title");
 

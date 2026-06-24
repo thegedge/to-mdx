@@ -22,7 +22,7 @@ import {
 } from "./images.ts";
 import { drawableGeometry, isFullBleed, normalizeLayoutClass } from "./layout.ts";
 import type { LayoutContext } from "./slide.ts";
-import { owningSlideId } from "./ownership.ts";
+import { drawableZOrder, owningSlideId } from "./ownership.ts";
 import { boxPercent, maskCrop, mediaOpacity } from "./style.ts";
 import type { SlideDefaults, SlidePlacements } from "./slide.ts";
 import { extractSlide, NO_DEFAULTS, slidePlaceholderTexts } from "./slide.ts";
@@ -102,6 +102,20 @@ function placeDrawables(
     return slot;
   };
 
+  // A slide's `drawablesZOrder` index → rank map, cached per slide. Lets a placed
+  // image/movie inherit the same back-to-front rank its (possibly grouped)
+  // drawable holds in the authoritative order; empty for older decks.
+  const zOrderMaps = new Map<bigint, Map<bigint, number>>();
+  const zOrderMapFor = (slideId: bigint): Map<bigint, number> => {
+    const existing = zOrderMaps.get(slideId);
+    if (existing) return existing;
+    const slide = registry.get(slideId)?.message as SlideArchive | undefined;
+    const map = new Map<bigint, number>();
+    slide?.drawablesZOrder.forEach((ref, index) => map.set(ref.identifier, index));
+    zOrderMaps.set(slideId, map);
+    return map;
+  };
+
   for (const entry of registry.entriesOfTypes(typeIds("ImageArchive"))) {
     if (placed.has(entry.id)) continue;
     const slideId = owningSlideId(entry, registry, contentSlideIds);
@@ -118,6 +132,8 @@ function placeDrawables(
       if (crop) resolved.crop = crop;
     }
     applyImageOpacity(resolved, image, registry);
+    const zOrder = drawableZOrder(entry, registry, zOrderMapFor(slideId));
+    if (zOrder !== undefined) resolved.zOrder = zOrder;
     placed.add(entry.id);
     slotFor(slideId).images.push(resolved);
   }
@@ -132,6 +148,8 @@ function placeDrawables(
     const video: SlideVideo = { fileName };
     const box = boxPercent(drawableGeometry(movie), slideSize);
     if (box) video.box = box;
+    const zOrder = drawableZOrder(entry, registry, zOrderMapFor(slideId));
+    if (zOrder !== undefined) video.zOrder = zOrder;
     placed.add(entry.id);
     slotFor(slideId).videos.push(video);
   }

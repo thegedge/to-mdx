@@ -109,8 +109,11 @@ export function slideLayoutClass({ masterName, title, contentBox }: SlideLayoutI
 export function normalizeLayoutClass(className: string): string {
   const seen = new Set<string>();
   const tokens = className.split(/\s+/).filter((token) => token.length > 0 && !seen.has(token) && seen.add(token));
-  const resolved = seen.has("blank") ? tokens.filter((token) => token !== "centered") : tokens;
-  return resolved.join(" ");
+  // `blank` is a full-bleed slide with no content layout, so it overrides any
+  // content-layout class (`two-column`, `centered`, …) the master name or a
+  // heuristic inferred — a blank slide is just blank.
+  if (seen.has("blank")) return "blank";
+  return tokens.join(" ");
 }
 
 /**

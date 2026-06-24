@@ -29,16 +29,17 @@ test("slideLayoutClass derives centering from the shared kernel via the content 
   assert.equal(slideLayoutClass({ contentBox: { left: 30, top: 30, width: 40, height: 40 } }), "centered");
 });
 
-test("slideLayoutClass combines the master class and the centering class, resolving centered/blank", () => {
+test("slideLayoutClass collapses a full-bleed slide to blank even under a content master", () => {
   assert.equal(
     slideLayoutClass({ masterName: "Comparison", contentBox: { left: 0, top: 30, width: 100, height: 40 } }),
-    "two-column blank",
+    "blank",
   );
 });
 
-test("normalizeLayoutClass dedupes tokens and drops centered when blank is present", () => {
+test("normalizeLayoutClass dedupes tokens and collapses any content layout to blank when blank is present", () => {
   assert.equal(normalizeLayoutClass("blank centered blank"), "blank");
-  assert.equal(normalizeLayoutClass("two-column centered blank"), "two-column blank");
+  assert.equal(normalizeLayoutClass("two-column centered blank"), "blank");
+  assert.equal(normalizeLayoutClass("two-column blank"), "blank");
   assert.equal(normalizeLayoutClass("centered"), "centered");
   assert.equal(normalizeLayoutClass("title"), "title");
 });

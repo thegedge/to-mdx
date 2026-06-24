@@ -408,6 +408,27 @@ test("presentationToMdx positions a non-full-bleed video via its box (absolute, 
   assert.doesNotMatch(mdx, /objectFit/);
 });
 
+test("presentationToMdx keeps the cover background, tint, and cover video at zIndex 0 beneath z-ordered content", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        background: "bg.jpg",
+        backgroundTint: "rgba(0, 0, 0, 0.5)",
+        videos: [{ fileName: "clip.mp4", box: { left: 0, top: 0, width: 100, height: 100 }, zOrder: 9 }],
+        textBoxes: [
+          { kind: "text", paragraphs: [{ depth: 0, text: "over" }], box: { left: 5, top: 5, width: 10, height: 10 }, zOrder: 4 },
+        ],
+      }),
+    ]),
+  );
+  // Tint overlay stays at the backdrop layer.
+  assert.match(mdx, /<div style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", backgroundColor: "rgba\(0, 0, 0, 0\.5\)", zIndex: 0 \}\} \/>/);
+  // A full-bleed cover video stays at zIndex 0 even though it carries a zOrder.
+  assert.match(mdx, /<video controls style=\{\{[^}]*objectFit: "cover", zIndex: 0 \}\}/);
+  // Content above the backdrop derives its zIndex from its rank (4 -> 5).
+  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 5 \}\}>\n\s*over/);
+});
+
 test("presentationToMdx renders a full-bleed animated image 'video' as an <Image> cover layer", () => {
   const mdx = presentationToMdx(
     deck([slide({ videos: [{ fileName: "clip.gif", box: { left: 0, top: 0, width: 100, height: 100 } }] })]),
@@ -770,16 +791,82 @@ test("presentationToMdx anchors a positioned auto-size box without emitting widt
   assert.doesNotMatch(mdx, /top:/);
 });
 
-test("presentationToMdx renders vector shapes as one <svg> overlay sized to the slide", () => {
+test("presentationToMdx renders a vector shape as its own <svg> sized to the slide", () => {
   const mdx = presentationToMdx(
     deck([slide({ shapes: [{ d: "M 100 200 L 816 200", stroke: "#000000", strokeWidth: 2 }] })]),
   );
 
   assert.match(mdx, /<svg viewBox="0 0 1920 1080"/);
   assert.match(mdx, /<path d="M 100 200 L 816 200" fill="none" stroke="#000000" strokeWidth=\{2\} \/>/);
+  // An unranked shape falls back to the prior fixed z-index 1.
   assert.match(mdx, /zIndex: 1/);
   assert.match(mdx, /pointerEvents: "none"/);
   assert.doesNotMatch(mdx, /kn-arrow/);
+});
+
+test("presentationToMdx renders each shape as its own <svg> (not one shared overlay), arrows keep the marker", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        shapes: [
+          { d: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, markerEnd: true },
+          { d: "M 5 5 C 6 6 7 7 8 8", stroke: "#111111", strokeWidth: 3 },
+        ],
+      }),
+    ]),
+  );
+
+  // Two separate <svg> elements, one per shape (no single multi-path overlay).
+  assert.equal(mdx.match(/<svg /g)?.length, 2);
+  assert.match(mdx, /<path d="M 0 0 L 100 0"[^>]*markerEnd="url\(#kn-arrow\)"/);
+  assert.match(mdx, /<path d="M 5 5 C 6 6 7 7 8 8"/);
+  // The arrow shape's own svg carries the marker defs once (id + markerEnd ref); the plain one has none.
+  assert.equal(mdx.match(/kn-arrow/g)?.length, 2);
+  assert.equal(mdx.match(/<marker /g)?.length, 1);
+});
+
+test("presentationToMdx stacks a later-z shape above a label box and an earlier-z shape below it", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        shapes: [
+          { d: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 2, zOrder: 1 },
+          { d: "M 5 5 C 6 6 7 7 8 8", stroke: "#000000", strokeWidth: 2, zOrder: 5 },
+        ],
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "verifier" }],
+            box: { left: 10, top: 10, width: 20, height: 10 },
+            style: { backgroundColor: "#f9db9a" },
+            zOrder: 3,
+          },
+        ],
+      }),
+    ]),
+  );
+
+  // zIndex = 1 + zOrder: line(2) < box(4) < icon(6).
+  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 2,[^>]*>\n\s*<path d="M 0 0 L 100 0"/);
+  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 6,[^>]*>\n\s*<path d="M 5 5 C/);
+  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 4[^}]*\}\}>\n\s*verifier/);
+});
+
+test("presentationToMdx derives positioned image and box zIndex from drawablesZOrder rank", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        images: [{ fileName: "p.png", altText: "p", box: { left: 0, top: 0, width: 50, height: 50 }, zOrder: 2 }],
+        textBoxes: [
+          { kind: "text", paragraphs: [{ depth: 0, text: "t" }], box: { left: 1, top: 1, width: 9, height: 9 }, zOrder: 0 },
+        ],
+      }),
+    ]),
+  );
+
+  // Image (zOrder 2 -> zIndex 3) renders above the box (zOrder 0 -> zIndex 1).
+  assert.match(mdx, /<Image style=\{\{ position: "absolute"[^}]*zIndex: 3 \}\} src=\{`\$\{imageRoot\}\/p\.png`\}/);
+  assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 1 \}\}>/);
 });
 
 test("presentationToMdx uses the deck slideSize for the shape viewBox", () => {
