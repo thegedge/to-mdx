@@ -1,6 +1,7 @@
 import { kebabCase } from "../../utils.ts";
 import { isFullBleed } from "./extract/layout.ts";
 import { rgba } from "./extract/style.ts";
+import { hoistStyles } from "./hoist.ts";
 import type { ImageCrop, Paragraph, Presentation, Slide, SlideImage, SlideVideo, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
@@ -94,20 +95,30 @@ export function presentationToMdx(presentation: Presentation): string {
   // `backgroundRoot={imageRoot}` references the exported `imageRoot` const (a JSX
   // expression), not a string literal.
   const className = kebabCase(presentation.title);
+  const scope = `.slides.${className}`;
 
-  const wrapper = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
+  const rawWrapper = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
+  // Lift repeated colors/fonts/style-sets into the scoped stylesheet, leaving the
+  // rendered slides visually identical (see `hoistStyles`).
+  const { wrapper, rules } = hoistStyles(rawWrapper, scope);
+
+  // The scoped stylesheet merges the hoisted rules with the shared table rules.
+  // HTML `<table>`s depend on the latter; spanless markdown tables get default
+  // styling but it is harmless.
+  const styleRules = [...rules];
+  if (hasRenderableTable(presentation)) {
+    styleRules.push(...tableStyleRules(scope));
+  }
 
   // Document-level heads emitted before `<Slides>` (their selectors/ids still
-  // match document-wide): the shared shape `<defs>`, then the scoped table
-  // stylesheet. HTML `<table>`s depend on the latter; spanless markdown tables get
-  // default styling but it is harmless.
+  // match document-wide): the shared shape `<defs>`, then the scoped stylesheet.
   const heads: string[] = [];
   const defs = shapeDefsBlock(presentation, pathIds);
   if (defs) {
     heads.push(defs);
   }
-  if (hasRenderableTable(presentation)) {
-    heads.push(tableStyleBlock(className));
+  if (styleRules.length > 0) {
+    heads.push("<style>{`\n" + styleRules.join("\n") + "\n`}</style>");
   }
   return [...heads, wrapper].join("\n\n");
 }
@@ -597,15 +608,29 @@ function renderShapeRun(run: ShapeRun, slideSize: { width: number; height: numbe
 function renderUse(shape: SvgPath, pathIds: Map<string, string>): string {
   const id = pathIds.get(shape.localD) ?? "";
   const transform = shape.transform ? ` transform="${shape.transform}"` : "";
-  const extra =
-    (shape.opacity !== undefined ? ` opacity={${shape.opacity}}` : "") +
-    (shape.fillOpacity !== undefined ? ` fillOpacity={${shape.fillOpacity}}` : "") +
-    (shape.strokeOpacity !== undefined ? ` strokeOpacity={${shape.strokeOpacity}}` : "") +
-    (shape.strokeDasharray ? ` strokeDasharray="${shape.strokeDasharray}"` : "") +
-    (shape.strokeLinecap ? ` strokeLinecap="${shape.strokeLinecap}"` : "");
+
+  // Paint via CSS `style`, not SVG presentation attributes: `var()` (from color
+  // hoisting) resolves in CSS property values but not in a raw `fill="…"` attribute.
+  const declarations: Declaration[] = [["fill", shape.fill ?? "none"], ["stroke", shape.stroke], ["strokeWidth", shape.strokeWidth]];
+  if (shape.strokeDasharray) {
+    declarations.push(["strokeDasharray", shape.strokeDasharray]);
+  }
+  if (shape.strokeLinecap) {
+    declarations.push(["strokeLinecap", shape.strokeLinecap]);
+  }
+  if (shape.opacity !== undefined) {
+    declarations.push(["opacity", shape.opacity]);
+  }
+  if (shape.fillOpacity !== undefined) {
+    declarations.push(["fillOpacity", shape.fillOpacity]);
+  }
+  if (shape.strokeOpacity !== undefined) {
+    declarations.push(["strokeOpacity", shape.strokeOpacity]);
+  }
+
   const markers =
     (shape.markerStart ? ' markerStart="url(#kn-arrow)"' : "") + (shape.markerEnd ? ' markerEnd="url(#kn-arrow)"' : "");
-  return `<use href="#${id}"${transform} fill="${shape.fill ?? "none"}" stroke="${shape.stroke}" strokeWidth={${shape.strokeWidth}}${extra}${markers} />`;
+  return `<use href="#${id}"${transform} ${styleAttr(declarations)}${markers} />`;
 }
 
 /**
@@ -727,26 +752,18 @@ function hasRenderableTable(presentation: Presentation): boolean {
 }
 
 /**
- * The single scoped stylesheet shared by every HTML table in the document,
- * emitted once before `<Slides>`. The selector is scoped to the deck's slug (the
- * same class on `<Slides>`) so the table styling cannot leak, and styles the bare
- * `table`/`th`/`td` elements directly (no per-table class). Multi-line for
- * readability; built by string concatenation so the CSS braces survive inside the
- * JSX expression container.
+ * The scoped CSS rule blocks shared by every HTML table in the document, merged
+ * into the document's single `<style>` before `<Slides>`. The selector is scoped
+ * to the deck's slug (the same class on `<Slides>`) so the table styling cannot
+ * leak, and styles the bare `table`/`th`/`td` elements directly (no per-table
+ * class). Built by string concatenation so the CSS braces survive inside the JSX
+ * expression container.
  */
-function tableStyleBlock(slug: string): string {
-  const scope = `.slides.${slug}`;
-  const css = [
-    `${scope} table {`,
-    `  border-collapse: collapse;`,
-    `}`,
-    `${scope} th,`,
-    `${scope} td {`,
-    `  border: 1px solid currentColor;`,
-    `  padding: 0.25em;`,
-    `}`,
-  ].join("\n");
-  return "<style>{`\n" + css + "\n`}</style>";
+function tableStyleRules(scope: string): string[] {
+  return [
+    `${scope} table {\n  border-collapse: collapse;\n}`,
+    `${scope} th,\n${scope} td {\n  border: 1px solid currentColor;\n  padding: 0.25em;\n}`,
+  ];
 }
 
 /**

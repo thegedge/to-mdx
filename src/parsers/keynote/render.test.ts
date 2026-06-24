@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Presentation, Slide } from "./model.ts";
+import { hoistStyles } from "./hoist.ts";
 import { assembleMdxDocument, escapeMdxText, isImageFile, positionRules, presentationToMdx, styleAttr } from "./render.ts";
 
 function slide(overrides: Partial<Slide> = {}): Slide {
@@ -684,7 +685,7 @@ test("presentationToMdx renders a positioned, styled text box as an inline-style
   );
 });
 
-test("presentationToMdx emits fontFamily in a text box's inline style when present", () => {
+test("presentationToMdx hoists the sole fontFamily to the scoped default and drops it inline", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -699,7 +700,63 @@ test("presentationToMdx emits fontFamily in a text box's inline style when prese
     ]),
   );
 
-  assert.match(mdx, /<div style=\{\{ fontFamily: "Impact" \}\}>\n\s*Impact\n\s*<\/div>/);
+  // The only family becomes the scope default; no inline fontFamily survives.
+  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Impact";\n\}/);
+  assert.doesNotMatch(mdx, /fontFamily/);
+  assert.match(mdx, /<div>\n\s*Impact\n\s*<\/div>/);
+});
+
+test("presentationToMdx applies a rarer fontFamily via a scoped class while the common one is the default", () => {
+  const mono = (text: string) =>
+    ({ kind: "text", paragraphs: [{ depth: 0, text }], style: { fontFamily: "Shopify Sans" } }) as const;
+  const mdx = presentationToMdx(
+    deck([
+      slide({ textBoxes: [mono("a"), mono("b"), { kind: "text", paragraphs: [{ depth: 0, text: "code" }], style: { fontFamily: "Fira Code" } }] }),
+    ]),
+  );
+
+  // Common family is the default; the rare one is a utility class on its element.
+  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Shopify Sans";\n\}/);
+  assert.match(mdx, /\.slides\.deck \.font-fira-code \{\n\s*font-family: "Fira Code";\n\}/);
+  assert.match(mdx, /<div className="font-fira-code">\n\s*code\n\s*<\/div>/);
+  assert.doesNotMatch(mdx, /fontFamily/);
+});
+
+test("hoistStyles makes a 2+-use color a var with a definition and leaves a single-use color literal", () => {
+  const wrapper = [
+    '<Slides className="deck" backgroundRoot={imageRoot}>',
+    '<Slide style={{ backgroundColor: "#223274" }}>',
+    '  <div style={{ color: "#223274" }}>a</div>',
+    '  <div style={{ color: "#abcdef" }}>b</div>',
+    "</Slide>",
+    "</Slides>",
+  ].join("\n");
+  const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck");
+
+  assert.match(rules.join("\n"), /--palette1: #223274;/);
+  assert.match(out, /backgroundColor: "var\(--palette1\)"/);
+  assert.match(out, /color: "var\(--palette1\)"/);
+  // The single-use color is untouched and gets no variable.
+  assert.match(out, /color: "#abcdef"/);
+  assert.doesNotMatch(rules.join("\n"), /#abcdef/);
+});
+
+test("hoistStyles hoists an identical 2+-use style set to a class and leaves a unique one inline", () => {
+  const repeated = 'style={{ position: "absolute", overflow: "hidden", zIndex: 1 }}';
+  const wrapper = [
+    '<Slides className="deck" backgroundRoot={imageRoot}>',
+    `<div ${repeated}>a</div>`,
+    `<div ${repeated}>b</div>`,
+    '<div style={{ position: "absolute", zIndex: 9 }}>c</div>',
+    "</Slides>",
+  ].join("\n");
+  const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck");
+
+  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}position: absolute;\n {2}overflow: hidden;\n {2}z-index: 1;\n\}/);
+  assert.equal((out.match(/className="style1"/g) ?? []).length, 2);
+  assert.doesNotMatch(out, /overflow: "hidden"/);
+  // The unique style set stays inline (not classed).
+  assert.match(out, /<div style=\{\{ position: "absolute", zIndex: 9 \}\}>c<\/div>/);
 });
 
 test("presentationToMdx renders a promoted full-bleed image as a bare-filename background (cover, no contain)", () => {
@@ -818,7 +875,7 @@ test("presentationToMdx renders a vector shape as a <use> in an <svg> sized to t
   assert.match(mdx, /<defs>\n\s*<line id="kn-p1" x1="0" y1="0" x2="100" y2="0" \/>\n\s*<\/defs>/);
   // The shape instance references it via <use> in the slide overlay, carrying its transform + style.
   assert.match(mdx, /<svg viewBox="0 0 1920 1080"/);
-  assert.match(mdx, /<use href="#kn-p1" transform="translate\(100 200\) scale\(7\.16 0\)" fill="none" stroke="#000000" strokeWidth=\{2\} \/>/);
+  assert.match(mdx, /<use href="#kn-p1" transform="translate\(100 200\) scale\(7\.16 0\)" style=\{\{ fill: "none", stroke: "#000000", strokeWidth: 2 \}\} \/>/);
   // An unranked shape falls back to the prior fixed z-index 1.
   assert.match(mdx, /zIndex: 1/);
   assert.match(mdx, /pointerEvents: "none"/);
@@ -869,8 +926,8 @@ test("presentationToMdx splits a shape run around a label box into two overlays 
 
   // A barrier (the box at rank 3) between the two shapes (ranks 1, 5) splits them
   // into two overlays. zIndex = 1 + zOrder: line(2) < box(4) < icon(6).
-  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 2,[^>]*>\n\s*<use href="#kn-p1"/);
-  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 6,[^>]*>\n\s*<use href="#kn-p2"/);
+  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 2,[^>]*>\n\s*<use [^>]*href="#kn-p1"/);
+  assert.match(mdx, /<svg[^>]*overflow: "visible", zIndex: 6,[^>]*>\n\s*<use [^>]*href="#kn-p2"/);
   assert.match(mdx, /<div style=\{\{ position: "absolute"[^}]*zIndex: 4[^}]*\}\}>\n\s*verifier/);
 });
 
@@ -888,8 +945,8 @@ test("presentationToMdx dedupes identical local paths into one def, referenced b
   assert.equal(mdx.match(/x1="0" y1="0" x2="50" y2="0"/g)?.length, 1);
   // Both instances reference the same def, each with its own transform.
   assert.equal(mdx.match(/href="#kn-p1"/g)?.length, 2);
-  assert.match(mdx, /<use href="#kn-p1" transform="translate\(10 20\)"/);
-  assert.match(mdx, /<use href="#kn-p1" transform="translate\(80 90\) rotate\(45 25 0\)"/);
+  assert.match(mdx, /<use [^>]*href="#kn-p1" transform="translate\(10 20\)"/);
+  assert.match(mdx, /<use [^>]*href="#kn-p1" transform="translate\(80 90\) rotate\(45 25 0\)"/);
 });
 
 test("presentationToMdx defines an all-L path as a <polyline> and a curved/closed path as a <path>", () => {
@@ -975,10 +1032,10 @@ test("presentationToMdx emits dash, linecap, and opacity attrs on a shape <use> 
     ]),
   );
 
-  assert.match(mdx, /<use [^>]*strokeDasharray="0.005,10"/);
-  assert.match(mdx, /strokeLinecap="round"/);
-  assert.match(mdx, /strokeOpacity=\{0.5\}/);
-  assert.match(mdx, /fillOpacity=\{0.25\}/);
+  assert.match(mdx, /<use [^>]*strokeDasharray: "0.005,10"/);
+  assert.match(mdx, /strokeLinecap: "round"/);
+  assert.match(mdx, /strokeOpacity: 0.5/);
+  assert.match(mdx, /fillOpacity: 0.25/);
 });
 
 test("presentationToMdx emits the slide background color as an inline style on <Slide>", () => {
@@ -1017,12 +1074,12 @@ test("presentationToMdx emits opacity on a shape <use> with a translucent shapeP
   const translucent = presentationToMdx(
     deck([slide({ shapes: [{ localD: "M 0 0 L 10 0", stroke: "none", strokeWidth: 2, fill: "#ffffff", opacity: 0.7 }] })]),
   );
-  assert.match(translucent, /<use href="#kn-p1"[^>]* opacity=\{0\.7\}/);
+  assert.match(translucent, /<use href="#kn-p1"[^>]*opacity: 0\.7/);
 
   const opaque = presentationToMdx(
     deck([slide({ shapes: [{ localD: "M 0 0 L 10 0", stroke: "none", strokeWidth: 2, fill: "#ffffff" }] })]),
   );
-  assert.doesNotMatch(opaque, /opacity=/);
+  assert.doesNotMatch(opaque, /opacity:/);
 });
 
 test("presentationToMdx places a backdrop master image at zIndex 0 and a normal one at its positioned zIndex", () => {
@@ -1063,7 +1120,7 @@ test("presentationToMdx emits textShadow and opacity declarations for a position
   assert.match(mdx, /opacity: 0\.7/);
 });
 
-test("presentationToMdx emits a cell fontFamily in the td inline style", () => {
+test("presentationToMdx hoists a cell fontFamily to the scoped default, dropping it from the td style", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -1075,5 +1132,7 @@ test("presentationToMdx emits a cell fontFamily in the td inline style", () => {
       }),
     ]),
   );
-  assert.match(mdx, /<td style=\{\{ color: "#000000", fontFamily: "Shopify Sans", textAlign: "center" \}\}>Octet<\/td>/);
+  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Shopify Sans";\n\}/);
+  assert.match(mdx, /<td style=\{\{ color: "#000000", textAlign: "center" \}\}>Octet<\/td>/);
+  assert.doesNotMatch(mdx, /fontFamily/);
 });
