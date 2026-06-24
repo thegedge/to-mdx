@@ -246,8 +246,8 @@ function anyBrushBorder(presentation: Presentation): boolean {
  */
 const ROUGH_FILTER =
   '<filter id="kn-rough" x="-20%" y="-20%" width="140%" height="140%">' +
-  '<feTurbulence type="fractalNoise" baseFrequency="0.012 0.02" numOctaves="3" seed="0" result="noise" />' +
-  '<feDisplacementMap in="SourceGraphic" in2="noise" scale="6" /></filter>';
+  '<feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="3" seed="0" result="noise" />' +
+  '<feDisplacementMap in="SourceGraphic" in2="noise" scale="10" /></filter>';
 
 /**
  * The base added to a drawable's back-to-front `zOrder` rank to form its stacking
