@@ -178,8 +178,9 @@ test("svgPath flags arrowheads from head/tail line-ends", () => {
   } as unknown as ShapeStyleArchive;
   const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), arrowStyle);
   assert.ok(path);
-  assert.equal(path.markerEnd, true);
-  assert.equal(path.markerStart, undefined);
+  // tailLineEnd is at the path start (line runs tail → head).
+  assert.equal(path.markerStart, true);
+  assert.equal(path.markerEnd, undefined);
 });
 
 test("svgPath returns undefined for a shape with no bezier path", () => {
@@ -362,7 +363,7 @@ test("shapeBorderRadius returns undefined for a zero corner radius", () => {
   assert.equal(shapeBorderRadius(zero), undefined);
 });
 
-test("svgPath flags only markerStart when head is an arrow and tail is none", () => {
+test("svgPath flags only markerEnd when head is an arrow and tail is none", () => {
   const arrow = {
     shapeProperties: {
       stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 2 },
@@ -372,6 +373,7 @@ test("svgPath flags only markerStart when head is an arrow and tail is none", ()
   } as unknown as ShapeStyleArchive;
   const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), arrow);
   assert.ok(path);
-  assert.equal(path.markerStart, true);
-  assert.equal(path.markerEnd, undefined);
+  // headLineEnd (the arrowhead) is at the path end.
+  assert.equal(path.markerEnd, true);
+  assert.equal(path.markerStart, undefined);
 });

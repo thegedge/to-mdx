@@ -375,9 +375,13 @@ function hasRgb(color: Color | undefined): color is Color {
 /** Marks arrowheads when the style exposes a head (start) or tail (end) line-end other than "none". */
 function arrowFlags(style: ShapeStyleArchive | undefined): Pick<SvgPath, "markerStart" | "markerEnd"> {
   const props = effectiveShapeProps(style);
+  // The line runs tail → head, so the path's first point is the tail and its last
+  // is the head: `headLineEnd` (the arrowhead) belongs at the path END (`markerEnd`)
+  // and `tailLineEnd` at the START. Without this the arrows point the wrong way
+  // (left-to-right where Keynote draws right-to-left).
   return {
-    ...(hasLineEnd(props?.headLineEnd) ? { markerStart: true } : {}),
-    ...(hasLineEnd(props?.tailLineEnd) ? { markerEnd: true } : {}),
+    ...(hasLineEnd(props?.tailLineEnd) ? { markerStart: true } : {}),
+    ...(hasLineEnd(props?.headLineEnd) ? { markerEnd: true } : {}),
   };
 }
 
