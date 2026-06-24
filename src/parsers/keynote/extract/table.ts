@@ -181,6 +181,7 @@ function decodeRow(
       ...(background?.backgroundOpacity !== undefined ? { backgroundOpacity: background.backgroundOpacity } : {}),
       ...(text.color ? { color: text.color } : {}),
       ...(text.fontFamily ? { fontFamily: text.fontFamily } : {}),
+      ...(text.bold ? { bold: true } : {}),
       align: text.align,
     });
   }
@@ -260,6 +261,14 @@ export interface CellBackground {
  */
 export interface CellStyling {
   byKey: Map<number, CellBackground | undefined>;
+  /**
+   * Per-cell text styles keyed by the `styleTable` entry key referenced from each
+   * cell's BNC text-style id (flag `0x40`). The same `styleTable` holds both the
+   * fill `CellStyleArchive`s (above) and the `ParagraphStyleArchive`s resolved here;
+   * a value of `undefined` means the entry resolved to no text props. A cell's own
+   * text style overrides the positional default for the properties it carries.
+   */
+  textByKey: Map<number, CellTextStyle | undefined>;
   header?: CellBackground;
   headerColumn?: CellBackground;
   footer?: CellBackground;
@@ -275,7 +284,7 @@ export interface CellStyling {
   rowCount: number;
 }
 
-/** A resolved cell text style: a hex color, CSS font family, and/or a CSS text-alignment token. */
+/** A resolved cell text style: a hex color, CSS font family, alignment token, and/or bold flag. */
 export interface CellTextStyle {
   /** `#RRGGBB`. */
   color?: string;
@@ -283,6 +292,8 @@ export interface CellTextStyle {
   fontFamily?: string;
   /** CSS `text-align` token (`left`/`right`/`center`/`justify`). */
   align?: "left" | "right" | "center" | "justify";
+  /** `true` when the style's `charProperties.bold` is set; absent otherwise. */
+  bold?: boolean;
 }
 
 /**
@@ -333,12 +344,17 @@ function backgroundOf(ref: Reference | undefined, registry: Registry): CellBackg
 /** Builds the per-cell + positional fill lookup for a table model (resolved once). */
 function resolveStyling(model: TableModelArchive, registry: Registry): CellStyling {
   const byKey = new Map<number, CellBackground | undefined>();
+  const textByKey = new Map<number, CellTextStyle | undefined>();
   const styleList = registry.resolve<TableDataList>(model.baseDataStore?.styleTable);
   for (const entry of styleList?.entries ?? []) {
+    // The styleTable mixes fill CellStyleArchives and text ParagraphStyleArchives;
+    // each key resolves to one or the other, so the unused decode yields undefined.
     byKey.set(entry.key, fillToBackground(effectiveCellFill(registry.resolve<CellStyleArchive>(entry.reference))));
+    textByKey.set(entry.key, resolveTextStyle(entry.reference, registry));
   }
   return {
     byKey,
+    textByKey,
     header: backgroundOf(model.headerRowStyle, registry),
     headerColumn: backgroundOf(model.headerColumnStyle, registry),
     footer: backgroundOf(model.footerRowStyle, registry),
@@ -363,46 +379,52 @@ function resolveStyling(model: TableModelArchive, registry: Registry): CellStyli
  * the chain structurally (matching the shape/cell-fill super-walk pattern).
  */
 interface ParaStyleNode {
-  charProperties?: { fontColor?: Color; fontName?: string };
+  charProperties?: { fontColor?: Color; fontName?: string; bold?: boolean };
   paraProperties?: { alignment?: number };
   super?: ParaStyleNode;
 }
 
 /**
- * The effective font color, font name, and alignment for a paragraph style: the
- * first of each found walking the `super` chain (resolved independently, since a
- * link may carry one without the others). Empty links are skipped rather than
- * stopping the walk.
+ * The effective font color, font name, alignment, and bold flag for a paragraph
+ * style: the first of each found walking the `super` chain (resolved independently,
+ * since a link may carry one without the others). Empty links are skipped rather
+ * than stopping the walk. `bold` is reported only when an explicit `true` is found.
  */
 export function effectiveTextProps(
   style: ParagraphStyleArchive | undefined,
-): { fontColor?: Color; fontName?: string; alignment?: number } {
+): { fontColor?: Color; fontName?: string; alignment?: number; bold?: boolean } {
   let node: ParaStyleNode | undefined = style as unknown as ParaStyleNode | undefined;
   let fontColor: Color | undefined;
   let fontName: string | undefined;
   let alignment: number | undefined;
+  let bold: boolean | undefined;
   while (node) {
     if (fontColor === undefined && node.charProperties?.fontColor) fontColor = node.charProperties.fontColor;
     if (fontName === undefined && node.charProperties?.fontName) fontName = node.charProperties.fontName;
     if (alignment === undefined && node.paraProperties?.alignment !== undefined) alignment = node.paraProperties.alignment;
-    if (fontColor !== undefined && fontName !== undefined && alignment !== undefined) break;
+    if (bold === undefined && node.charProperties?.bold !== undefined) bold = node.charProperties.bold;
+    if (fontColor !== undefined && fontName !== undefined && alignment !== undefined && bold !== undefined) break;
     node = node.super;
   }
-  return { fontColor, fontName, alignment };
+  return { fontColor, fontName, alignment, bold };
 }
 
-/** Resolves a text-style reference to its effective color/font/alignment, or undefined when none resolves. */
+/** Resolves a text-style reference to its effective color/font/alignment/bold, or undefined when none resolves. */
 function resolveTextStyle(ref: Reference | undefined, registry: Registry): CellTextStyle | undefined {
   const style = registry.resolve<ParagraphStyleArchive>(ref);
   if (!style) return undefined;
-  const { fontColor, fontName, alignment } = effectiveTextProps(style);
+  const { fontColor, fontName, alignment, bold } = effectiveTextProps(style);
   const resolved: CellTextStyle = {};
   if (hasRgb(fontColor)) resolved.color = colorToHex(fontColor);
   const family = fontFamily(fontName);
   if (family) resolved.fontFamily = family;
   const align = alignmentToken(alignment);
   if (align) resolved.align = align;
-  return resolved.color !== undefined || resolved.fontFamily !== undefined || resolved.align !== undefined
+  if (bold === true) resolved.bold = true;
+  return resolved.color !== undefined ||
+    resolved.fontFamily !== undefined ||
+    resolved.align !== undefined ||
+    resolved.bold !== undefined
     ? resolved
     : undefined;
 }
@@ -418,6 +440,7 @@ function resolveTextStyle(ref: Reference | undefined, registry: Registry): CellT
 const FLAGS_OFFSET = 8;
 const GATED_FIELDS_OFFSET = 12;
 const CELL_STYLE_FLAG = 0x20;
+const CELL_TEXT_STYLE_FLAG = 0x40;
 const GATED_FIELD_WIDTHS: ReadonlyArray<readonly [bit: number, width: number]> = [
   [0x1, 16], // decimal128 value
   [0x2, 8], // double value
@@ -438,25 +461,35 @@ const GATED_FIELD_WIDTHS: ReadonlyArray<readonly [bit: number, width: number]> =
 ];
 
 /**
- * Reads a cell's per-cell style id (its `styleTable` entry key) from the v5 BNC
- * cell record at `offset`, or undefined when the cell carries no style field or
- * the read would run past the buffer. Walks the flag-gated fields, summing the
- * widths of the present fields ahead of the style field to find its position.
+ * Reads the v5 BNC cell record's gated field at `flag` (a `styleTable` entry key)
+ * from the record at `offset`, or undefined when that field is absent or the read
+ * would run past the buffer. Walks the flag-gated fields, summing the widths of the
+ * present fields ahead of the target field to find its position.
  */
-export function cellStyleId(buffer: Uint8Array, offset: number): number | undefined {
+function gatedFieldId(buffer: Uint8Array, offset: number, flag: number): number | undefined {
   if (offset < 0 || offset + GATED_FIELDS_OFFSET > buffer.byteLength) return undefined;
   const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   const flags = view.getUint32(offset + FLAGS_OFFSET, true);
   let p = offset + GATED_FIELDS_OFFSET;
   for (const [bit, width] of GATED_FIELD_WIDTHS) {
     if (!(flags & bit)) {
-      if (bit === CELL_STYLE_FLAG) return undefined; // style field not present
+      if (bit === flag) return undefined; // target field not present
       continue;
     }
-    if (bit === CELL_STYLE_FLAG) return p + 4 <= buffer.byteLength ? view.getUint32(p, true) : undefined;
+    if (bit === flag) return p + 4 <= buffer.byteLength ? view.getUint32(p, true) : undefined;
     p += width;
   }
   return undefined;
+}
+
+/** Reads a cell's per-cell fill style id (its `styleTable` entry key, gated by `0x20`). */
+export function cellStyleId(buffer: Uint8Array, offset: number): number | undefined {
+  return gatedFieldId(buffer, offset, CELL_STYLE_FLAG);
+}
+
+/** Reads a cell's per-cell text style id (its `styleTable` entry key, gated by `0x40`). */
+export function cellTextStyleId(buffer: Uint8Array, offset: number): number | undefined {
+  return gatedFieldId(buffer, offset, CELL_TEXT_STYLE_FLAG);
 }
 
 /**
@@ -509,12 +542,22 @@ function richCellColor(buffer: Uint8Array, offset: number, tables: CellTables): 
 }
 
 /**
- * The resolved text color, font family, and alignment for the cell at `(r, c)`. The
- * color prefers a per-cell rich-text run color, falling back to the positional text
- * style; it is omitted when neither resolves. The font family comes from the
- * positional text style (like the default color). The alignment defaults to `center`
- * for every cell (this deck is uniformly centered), with an explicit positional
- * alignment winning.
+ * The cell's own per-cell text style, resolved from its BNC text-style id (flag
+ * `0x40`) through the `styleTable`. Undefined when the cell carries no text-style
+ * id or the id resolves to no text props; callers then use the positional default.
+ */
+function ownCellTextStyle(styling: CellStyling, buffer: Uint8Array, offset: number): CellTextStyle | undefined {
+  const id = cellTextStyleId(buffer, offset);
+  return id !== undefined ? styling.textByKey.get(id) : undefined;
+}
+
+/**
+ * The resolved text color, font family, alignment, and bold flag for the cell at
+ * `(r, c)`. Each property prefers the cell's own text style (from its BNC text-style
+ * id), then falls back to the positional band style. Color additionally honors a
+ * per-cell rich-text run color between the two (own text style still wins over it).
+ * Alignment defaults to `center` (this deck is uniformly centered). Color, font
+ * family, and bold are omitted when nothing resolves them.
  */
 export function cellText(
   styling: CellStyling,
@@ -523,13 +566,17 @@ export function cellText(
   offset: number,
   r: number,
   c: number,
-): { color?: string; fontFamily?: string; align: string } {
+): { color?: string; fontFamily?: string; align: string; bold?: boolean } {
+  const own = ownCellTextStyle(styling, buffer, offset);
   const positional = positionalTextStyle(styling, r, c);
-  const color = richCellColor(buffer, offset, tables) ?? positional?.color;
-  const align = positional?.align ?? "center";
+  const color = own?.color ?? richCellColor(buffer, offset, tables) ?? positional?.color;
+  const fontFamily = own?.fontFamily ?? positional?.fontFamily;
+  const align = own?.align ?? positional?.align ?? "center";
+  const bold = own?.bold ?? positional?.bold;
   return {
     ...(color !== undefined ? { color } : {}),
-    ...(positional?.fontFamily !== undefined ? { fontFamily: positional.fontFamily } : {}),
+    ...(fontFamily !== undefined ? { fontFamily } : {}),
+    ...(bold ? { bold: true } : {}),
     align,
   };
 }

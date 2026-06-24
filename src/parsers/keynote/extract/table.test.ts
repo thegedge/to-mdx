@@ -8,6 +8,7 @@ import {
   type CellStyling,
   type CellTables,
   cellText,
+  cellTextStyleId,
   cellValue,
   effectiveCellFill,
   effectiveTextProps,
@@ -35,6 +36,23 @@ function styledCell(stringKey: number, styleId: number): Uint8Array {
   view.setUint32(8, 0x8 | 0x20, true); // string + cell-style fields present
   view.setUint32(12, stringKey, true);
   view.setUint32(16, styleId, true);
+  return buffer;
+}
+
+/**
+ * A v5 BNC cell record carrying a string key (flag 0x8), a fill style id (flag
+ * 0x20), and a text style id (flag 0x40): flags at +8, then the string key at +12,
+ * the fill id at +16, and the text id at +20.
+ */
+function textStyledCell(stringKey: number, fillId: number, textId: number): Uint8Array {
+  const buffer = new Uint8Array(24);
+  buffer[0] = 5; // version
+  buffer[1] = 3; // text cell
+  const view = new DataView(buffer.buffer);
+  view.setUint32(8, 0x8 | 0x20 | 0x40, true); // string + fill-style + text-style fields present
+  view.setUint32(12, stringKey, true);
+  view.setUint32(16, fillId, true);
+  view.setUint32(20, textId, true);
   return buffer;
 }
 
@@ -334,12 +352,48 @@ test("cellStyleId reads the BNC style id past the variable-width value/string fi
   assert.equal(cellStyleId(new Uint8Array(4), 0), undefined);
 });
 
+test("cellTextStyleId reads the 0x40 field past the fill style id; absent flag → undefined", () => {
+  // string (4) then fill id (4) then text id → the text id is read at +20.
+  assert.equal(cellTextStyleId(textStyledCell(7, 4, 9), 0), 9);
+  // The fill style id is still the 0x20 field (unchanged behavior).
+  assert.equal(cellStyleId(textStyledCell(7, 4, 9), 0), 4);
+  // A cell with only a fill style id (no 0x40 flag) → undefined text style id.
+  assert.equal(cellTextStyleId(styledCell(7, 4), 0), undefined);
+  // Bounds-safe on a truncated record.
+  assert.equal(cellTextStyleId(new Uint8Array(4), 0), undefined);
+});
+
+test("cellText resolves a per-cell text style (blue + bold), overriding the positional default", () => {
+  const styling = textStyling({
+    textBody: { color: "#000000" },
+    textByKey: new Map([[9, { color: "#223274", bold: true }]]),
+  });
+  // Cell carries text-style id 9 → dark-blue + bold, beating the body black default.
+  assert.deepEqual(cellText(styling, noTables, textStyledCell(1, 4, 9), 0, 1, 0), {
+    color: "#223274",
+    bold: true,
+    align: "center",
+  });
+  // A cell without a text-style id falls back to the positional body color, no bold.
+  assert.deepEqual(cellText(styling, noTables, textCell(1), 0, 1, 0), { color: "#000000", align: "center" });
+});
+
+test("cellText: a per-cell text-style color wins over a rich-text run color", () => {
+  const styling = textStyling({ textByKey: new Map([[9, { color: "#223274" }]]) });
+  const tables: CellTables = { strings: new Map(), richText: new Map(), richColor: new Map([[5, "#fb8b8a"]]) };
+  // Rich cell keyed 5 (run color #fb8b8a) but also a text-style id 9 → the text style wins.
+  const buffer = textStyledCell(5, 4, 9);
+  buffer[1] = 9; // rich cell type
+  assert.deepEqual(cellText(styling, tables, buffer, 0, 1, 0), { color: "#223274", align: "center" });
+});
+
 test("cellBackground maps a per-cell style id to its styleTable fill, else the positional default", () => {
   const styling: CellStyling = {
     byKey: new Map([
       [4, { backgroundColor: "#223274", backgroundOpacity: 0.151 }],
       [6, undefined], // present but transparent
     ]),
+    textByKey: new Map(),
     header: { backgroundColor: "#0066bf" },
     headerColumn: undefined,
     footer: undefined,
@@ -412,14 +466,32 @@ test("effectiveTextProps walks the super chain for the first font color, font na
     fontColor: { r: 1, g: 1, b: 1 },
     fontName: "ShopifySans-Light",
     alignment: 1,
+    bold: undefined,
   });
-  assert.deepEqual(effectiveTextProps(undefined), { fontColor: undefined, fontName: undefined, alignment: undefined });
+  assert.deepEqual(effectiveTextProps(undefined), {
+    fontColor: undefined,
+    fontName: undefined,
+    alignment: undefined,
+    bold: undefined,
+  });
+});
+
+test("effectiveTextProps walks the super chain for the first bold flag", () => {
+  // bold is set one level down the super chain; the outer link carries only color.
+  const style = {
+    charProperties: { fontColor: { r: 0.133, g: 0.196, b: 0.454 } },
+    super: { charProperties: { bold: true } },
+  };
+  const props = effectiveTextProps(style as unknown as Parameters<typeof effectiveTextProps>[0]);
+  assert.equal(props.bold, true);
+  assert.deepEqual(props.fontColor, { r: 0.133, g: 0.196, b: 0.454 });
 });
 
 /** A `CellStyling` carrying only positional text styles (no fills), for `cellText` tests. */
 function textStyling(over: Partial<CellStyling>): CellStyling {
   return {
     byKey: new Map(),
+    textByKey: new Map(),
     headerRows: 0,
     headerColumns: 0,
     footerRows: 0,
@@ -498,6 +570,47 @@ test("tableData resolves positional text color + alignment from the model's text
     rows: [
       [{ text: "Head", colSpan: 1, rowSpan: 1, color: "#ffffff", fontFamily: "Shopify Sans", align: "center" }],
       [{ text: "Body", colSpan: 1, rowSpan: 1, color: "#000000", fontFamily: "Shopify Sans", align: "center" }],
+    ],
+  });
+});
+
+test("tableData resolves a per-cell text style (blue + bold) from the styleTable, overriding the positional default", () => {
+  const model: TableModelArchive = {
+    numberOfRows: 1,
+    numberOfColumns: 2,
+    bodyTextStyle: ref(701n),
+    baseDataStore: {
+      stringTable: ref(200n),
+      styleTable: ref(600n),
+      tiles: { tileSize: 256, tiles: [{ tileid: 0, tile: ref(300n) }] },
+    },
+  } as unknown as TableModelArchive;
+
+  const registry = buildRegistry([
+    mockObject(200n, 6005, { listType: 1, entries: [{ key: 1, string: "Ack" }, { key: 2, string: "plain" }] }),
+    // styleTable holds a ParagraphStyleArchive (text) keyed 9: dark-blue + bold.
+    mockObject(600n, 6005, { listType: 4, entries: [{ key: 9, reference: ref(601n) }] }),
+    mockObject(601n, 2022, { charProperties: { fontColor: { r: 0.133, g: 0.196, b: 0.454, a: 1 }, bold: true } }),
+    // Positional body default: black, not bold.
+    mockObject(701n, 2022, { charProperties: { fontColor: { r: 0, g: 0, b: 0, a: 1 } }, paraProperties: {} }),
+    mockObject(300n, 6002, {
+      rowInfos: [
+        {
+          tileRowIndex: 0,
+          // Col 0: text-style id 9 (no matching fill key 4) → blue + bold. Col 1: positional body black.
+          cellStorageBuffer: concat(textStyledCell(1, 4, 9), textCell(2)),
+          cellOffsets: offsets([0, 24]),
+        },
+      ],
+    }),
+  ]);
+
+  assert.deepEqual(tableData(model, registry), {
+    rows: [
+      [
+        { text: "Ack", colSpan: 1, rowSpan: 1, color: "#223274", bold: true, align: "center" },
+        { text: "plain", colSpan: 1, rowSpan: 1, color: "#000000", align: "center" },
+      ],
     ],
   });
 });

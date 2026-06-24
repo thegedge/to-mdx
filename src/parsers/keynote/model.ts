@@ -226,6 +226,12 @@ export interface TableCell {
    * the resolved text style taking precedence.
    */
   align?: string;
+  /**
+   * `true` when the cell's resolved text style is bold (its own per-cell text
+   * style's `charProperties.bold`, else the positional band style's). Rendered as
+   * `fontWeight: 700`; absent when the cell is not bold.
+   */
+  bold?: boolean;
 }
 
 /**

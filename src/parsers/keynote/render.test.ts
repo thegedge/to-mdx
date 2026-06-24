@@ -536,6 +536,23 @@ test("presentationToMdx emits background, color, and alignment together on a <td
   );
 });
 
+test("presentationToMdx emits fontWeight 700 for a bold cell, alongside color/alignment", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        tables: [
+          { rows: [[{ text: "Acknowledgment number", colSpan: 1, rowSpan: 1, color: "#223274", bold: true, align: "center" }]] },
+        ],
+      }),
+    ]),
+  );
+
+  assert.equal(
+    mdx.includes(`<td style={{ color: "#223274", fontWeight: 700, textAlign: "center" }}>Acknowledgment number</td>`),
+    true,
+  );
+});
+
 test("presentationToMdx renders a spanless table as a GFM markdown table (header + separator), escaping pipes and newlines", () => {
   const mdx = presentationToMdx(
     deck([

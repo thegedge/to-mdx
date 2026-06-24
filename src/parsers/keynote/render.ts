@@ -713,8 +713,9 @@ function renderHtmlTable(table: TableData): string {
 
 /**
  * A single `<td>` with span attributes (omitted when 1), an optional inline style
- * (background fill, text color, and text alignment), and escaped text. The style
- * declarations are emitted in a stable order so output is deterministic.
+ * (background fill, text color, font family, bold weight, and text alignment), and
+ * escaped text. The style declarations are emitted in a stable order so output is
+ * deterministic.
  */
 function renderCell(cell: TableCell): string {
   let attrs = "";
@@ -725,6 +726,7 @@ function renderCell(cell: TableCell): string {
   if (fill) declarations.push(["backgroundColor", fill]);
   if (cell.color !== undefined) declarations.push(["color", cell.color]);
   if (cell.fontFamily !== undefined) declarations.push(["fontFamily", cell.fontFamily]);
+  if (cell.bold) declarations.push(["fontWeight", 700]);
   if (cell.align !== undefined) declarations.push(["textAlign", cell.align]);
   const style = styleAttr(declarations);
   if (style) attrs += ` ${style}`;
