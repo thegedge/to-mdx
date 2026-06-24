@@ -106,6 +106,19 @@ function isIntrinsic(name: string): boolean {
   return name[0] === name[0].toLowerCase();
 }
 
+/** Positioning kept inline (never classed), so elements differing only in placement share one class. */
+const POSITION_KEYS: ReadonlySet<string> = new Set(["left", "top", "right", "bottom"]);
+
+/** Splits declarations into the inline-only positioning subset and the class-eligible rest. */
+function partitionPosition(declarations: readonly Declaration[]): { position: Declaration[]; rest: Declaration[] } {
+  const position: Declaration[] = [];
+  const rest: Declaration[] = [];
+  for (const declaration of declarations) {
+    (POSITION_KEYS.has(declaration[0]) ? position : rest).push(declaration);
+  }
+  return { position, rest };
+}
+
 /** The element's `fontFamily` family, or undefined when it declares none. */
 function fontFamilyOf(declarations: readonly Declaration[]): string | undefined {
   const declaration = declarations.find(([property]) => property === "fontFamily");
@@ -155,8 +168,9 @@ export interface HoistResult {
  *    `var(--paletteN)` (which inherits into both inline styles and SVG attributes).
  * 2. The most common `fontFamily` becomes the `scope` default and every inline
  *    `fontFamily` is removed; rarer families get a `.font-…` utility class.
- * 3. Any identical full inline-style set (post color/font hoisting) used 2+ times
- *    on intrinsic elements becomes a `.styleN` class.
+ * 3. An intrinsic element's class-eligible style set — everything but `left`/`top`/
+ *    `right`/`bottom`, which stay inline — becomes a `.styleN` class when used 2+
+ *    times, so elements differing only in placement share one class.
  */
 export function hoistStyles(wrapper: string, scope: string, collector: StyleCollector): HoistResult {
   // Color/font tally, in document order, straight from each placeholder's declarations.
@@ -204,7 +218,9 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     return intrinsic ? substituted.filter(([property]) => property !== "fontFamily") : substituted;
   };
 
-  // Tally each intrinsic element's full post-hoist style set (keyed by its body).
+  // Tally each intrinsic element's class-eligible style set — everything but the
+  // inline-only positioning — keyed by its body, so two elements that differ only
+  // in placement share one class.
   const setCounts = new Map<string, number>();
   const setOrder: string[] = [];
   const setDeclarations = new Map<string, Declaration[]>();
@@ -216,11 +232,11 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     if (id === undefined) {
       continue;
     }
-    const declarations = hoistedDeclarations(collector.declarations(id), true);
-    const body = declarationBody(declarations);
+    const { rest } = partitionPosition(hoistedDeclarations(collector.declarations(id), true));
+    const body = declarationBody(rest);
     if (body !== "") {
       if (!setDeclarations.has(body)) {
-        setDeclarations.set(body, declarations);
+        setDeclarations.set(body, rest);
       }
       tally(body, setCounts, setOrder);
     }
@@ -252,15 +268,23 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
       }
     }
 
-    const body = declarationBody(hoistedDeclarations(declarations, intrinsic));
-    const setClass = intrinsic && body !== "" ? setClasses.get(body) : undefined;
+    const hoisted = hoistedDeclarations(declarations, intrinsic);
+    const { position, rest } = intrinsic ? partitionPosition(hoisted) : { position: [] as Declaration[], rest: hoisted };
+    const restBody = declarationBody(rest);
+    const setClass = intrinsic && restBody !== "" ? setClasses.get(restBody) : undefined;
+
     if (setClass) {
+      // The class carries everything but positioning, which stays inline.
       addClasses.push(setClass);
-      rewritten = rewritten.replace(PLACEHOLDER_LEAD_RE, "");
-    } else if (body === "") {
-      rewritten = rewritten.replace(PLACEHOLDER_LEAD_RE, "");
+      const positionBody = declarationBody(position);
+      rewritten = positionBody === ""
+        ? rewritten.replace(PLACEHOLDER_LEAD_RE, "")
+        : rewritten.replace(PLACEHOLDER_RE, `style={{ ${positionBody} }}`);
     } else {
-      rewritten = rewritten.replace(PLACEHOLDER_RE, `style={{ ${body} }}`);
+      const fullBody = declarationBody(hoisted);
+      rewritten = fullBody === ""
+        ? rewritten.replace(PLACEHOLDER_LEAD_RE, "")
+        : rewritten.replace(PLACEHOLDER_RE, `style={{ ${fullBody} }}`);
     }
 
     if (addClasses.length > 0) {
