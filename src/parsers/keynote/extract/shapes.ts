@@ -157,7 +157,11 @@ function buildTransform(frame: Frame, sx: number, sy: number): string {
     parts.push(`translate(${round(frame.x)} ${round(frame.y)})`);
   }
   if (frame.angle !== 0) {
-    parts.push(`rotate(${round(frame.angle)} ${round(frame.width / 2)} ${round(frame.height / 2)})`);
+    // Keynote angles are counter-clockwise (y-up); SVG `rotate()` is clockwise
+    // (y-down), so negate to keep the rotation direction — otherwise rotated shapes
+    // (e.g. the diagonal connector arrows) come out vertically mirrored.
+    const cssAngle = (360 - frame.angle) % 360;
+    parts.push(`rotate(${round(cssAngle)} ${round(frame.width / 2)} ${round(frame.height / 2)})`);
   }
   if (sx !== 1 || sy !== 1) {
     parts.push(`scale(${roundScale(sx)} ${roundScale(sy)})`);
@@ -350,6 +354,16 @@ function resolveStyle(
     ...(stroke?.opacity !== undefined ? { strokeOpacity: stroke.opacity } : {}),
     ...(fill?.opacity !== undefined ? { fillOpacity: fill.opacity } : {}),
   };
+}
+
+/** The backing shape's stroke as a CSS `border` shorthand (e.g. `"2px solid #223274"`), or undefined when it has none. */
+export function shapeBorder(style: ShapeStyleArchive | undefined): string | undefined {
+  const stroke = resolveStroke(effectiveShapeProps(style)?.stroke);
+  if (!stroke) {
+    return undefined;
+  }
+  const lineStyle = stroke.dasharray ? "dashed" : "solid";
+  return `${trimNumber(stroke.width)}px ${lineStyle} ${stroke.color}`;
 }
 
 function resolveStroke(stroke: StrokeArchive | undefined): ResolvedStroke | undefined {

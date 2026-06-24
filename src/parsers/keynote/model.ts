@@ -150,6 +150,12 @@ export interface TextBoxStyle {
    */
   backgroundColor?: string;
   /**
+   * The box's shape stroke as a CSS `border` shorthand (e.g. `"2px solid #223274"`),
+   * lifted from the backing shape's `stroke`. Present only for free text boxes
+   * whose shape carries a real (non-empty) stroke.
+   */
+  border?: string;
+  /**
    * The box's corner radius as a CSS `border-radius` percentage (e.g. `"8.9%"`),
    * lifted from a rounded-rectangle shape's `scalarPathSource` (its corner-radius
    * scalar over the box's smaller natural dimension). Present only for free text

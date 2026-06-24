@@ -17,7 +17,7 @@ import type {
   TableInfoArchive,
 } from "../types.ts";
 import { extractTable } from "./table.ts";
-import { effectiveShapeProps, resolveFill, shapeBorderRadius, shapeOpacity, shapeTextShadow, svgPath } from "./shapes.ts";
+import { effectiveShapeProps, resolveFill, shapeBorder, shapeBorderRadius, shapeOpacity, shapeTextShadow, svgPath } from "./shapes.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
 import { boxPercent, colorToHex, fillColorCss, hasRgb, textBoxStyle } from "./style.ts";
@@ -390,11 +390,13 @@ function freeTextBox(
   const box = boxPercent(drawableGeometry(message), slideSize);
   const textStyle = textBoxStyle(storage, registry, slideSize.height);
   const backgroundColor = fillColorCss(resolveFill(effectiveShapeProps(shapeStyle)?.fill));
+  const border = shapeBorder(shapeStyle);
   const opacity = shapeOpacity(shapeStyle);
   const textShadow = shapeTextShadow(shapeStyle);
   const style: TextBoxStyle = {
     ...textStyle,
     ...(backgroundColor ? { backgroundColor } : {}),
+    ...(border ? { border } : {}),
     ...(borderRadius ? { borderRadius } : {}),
     ...(opacity !== undefined ? { opacity } : {}),
     ...(textShadow ? { textShadow } : {}),

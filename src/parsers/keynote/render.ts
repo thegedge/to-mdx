@@ -384,6 +384,10 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
     declarations.push(["backgroundColor", style.backgroundColor]);
     declarations.push(["padding", "0.2em 0.4em"]);
   }
+  // The backing shape's stroke as a CSS border (e.g. the "retransmission timer" box).
+  if (style?.border) {
+    declarations.push(["border", style.border]);
+  }
   // A rounded-rect shape's corner radius (e.g. the diagram labels' "8.9%").
   if (style?.borderRadius) {
     declarations.push(["borderRadius", style.borderRadius]);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ShapeInfoArchive, ShapeStyleArchive, StrokePatternArchive } from "../types.ts";
-import { buildLocalPath, effectiveShapeProps, shapeBorderRadius, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
+import { buildLocalPath, effectiveShapeProps, shapeBorder, shapeBorderRadius, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
 
 /**
  * Applies an SVG `transform` (translate/rotate/scale, right-to-left as SVG does)
@@ -89,8 +89,9 @@ test("buildLocalPath rotates via an explicit rotate() about the frame centre (90
   );
 
   assert.equal(localD, "M 0 0 L 100 0");
-  // rotate(angle, cx, cy) with cx = frameW/2 = 358, cy = frameH/2 = 0.
-  assert.match(transform, /rotate\(90 358 0\)/);
+  // rotate(angle, cx, cy) with cx = frameW/2 = 358, cy = frameH/2 = 0. The Keynote
+  // 90° (y-up, CCW) is negated to 270° for SVG's y-down, clockwise rotate().
+  assert.match(transform, /rotate\(270 358 0\)/);
 
   const [a, b] = points(localD).map((p) => applyTransform(transform, p));
   assert.ok(Math.abs(a.x - b.x) < 0.01, `x's should be ~equal: ${a.x} vs ${b.x}`);
@@ -214,6 +215,27 @@ test("svgPath renders a currentColor outline when the stroke pattern is the empt
   assert.ok(path);
   assert.equal(path.stroke, "currentColor");
   assert.equal(path.fill, "none");
+});
+
+test("shapeBorder renders a shape stroke as a CSS border shorthand (solid, dashed, or none)", () => {
+  const solid = {
+    shapeProperties: { stroke: { color: { model: 1, r: 1, g: 0, b: 0 }, width: 3 } },
+  } as unknown as ShapeStyleArchive;
+  assert.equal(shapeBorder(solid), "3px solid #ff0000");
+
+  const dashed = {
+    shapeProperties: {
+      stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 2, pattern: { type: 0, count: 2, phase: 0, pattern: [0.001, 2, 0, 0] } },
+    },
+  } as unknown as ShapeStyleArchive;
+  assert.match(shapeBorder(dashed) ?? "", /^2px dashed #000000$/);
+
+  // No stroke (empty shapeProperties) and the empty stroke pattern both yield no border.
+  assert.equal(shapeBorder({ shapeProperties: {} } as unknown as ShapeStyleArchive), undefined);
+  const emptyPattern = {
+    shapeProperties: { stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 1, pattern: { type: 2 } } },
+  } as unknown as ShapeStyleArchive;
+  assert.equal(shapeBorder(emptyPattern), undefined);
 });
 
 test("svgPath emits a fill-only path when the style has a fill but no stroke", () => {
