@@ -169,7 +169,7 @@ function buildTransform(frame: Frame, sx: number, sy: number): string {
   return parts.join(" ");
 }
 
-/** Bounding box of a path's drawn (endpoint) coordinates. */
+/** Bounding box of a path's actual drawn extent (curve bulge included). */
 interface Bounds {
   minX: number;
   minY: number;
@@ -177,17 +177,70 @@ interface Bounds {
   height: number;
 }
 
+/** A 1-D cubic Bézier evaluated at `t`. */
+function cubicAt(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const u = 1 - t;
+  return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+}
+
+/** The interior `t` values (in 0..1) where a 1-D cubic Bézier turns — its local extrema. */
+function cubicExtremaT(p0: number, p1: number, p2: number, p3: number): number[] {
+  // Derivative is the quadratic at² + bt + c.
+  const a = 3 * (-p0 + 3 * p1 - 3 * p2 + p3);
+  const b = 6 * (p0 - 2 * p1 + p2);
+  const c = 3 * (p1 - p0);
+  const ts: number[] = [];
+  const inRange = (t: number): void => {
+    if (t > 0 && t < 1) {
+      ts.push(t);
+    }
+  };
+
+  if (Math.abs(a) < 1e-9) {
+    if (Math.abs(b) > 1e-9) {
+      inRange(-c / b);
+    }
+    return ts;
+  }
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) {
+    return ts;
+  }
+  const root = Math.sqrt(disc);
+  inRange((-b + root) / (2 * a));
+  inRange((-b - root) / (2 * a));
+  return ts;
+}
+
+/**
+ * The path's true bounding box. A cubic segment's curve bulges past its endpoints
+ * (a circle's beziers reach well beyond their on-axis endpoints), so we include
+ * each segment's extrema — measuring endpoints only under-sizes the box and makes
+ * the placing scale (frame/bounds) too large.
+ */
 function pathBounds(elements: PathElement[]): Bounds {
   const xs: number[] = [];
   const ys: number[] = [];
+  let current: { x: number; y: number } | undefined;
+
   for (const element of elements) {
+    if (element.type === ELEMENT_CURVE_TO && element.points.length >= 3 && current) {
+      const from = current;
+      const [c1, c2, end] = element.points;
+      xs.push(end.x, ...cubicExtremaT(from.x, c1.x, c2.x, end.x).map((t) => cubicAt(from.x, c1.x, c2.x, end.x, t)));
+      ys.push(end.y, ...cubicExtremaT(from.y, c1.y, c2.y, end.y).map((t) => cubicAt(from.y, c1.y, c2.y, end.y, t)));
+      current = end;
+      continue;
+    }
     const point = element.points.at(-1);
     if (!point) {
       continue;
     }
     xs.push(point.x);
     ys.push(point.y);
+    current = point;
   }
+
   if (xs.length === 0) {
     return { minX: 0, minY: 0, width: 0, height: 0 };
   }

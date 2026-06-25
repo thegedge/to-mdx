@@ -79,6 +79,20 @@ test("buildLocalPath places a 0deg line's local corners where the old baked path
   assert.deepEqual({ x: Math.round(b.x), y: Math.round(b.y) }, { x: 816, y: 200 });
 });
 
+test("buildLocalPath scales by the curve's true bounds, not its endpoints (curve bulge included)", () => {
+  // A cubic from (0,0) to (100,0) bulging down to y≈75; its endpoints are both y=0,
+  // so endpoint-only bounds would be zero-height and over-scale the shape.
+  const { transform } = buildLocalPath(
+    [
+      { type: 1, points: [{ x: 0, y: 0 }] },
+      { type: 4, points: [{ x: 0, y: 100 }, { x: 100, y: 100 }, { x: 100, y: 0 }] },
+    ],
+    { x: 0, y: 0, width: 200, height: 150, angle: 0 },
+  );
+  // bounds 100×75 → scale 200/100, 150/75 = 2, 2 (not 2, 1 from a zero-height box).
+  assert.match(transform, /scale\(2 2\)/);
+});
+
 test("buildLocalPath rotates via an explicit rotate() about the frame centre (90deg → near-vertical)", () => {
   const { localD, transform } = buildLocalPath(
     [
