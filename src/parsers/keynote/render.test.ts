@@ -166,13 +166,13 @@ test("presentationToMdx rotates a rotated text box about its centre via transfor
             kind: "text",
             paragraphs: [{ depth: 0, text: "SYN" }],
             box: { left: 30, top: 40, width: 8, height: 0 },
-            style: { rotation: 9.8 },
+            style: { rotation: 10 },
           },
         ],
       }),
     ]),
   );
-  assert.match(mdx, /transform: "rotate\(9\.8deg\)"/);
+  assert.match(mdx, /transform: "rotate\(10deg\)"/);
 });
 
 test("presentationToMdx composes the auto-size centre shift and rotation into one transform", () => {
@@ -184,13 +184,13 @@ test("presentationToMdx composes the auto-size centre shift and rotation into on
             kind: "text",
             paragraphs: [{ depth: 0, text: "Data 1" }],
             box: { left: 30, top: 40, width: 0, height: 0 },
-            style: { backgroundColor: "#ffffff", rotation: 3.6 },
+            style: { backgroundColor: "#ffffff", rotation: 4 },
           },
         ],
       }),
     ]),
   );
-  assert.match(mdx, /transform: "translate\(-50%, -50%\) rotate\(3\.6deg\)"/);
+  assert.match(mdx, /transform: "translate\(-50%, -50%\) rotate\(4deg\)"/);
 });
 
 test("presentationToMdx does not flex-center an unfilled (flow-style) text box", () => {

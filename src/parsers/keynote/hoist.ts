@@ -106,8 +106,12 @@ function isIntrinsic(name: string): boolean {
   return name[0] === name[0].toLowerCase();
 }
 
-/** Positioning kept inline (never classed), so elements differing only in placement share one class. */
-const POSITION_KEYS: ReadonlySet<string> = new Set(["left", "top", "right", "bottom"]);
+/**
+ * Per-element geometry kept inline (never classed) — positioning plus `transform`
+ * (rotation/translate) — so elements differing only in placement or angle still
+ * share one class for the rest of their style.
+ */
+const POSITION_KEYS: ReadonlySet<string> = new Set(["left", "top", "right", "bottom", "transform"]);
 
 /** Splits declarations into the inline-only positioning subset and the class-eligible rest. */
 function partitionPosition(declarations: readonly Declaration[]): { position: Declaration[]; rest: Declaration[] } {

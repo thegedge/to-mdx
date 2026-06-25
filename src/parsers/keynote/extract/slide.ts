@@ -390,7 +390,7 @@ function freeTextBox(
   const geometry = drawableGeometry(message);
   const box = boxPercent(geometry, slideSize);
   // Keynote's angle is counter-clockwise (y-up); CSS rotate() is clockwise (y-down).
-  const rotation = geometry?.angle ? Math.round(((360 - geometry.angle) % 360) * 100) / 100 : undefined;
+  const rotation = geometry?.angle ? Math.round((360 - geometry.angle) % 360) % 360 : undefined;
   const textStyle = textBoxStyle(storage, registry, slideSize.height);
   const backgroundColor = fillColorCss(resolveFill(effectiveShapeProps(shapeStyle)?.fill));
   // A stroke is either plain (a CSS `border`) or a smart brush (an SVG overlay) —
