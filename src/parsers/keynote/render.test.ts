@@ -321,7 +321,7 @@ test("presentationToMdx embeds images as <Image>, videos as <video>, and a table
   );
 
   assert.match(mdx, /<Image src=\{`\$\{imageRoot\}\/pic\.png`\} role="presentation" alt="alt" \/>/);
-  assert.match(mdx, /<video controls src=\{`\$\{imageRoot\}\/clip\.mov`\}><\/video>/);
+  assert.match(mdx, /<video src=\{`\$\{imageRoot\}\/clip\.mov`\}><\/video>/);
   assert.match(mdx, /\{\/\* 2 table\(s\) on this slide could not be extracted \*\/\}/);
 });
 
@@ -463,9 +463,10 @@ test("presentationToMdx renders an animated-image 'video' as an <Image>, not a <
   assert.doesNotMatch(mdx, /<video/);
 });
 
-test("presentationToMdx still renders a real movie 'video' as a <video controls>", () => {
+test("presentationToMdx still renders a real movie 'video' as a <video> (no controls)", () => {
   const mdx = presentationToMdx(deck([slide({ videos: [{ fileName: "clip.mp4" }] })]));
-  assert.match(mdx, /<video controls src=\{`\$\{imageRoot\}\/clip\.mp4`\}><\/video>/);
+  assert.match(mdx, /<video src=\{`\$\{imageRoot\}\/clip\.mp4`\}><\/video>/);
+  assert.doesNotMatch(mdx, /controls/);
   assert.doesNotMatch(mdx, /<Image/);
 });
 
@@ -475,7 +476,7 @@ test("presentationToMdx renders a full-bleed video as an objectFit:cover backdro
   );
   assert.match(
     mdx,
-    /<video controls style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", objectFit: "cover" \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
+    /<video style=\{\{ position: "absolute", left: 0, top: 0, width: "100%", height: "100%", objectFit: "cover" \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
   );
 });
 
@@ -485,7 +486,7 @@ test("presentationToMdx positions a non-full-bleed video via its box (absolute, 
   );
   assert.match(
     mdx,
-    /<video controls style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%" \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
+    /<video style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%" \}\} src=\{`\$\{imageRoot\}\/clip\.mp4`\} \/>/,
   );
   assert.doesNotMatch(mdx, /objectFit/);
 });
@@ -670,7 +671,9 @@ test("presentationToMdx emits the shared scoped table <style> BEFORE <Slides>, m
   // Multi-line CSS scoped to the deck slug, styling the bare table/th/td elements.
   assert.match(mdx, /<style>\{`\n/);
   assert.match(mdx, /\.slides\.network-monitor table \{\n {2}border-collapse: collapse;\n\}/);
-  assert.match(mdx, /\.slides\.network-monitor th,\n\.slides\.network-monitor td \{\n {2}border: 1px solid currentColor;\n\n {2}padding: 0\.25em;\n\}/);
+  assert.match(mdx, /\.slides\.network-monitor th,\n\.slides\.network-monitor td \{\n {2}border: 1px solid currentColor;\n {2}padding: 0\.25em;\n\}/);
+  // Rules are separated by a blank line (declarations within a rule are not).
+  assert.match(mdx, /\}\n\n\.slides\.network-monitor th,/);
   assert.doesNotMatch(mdx, /kn-table/);
   assert.doesNotMatch(mdx, /<td style=/);
 });
@@ -845,7 +848,7 @@ test("hoistStyles hoists an identical 2+-use style set to a class and leaves a u
   ].join("\n");
   const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
-  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}position: absolute;\n\n {2}overflow: hidden;\n\n {2}z-index: 1;\n\}/);
+  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}position: absolute;\n {2}overflow: hidden;\n {2}z-index: 1;\n\}/);
   assert.equal((out.match(/className="style1"/g) ?? []).length, 2);
   assert.doesNotMatch(out, /overflow: "hidden"/);
   // The unique style set stays inline (not classed).

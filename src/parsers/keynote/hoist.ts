@@ -84,7 +84,7 @@ function cssProperty(property: string): string {
  * (numbers bare, strings unquoted, `var()` literal).
  */
 function declarationsToCss(declarations: readonly Declaration[]): string {
-  return declarations.map(([property, value]) => `  ${cssProperty(property)}: ${value};`).join("\n\n");
+  return declarations.map(([property, value]) => `  ${cssProperty(property)}: ${value};`).join("\n");
 }
 
 /** The class name for a non-default font family: `font-<kebab>`, or `font<n>` when the family has no usable slug. */
@@ -312,7 +312,7 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     scopedLines.push(`  font-family: "${defaultFont}";`);
   }
   if (scopedLines.length > 0) {
-    rules.push(`${scope} {\n${scopedLines.join("\n\n")}\n}`);
+    rules.push(`${scope} {\n${scopedLines.join("\n")}\n}`);
   }
   for (const [family, fontClass] of fontClasses) {
     rules.push(`${scope} .${fontClass} {\n  font-family: "${family}";\n}`);

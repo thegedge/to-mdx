@@ -140,7 +140,7 @@ export function presentationToMdx(presentation: Presentation): string {
     heads.push(defs);
   }
   if (styleRules.length > 0) {
-    heads.push("<style>{`\n" + styleRules.join("\n") + "\n`}</style>");
+    heads.push("<style>{`\n" + styleRules.join("\n\n") + "\n`}</style>");
   }
   return [...heads, wrapper].join("\n\n");
 }
@@ -348,8 +348,9 @@ function videoCoverDeclarations(): Declaration[] {
  * Renders a placed movie. A full-bleed video becomes an edge-to-edge `cover`
  * layer behind the slide's content; a video carrying a smaller box is positioned
  * absolutely (below text, like an image); a video with no geometry stays a plain
- * `<video controls>`. A "movie" that is really an animated image (gif/apng/…)
- * can't play in a `<video>`, so it renders as an `<Image>` under the same rules.
+ * `<video>`. No `controls` are emitted — autoplay/reset is wired to the slide
+ * reveal lifecycle on the consuming site. A "movie" that is really an animated
+ * image (gif/apng/…) can't play in a `<video>`, so it renders as an `<Image>`.
  */
 function renderVideo(video: SlideVideo): string {
   const declarations = video.box
@@ -363,8 +364,8 @@ function renderVideo(video: SlideVideo): string {
     return `<Image ${attr ? `${attr} ` : ""}${imageSrc(video.fileName)} role="presentation" alt="" />`;
   }
   return attr
-    ? `<video controls ${attr} ${imageSrc(video.fileName)} />`
-    : `<video controls ${imageSrc(video.fileName)}></video>`;
+    ? `<video ${attr} ${imageSrc(video.fileName)} />`
+    : `<video ${imageSrc(video.fileName)}></video>`;
 }
 
 /** A box dimension at or below this percentage is treated as "auto" (Keynote reports 0). */
@@ -982,7 +983,7 @@ function hasRenderableTable(presentation: Presentation): boolean {
 function tableStyleRules(scope: string): string[] {
   return [
     `${scope} table {\n  border-collapse: collapse;\n}`,
-    `${scope} th,\n${scope} td {\n  border: 1px solid currentColor;\n\n  padding: 0.25em;\n}`,
+    `${scope} th,\n${scope} td {\n  border: 1px solid currentColor;\n  padding: 0.25em;\n}`,
   ];
 }
 
