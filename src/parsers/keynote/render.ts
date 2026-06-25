@@ -714,7 +714,7 @@ function shapeOverlayDeclarations(): Declaration[] {
 // poke out the sides of the tapering head. The head then extends just past the line.
 const ARROW_MARKER =
   '<marker id="kn-arrow" viewBox="0 0 10 10" refX="1" refY="5" markerUnits="userSpaceOnUse" ' +
-  'markerWidth="12" markerHeight="12" orient="auto-start-reverse">' +
+  'markerWidth="20" markerHeight="20" orient="auto-start-reverse">' +
   '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker>';
 
 /** One contiguous z-order run of shapes sharing a single overlay `<svg>`. */

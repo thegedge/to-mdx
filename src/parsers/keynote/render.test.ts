@@ -1171,8 +1171,7 @@ test("presentationToMdx sizes the arrow marker in user space so thick strokes do
     deck([slide({ shapes: [{ localD: "M 0 0 L 100 0", stroke: "#000000", strokeWidth: 8, markerEnd: true }] })]),
   );
   assert.match(mdx, /markerUnits="userSpaceOnUse"/);
-  assert.match(mdx, /markerWidth="12" markerHeight="12"/);
-  assert.doesNotMatch(mdx, /markerWidth="6"/);
+  assert.match(mdx, /markerWidth="20" markerHeight="20"/);
 });
 
 test("presentationToMdx omits the shape overlay (and defs) when a slide has no shapes", () => {
