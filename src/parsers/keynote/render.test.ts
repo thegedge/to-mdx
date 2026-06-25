@@ -44,6 +44,25 @@ test("presentationToMdx escapes < > { } in titles, bullets, and prose text boxes
   assert.match(mdx, /a &lt;b&gt; &#123;c&#125;/);
 });
 
+test("presentationToMdx wraps a hyperlinked paragraph in a markdown link (bullet and prose)", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        body: [{ depth: 0, text: "see the docs", link: "https://example.com" }],
+        textBoxes: [
+          {
+            kind: "text",
+            paragraphs: [{ depth: 0, text: "Attribution: https://ex.com", link: "https://ex.com" }],
+            box: { left: 10, top: 80, width: 0, height: 0 },
+          },
+        ],
+      }),
+    ]),
+  );
+  assert.match(mdx, /- \[see the docs\]\(https:\/\/example\.com\)/);
+  assert.match(mdx, /\[Attribution: https:\/\/ex\.com\]\(https:\/\/ex\.com\)/);
+});
+
 test("presentationToMdx renders placeholder title/body as clean markdown while a free box stays positioned", () => {
   const mdx = presentationToMdx(
     deck([

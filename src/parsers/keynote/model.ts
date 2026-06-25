@@ -21,6 +21,12 @@ export interface Paragraph {
    * (headings/bullets/code), which keep a single box-level size.
    */
   fontSizeToken?: string;
+  /**
+   * A hyperlink URL covering the whole paragraph, lifted from the text storage's
+   * smart-field table (e.g. the "Attribution: …" credits). Present only when a link
+   * field spans the paragraph; the renderer wraps the text in a markdown link.
+   */
+  link?: string;
 }
 
 export interface SlideImage {

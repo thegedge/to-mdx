@@ -890,9 +890,15 @@ function renderSpeakerNotes(notes: Paragraph[]): string {
   return `<SpeakerNotes>\n${indent(renderBullets(notes))}\n</SpeakerNotes>`;
 }
 
+/** A paragraph's MDX text, wrapped in a markdown link when it carries a hyperlink (e.g. an attribution credit). */
+function paragraphText(paragraph: Paragraph): string {
+  const text = escapeMdxText(paragraph.text);
+  return paragraph.link ? `[${text}](${paragraph.link})` : text;
+}
+
 function renderBullets(paragraphs: Paragraph[]): string {
   return paragraphs
-    .map((paragraph) => `${INDENT.repeat(Math.max(0, paragraph.depth))}- ${escapeMdxText(paragraph.text)}`)
+    .map((paragraph) => `${INDENT.repeat(Math.max(0, paragraph.depth))}- ${paragraphText(paragraph)}`)
     .join("\n");
 }
 
@@ -955,13 +961,13 @@ function renderProse(
   const tokens = paragraphs.map((paragraph) => paragraph.fontSizeToken ?? boxToken);
   const distinct = new Set(tokens.filter((token): token is string => token !== undefined));
   if (distinct.size <= 1) {
-    return { content: paragraphs.map((paragraph) => escapeMdxText(paragraph.text)).join("\n\n"), perParagraphSizes: false };
+    return { content: paragraphs.map(paragraphText).join("\n\n"), perParagraphSizes: false };
   }
   const content = paragraphs
     .map((paragraph, index) => {
       const token = tokens[index];
       const attr = token ? ` ${styleAttr([["fontSize", token]])}` : "";
-      return `<p${attr}>${escapeMdxText(paragraph.text)}</p>`;
+      return `<p${attr}>${paragraphText(paragraph)}</p>`;
     })
     .join("\n");
   return { content, perParagraphSizes: true };

@@ -42,6 +42,7 @@ export function extractParagraphs(
 
   const depthAt = buildDepthLookup(storage);
   const fontSizeAt = slideHeightPt ? buildFontSizeLookup(storage, registry, slideHeightPt) : undefined;
+  const linkOver = buildLinkLookup(storage, registry);
   const paragraphs: Paragraph[] = [];
 
   let charIndex = 0;
@@ -52,17 +53,58 @@ export function extractParagraphs(
       // preserve indentation; `raw` is omitted when the line isn't indented.
       const raw = segment.trimEnd();
       const token = fontSizeAt?.(charIndex);
+      const link = linkOver(charIndex, charIndex + segment.length);
       paragraphs.push({
         depth: depthAt(charIndex),
         text,
         ...(raw === text ? {} : { raw }),
         ...(token ? { fontSizeToken: token } : {}),
+        ...(link ? { link } : {}),
       });
     }
     charIndex += segment.length + 1; // +1 for the consumed newline
   }
 
   return paragraphs;
+}
+
+/**
+ * A lookup for the hyperlink (if any) spanning a character range, built from the
+ * storage's `tableSmartfield` entries: each entry anchors a link field (carrying a
+ * `urlRef`) at a character index, covering the text up to the next field. Returns
+ * the URL only when a single link fully covers the requested `[start, end)` range,
+ * so a whole-paragraph credit becomes a link while partial links are left alone.
+ */
+function buildLinkLookup(
+  storage: StorageArchive,
+  registry: Registry,
+): (start: number, end: number) => string | undefined {
+  const entries = (storage as unknown as { tableSmartfield?: { entries?: SmartfieldEntry[] } }).tableSmartfield?.entries;
+  const links = (entries ?? [])
+    .map((entry) => ({
+      start: entry.characterIndex ?? 0,
+      url: (registry.resolve(entry.object) as { urlRef?: unknown } | undefined)?.urlRef,
+    }))
+    .filter((link): link is { start: number; url: string } => typeof link.url === "string")
+    .sort((a, b) => a.start - b.start);
+
+  if (links.length === 0) {
+    return () => undefined;
+  }
+  return (start, end) => {
+    for (let i = 0; i < links.length; i += 1) {
+      const linkEnd = i + 1 < links.length ? links[i + 1].start : Infinity;
+      if (links[i].start <= start && end <= linkEnd) {
+        return links[i].url;
+      }
+    }
+    return undefined;
+  };
+}
+
+interface SmartfieldEntry {
+  characterIndex?: number;
+  object?: import("../types.ts").Reference;
 }
 
 /**
