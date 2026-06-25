@@ -91,7 +91,7 @@ test("hoistStyles hoists an identical 2+-use style set on intrinsic elements to 
   ].join("\n");
   const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
-  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}position: absolute;\n {2}overflow: hidden;\n {2}z-index: 1;\n\}/);
+  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}position: absolute;\n\n {2}overflow: hidden;\n\n {2}z-index: 1;\n\}/);
   assert.equal((out.match(/className="style1"/g) ?? []).length, 2);
   assert.doesNotMatch(out, /overflow: "hidden"/);
   // The unique style set stays inline (not classed).

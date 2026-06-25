@@ -670,7 +670,7 @@ test("presentationToMdx emits the shared scoped table <style> BEFORE <Slides>, m
   // Multi-line CSS scoped to the deck slug, styling the bare table/th/td elements.
   assert.match(mdx, /<style>\{`\n/);
   assert.match(mdx, /\.slides\.network-monitor table \{\n {2}border-collapse: collapse;\n\}/);
-  assert.match(mdx, /\.slides\.network-monitor th,\n\.slides\.network-monitor td \{\n {2}border: 1px solid currentColor;\n {2}padding: 0\.25em;\n\}/);
+  assert.match(mdx, /\.slides\.network-monitor th,\n\.slides\.network-monitor td \{\n {2}border: 1px solid currentColor;\n\n {2}padding: 0\.25em;\n\}/);
   assert.doesNotMatch(mdx, /kn-table/);
   assert.doesNotMatch(mdx, /<td style=/);
 });
@@ -845,7 +845,7 @@ test("hoistStyles hoists an identical 2+-use style set to a class and leaves a u
   ].join("\n");
   const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
-  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}position: absolute;\n {2}overflow: hidden;\n {2}z-index: 1;\n\}/);
+  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}position: absolute;\n\n {2}overflow: hidden;\n\n {2}z-index: 1;\n\}/);
   assert.equal((out.match(/className="style1"/g) ?? []).length, 2);
   assert.doesNotMatch(out, /overflow: "hidden"/);
   // The unique style set stays inline (not classed).

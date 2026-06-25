@@ -908,7 +908,7 @@ function hasRenderableTable(presentation: Presentation): boolean {
 function tableStyleRules(scope: string): string[] {
   return [
     `${scope} table {\n  border-collapse: collapse;\n}`,
-    `${scope} th,\n${scope} td {\n  border: 1px solid currentColor;\n  padding: 0.25em;\n}`,
+    `${scope} th,\n${scope} td {\n  border: 1px solid currentColor;\n\n  padding: 0.25em;\n}`,
   ];
 }
 
