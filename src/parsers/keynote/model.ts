@@ -96,6 +96,21 @@ export interface SlideVideo {
 }
 
 /**
+ * An image fill on a vector shape: the shape is painted with this image (covering
+ * its bounding box via a `<pattern>`) plus an optional color `tint` overlay,
+ * instead of a flat `fill` color. The renderer emits one shared `<pattern>` per
+ * unique image+tint and points the shape's `fill` at it.
+ */
+export interface ImageFill {
+  /** Resolved `Data/`-relative file name of the fill image. */
+  fileName: string;
+  /** Tint overlaid on the image as `#rrggbb`; absent when the tint is fully transparent. */
+  tintColor?: string;
+  /** Tint overlay alpha (0–1, rounded); paired with `tintColor`, absent when the tint is. */
+  tintOpacity?: number;
+}
+
+/**
  * A vector shape (line, arrow, icon path) in LOCAL coordinates, positioned by a
  * per-instance `transform`. The local `d` is deduped into a document-level
  * `<defs>` and referenced by `<use>`; the transform (and the style fields below)
@@ -108,7 +123,14 @@ export interface SvgPath {
   transform?: string;
   stroke: string;
   strokeWidth: number;
+  /** Solid fill color (`#rrggbb` or CSS color); absent for a no-fill outline or an `imageFill`. */
   fill?: string;
+  /**
+   * An image fill painting the shape with an image (plus optional tint) instead of
+   * a solid `fill`. Mutually exclusive with `fill`: when set, the renderer points
+   * the shape at the shared `<pattern>` for this image and emits no solid `fill`.
+   */
+  imageFill?: ImageFill;
   /** SVG `stroke-dasharray` for a dotted/dashed stroke; absent when solid. */
   strokeDasharray?: string;
   /** SVG `stroke-linecap` (e.g. "round"); absent when the default butt cap applies. */

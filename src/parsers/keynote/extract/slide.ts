@@ -17,7 +17,7 @@ import type {
   TableInfoArchive,
 } from "../types.ts";
 import { extractTable } from "./table.ts";
-import { effectiveShapeProps, resolveFill, shapeBorder, shapeBorderRadius, shapeBrushBorder, shapeOpacity, shapeTextShadow, svgPath } from "./shapes.ts";
+import { type DataNameMaps, effectiveShapeProps, NO_DATA_NAMES, resolveFill, shapeBorder, shapeBorderRadius, shapeBrushBorder, shapeOpacity, shapeTextShadow, svgPath } from "./shapes.ts";
 import { asTextBox } from "./code.ts";
 import { contentBoxPercent, drawableGeometry, type RawBox, slideLayoutClass } from "./layout.ts";
 import { boxPercent, colorToHex, fillColorCss, hasRgb, textBoxStyle } from "./style.ts";
@@ -82,8 +82,10 @@ export function extractSlide(
   placements: SlidePlacements = NO_PLACEMENTS,
   layout: LayoutContext = NO_LAYOUT,
   dataFileNames: Map<number, string> = new Map(),
+  dataInfo: Map<bigint, string> = new Map(),
 ): Slide {
-  const collected = collectFromSlide(slide, registry, layout.slideSize);
+  const dataNames: DataNameMaps = { fileNames: dataFileNames, info: dataInfo };
+  const collected = collectFromSlide(slide, registry, layout.slideSize, dataNames);
   const title = pickTitle(slide, collected, defaults.titles);
   const background = slideBackground(slide, registry, dataFileNames);
 
@@ -201,6 +203,7 @@ function collectFromSlide(
   slide: SlideArchive,
   registry: Registry,
   slideSize: { width: number; height: number },
+  dataNames: DataNameMaps = NO_DATA_NAMES,
 ): Collected {
   const collected: Collected = {
     titles: [],
@@ -237,8 +240,8 @@ function collectFromSlide(
 
   // Process the explicit title/body refs first: their role is authoritative even
   // on older files that omit the placeholder `kind` discriminator.
-  processRef(slide.titlePlaceholder, "title", registry, collected, handled);
-  processRef(slide.bodyPlaceholder, "body", registry, collected, handled);
+  processRef(slide.titlePlaceholder, "title", registry, collected, handled, dataNames);
+  processRef(slide.bodyPlaceholder, "body", registry, collected, handled, dataNames);
 
   // `drawablesZOrder` is authoritative back-to-front order (later = nearer front),
   // so each free box/shape carries its index as `zOrder`. The `ownedDrawables`
@@ -246,7 +249,7 @@ function collectFromSlide(
   const zOrdered = slide.drawablesZOrder.length > 0;
   const drawables = zOrdered ? slide.drawablesZOrder : slide.ownedDrawables;
   drawables.forEach((ref, index) => {
-    processRef(ref, undefined, registry, collected, handled, zOrdered ? index : undefined);
+    processRef(ref, undefined, registry, collected, handled, dataNames, zOrdered ? index : undefined);
   });
 
   return collected;
@@ -260,6 +263,7 @@ function processRef(
   registry: Registry,
   collected: Collected,
   handled: Set<bigint>,
+  dataNames: DataNameMaps,
   zOrder?: number,
 ): void {
   if (!ref || handled.has(ref.identifier)) {
@@ -275,7 +279,7 @@ function processRef(
   if (isType(entry.type, "GroupArchive")) {
     // Grouped children share their group's z-order rank.
     for (const child of (entry.message as GroupArchive).children) {
-      processRef(child, undefined, registry, collected, handled, zOrder);
+      processRef(child, undefined, registry, collected, handled, dataNames, zOrder);
     }
     return;
   }
@@ -321,7 +325,7 @@ function processRef(
     // small label), so resolve each paragraph's own slide-height-relative token.
     const paragraphs = extractParagraphs(storage, registry, collected.slideSize.height);
     if (paragraphs.length === 0) {
-      collectShape(shape, registry, collected, zOrder);
+      collectShape(shape, registry, collected, dataNames, zOrder);
       return;
     }
     // A free shape-backed text box can carry its shape's fill as a background and
@@ -334,9 +338,15 @@ function processRef(
 }
 
 /** Collects a no-text shape's vector path (a line/arrow/icon); any shape with a drawable path renders. */
-function collectShape(shape: ShapeInfoArchive, registry: Registry, collected: Collected, zOrder?: number): void {
+function collectShape(
+  shape: ShapeInfoArchive,
+  registry: Registry,
+  collected: Collected,
+  dataNames: DataNameMaps,
+  zOrder?: number,
+): void {
   const style = registry.resolve<ShapeStyleArchive>(shape.super?.style);
-  const path = svgPath(shape, style);
+  const path = svgPath(shape, style, dataNames);
   if (path) {
     collected.shapes.push(zOrder === undefined ? path : { ...path, zOrder });
   }

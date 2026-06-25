@@ -3,7 +3,7 @@ import { isFullBleed } from "./extract/layout.ts";
 import { rgba } from "./extract/style.ts";
 import { declarationBody, hoistStyles, StyleCollector } from "./hoist.ts";
 import type { Declaration } from "./hoist.ts";
-import type { ImageCrop, Paragraph, Presentation, Slide, SlideImage, SlideVideo, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
+import type { ImageCrop, ImageFill, Paragraph, Presentation, Slide, SlideImage, SlideVideo, SvgPath, TableCell, TableData, TextBox, TextBoxGeometry } from "./model.ts";
 
 const INDENT = "  ";
 
@@ -96,6 +96,10 @@ export function presentationToMdx(presentation: Presentation): string {
   // `<defs>` and referenced by `<use>`, so repeated shapes (cars, arrows, every
   // straight connector) collapse to one definition keyed on the local `d`.
   const pathIds = collectPathIds(presentation);
+  // Document-wide dedupe of image fills: every unique image+tint becomes one
+  // `<pattern id="kn-fillN">` in the shared `<defs>`, referenced by each shape's
+  // `<use>` via `fill: url(#kn-fillN)`.
+  const fillDefs = collectImageFills(presentation);
 
   // Render the slides with a render-scoped collector active, so every `styleAttr`
   // registers its structured declarations and leaves a placeholder token behind.
@@ -105,7 +109,7 @@ export function presentationToMdx(presentation: Presentation): string {
   activeCollector = collector;
   let slides: string;
   try {
-    slides = presentation.slides.map((slide) => renderSlide(slide, slideSize, pathIds)).join("\n\n");
+    slides = presentation.slides.map((slide) => renderSlide(slide, slideSize, pathIds, fillDefs)).join("\n\n");
   } finally {
     activeCollector = previousCollector;
   }
@@ -131,7 +135,7 @@ export function presentationToMdx(presentation: Presentation): string {
   // Document-level heads emitted before `<Slides>` (their selectors/ids still
   // match document-wide): the shared shape `<defs>`, then the scoped stylesheet.
   const heads: string[] = [];
-  const defs = shapeDefsBlock(presentation, pathIds);
+  const defs = shapeDefsBlock(presentation, pathIds, fillDefs);
   if (defs) {
     heads.push(defs);
   }
@@ -159,18 +163,68 @@ function collectPathIds(presentation: Presentation): Map<string, string> {
   return ids;
 }
 
+/** One image fill, paired with the shared `<defs>` `<pattern>` id it was assigned. */
+interface ImageFillDef {
+  id: string;
+  fill: ImageFill;
+}
+
+/**
+ * A stable dedupe key for an image fill: same image AND same tint share one
+ * `<pattern>`, while a different tint (e.g. the Virgo slide's 0.5-alpha and
+ * no-tint copies of one photo) gets its own.
+ */
+function imageFillKey(fill: ImageFill): string {
+  return `${fill.fileName}|${fill.tintColor ?? ""}|${fill.tintOpacity ?? ""}`;
+}
+
+/**
+ * The document-wide map from an image fill's dedupe key to its shared `<pattern>`
+ * id (`kn-fill1`, `kn-fill2`, …), assigned in first-seen order across all slides.
+ * Two shapes with the same image+tint collapse to one pattern; differing tints get
+ * distinct ones.
+ */
+function collectImageFills(presentation: Presentation): Map<string, ImageFillDef> {
+  const defs = new Map<string, ImageFillDef>();
+  for (const slide of presentation.slides) {
+    for (const shape of slide.shapes ?? []) {
+      if (shape.imageFill) {
+        const key = imageFillKey(shape.imageFill);
+        if (!defs.has(key)) {
+          defs.set(key, { id: `kn-fill${defs.size + 1}`, fill: shape.imageFill });
+        }
+      }
+    }
+  }
+  return defs;
+}
+
+/**
+ * One image fill as a `<pattern>` covering a shape's bounding box: the image scaled
+ * to fill (`xMidYMid slice`) plus, when tinted, a translucent color `<rect>` over
+ * it. `patternContentUnits="objectBoundingBox"` lets the 0–1 coordinates map to the
+ * shape's box regardless of its size.
+ */
+function patternElement(def: ImageFillDef): string {
+  const image = `<image ${rootedAttr("href", def.fill.fileName)} x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice" />`;
+  const tint = def.fill.tintColor
+    ? `<rect x="0" y="0" width="1" height="1" fill="${def.fill.tintColor}" fill-opacity={${def.fill.tintOpacity}} />`
+    : "";
+  return `<pattern id="${def.id}" patternContentUnits="objectBoundingBox" width="1" height="1">${image}${tint}</pattern>`;
+}
+
 /**
  * The single hidden, document-level `<svg>` holding each unique local shape path
- * once (`<path id="kn-pN" d=…>`) plus the shared arrowhead marker, all referenced
- * by the per-shape `<use>` elements. Width/height 0 and absolute positioning keep
- * it out of layout. Returns "" when the deck carries no shapes; the marker is
- * included only when some shape uses an arrowhead.
+ * once (`<path id="kn-pN" d=…>`) plus the shared arrowhead marker and any image-fill
+ * `<pattern>`s, all referenced by the per-shape `<use>` elements. Width/height 0 and
+ * absolute positioning keep it out of layout. Returns "" when the deck carries
+ * nothing to define; the marker is included only when some shape uses an arrowhead.
  */
-function shapeDefsBlock(presentation: Presentation, pathIds: Map<string, string>): string {
+function shapeDefsBlock(presentation: Presentation, pathIds: Map<string, string>, fillDefs: Map<string, ImageFillDef>): string {
   const brush = anyBrushBorder(presentation);
   // Brush-border boxes need the shared `<filter>` even on a deck with no shapes,
   // so the defs `<svg>` is still emitted when only brush borders are present.
-  if (pathIds.size === 0 && !brush) {
+  if (pathIds.size === 0 && !brush && fillDefs.size === 0) {
     return "";
   }
   const entries: string[] = [];
@@ -179,6 +233,9 @@ function shapeDefsBlock(presentation: Presentation, pathIds: Map<string, string>
   }
   if (anyShapeMarker(presentation)) {
     entries.push(ARROW_MARKER);
+  }
+  for (const def of fillDefs.values()) {
+    entries.push(patternElement(def));
   }
   for (const [d, id] of pathIds) {
     entries.push(defElement(id, d));
@@ -466,9 +523,9 @@ function percent(value: number): number {
   return Number(value.toFixed(1));
 }
 
-function renderSlide(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string {
+function renderSlide(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>, fillDefs: Map<string, ImageFillDef>): string {
   const attributes = slideAttributes(slide);
-  const blocks = slideBlocks(slide, slideSize, pathIds);
+  const blocks = slideBlocks(slide, slideSize, pathIds, fillDefs);
   if (blocks.length === 0) {
     return attributes ? `<Slide ${attributes} />` : "<Slide />";
   }
@@ -508,7 +565,7 @@ interface PositionedBlock {
   html: string;
 }
 
-function slideBlocks(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string[] {
+function slideBlocks(slide: Slide, slideSize: { width: number; height: number }, pathIds: Map<string, string>, fillDefs: Map<string, ImageFillDef>): string[] {
   // The static markdown base layer: title and body bullets, plus any drawable that
   // carries no absolute position (flow images/videos/text/markdown tables). The
   // positioned drawables always paint above this base, so its relative order is
@@ -535,7 +592,7 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number },
   // Shapes are grouped into one `<svg>` per contiguous z-order run, so a slide of
   // identical icons collapses to a single overlay instead of dozens.
   for (const run of groupShapeRuns(slide.shapes ?? [], shapeBarriers(slide))) {
-    positioned.push({ z: run.z, html: renderShapeRun(run, slideSize, pathIds) });
+    positioned.push({ z: run.z, html: renderShapeRun(run, slideSize, pathIds, fillDefs) });
   }
 
   for (const textBox of slide.textBoxes) {
@@ -721,9 +778,9 @@ function makeRun(shapes: SvgPath[]): ShapeRun {
  * Every shape is a `<use>` of its shared `<defs>` path, in z-order so later shapes
  * paint on top.
  */
-function renderShapeRun(run: ShapeRun, slideSize: { width: number; height: number }, pathIds: Map<string, string>): string {
+function renderShapeRun(run: ShapeRun, slideSize: { width: number; height: number }, pathIds: Map<string, string>, fillDefs: Map<string, ImageFillDef>): string {
   const open = `<svg viewBox="0 0 ${percent(slideSize.width)} ${percent(slideSize.height)}" ${styleAttr(shapeOverlayDeclarations())}>`;
-  const uses = run.shapes.map((shape) => `${INDENT}${renderUse(shape, pathIds)}`).join("\n");
+  const uses = run.shapes.map((shape) => `${INDENT}${renderUse(shape, pathIds, fillDefs)}`).join("\n");
   return `${open}\n${uses}\n</svg>`;
 }
 
@@ -732,13 +789,16 @@ function renderShapeRun(run: ShapeRun, slideSize: { width: number; height: numbe
  * `transform` (position/rotation/scale) and presentation style (fill/stroke/dash/
  * caps/opacities/arrowheads) — all of which apply to the referenced path.
  */
-function renderUse(shape: SvgPath, pathIds: Map<string, string>): string {
+function renderUse(shape: SvgPath, pathIds: Map<string, string>, fillDefs: Map<string, ImageFillDef>): string {
   const id = pathIds.get(shape.localD) ?? "";
   const transform = shape.transform ? ` transform="${shape.transform}"` : "";
 
-  // Paint via CSS `style`, not SVG presentation attributes: `var()` (from color
-  // hoisting) resolves in CSS property values but not in a raw `fill="…"` attribute.
-  const declarations: Declaration[] = [["fill", shape.fill ?? "none"], ["stroke", shape.stroke], ["strokeWidth", shape.strokeWidth]];
+  // An image-filled shape paints with its shared `<pattern>`; otherwise the solid
+  // fill color (or "none"). Paint via CSS `style`, not SVG presentation attributes:
+  // `var()` (from color hoisting) resolves in CSS property values but not in a raw
+  // `fill="…"` attribute.
+  const fill = shape.imageFill ? `url(#${fillDefs.get(imageFillKey(shape.imageFill))?.id ?? ""})` : shape.fill ?? "none";
+  const declarations: Declaration[] = [["fill", fill], ["stroke", shape.stroke], ["strokeWidth", shape.strokeWidth]];
   if (shape.strokeDasharray) {
     declarations.push(["strokeDasharray", shape.strokeDasharray]);
   }

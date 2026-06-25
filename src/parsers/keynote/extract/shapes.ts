@@ -1,4 +1,4 @@
-import type { SvgPath } from "../model.ts";
+import type { ImageFill, SvgPath } from "../model.ts";
 import type {
   BezierPathSourceArchive,
   Color,
@@ -12,8 +12,23 @@ import type {
   StrokeArchive,
   StrokePatternArchive,
 } from "../types.ts";
+import { dataFileNameById } from "./images.ts";
 import { colorToHex, hasRgb, rgba, roundAlpha } from "./style.ts";
 import { firstInSuperChain, type SuperChainNode } from "./super-chain.ts";
+
+/**
+ * The data-id → file-name maps an image fill needs to resolve its backing image,
+ * bundled so they thread cleanly down the collect/render chain. Mirrors the
+ * resolution `slide.ts`/`images.ts` use: the number-keyed display map first, the
+ * bigint-keyed metadata map as fallback.
+ */
+export interface DataNameMaps {
+  fileNames: Map<number, string>;
+  info: Map<bigint, string>;
+}
+
+/** Empty data maps for callers that resolve no image fills (e.g. placeholder-text scans, tests). */
+export const NO_DATA_NAMES: DataNameMaps = { fileNames: new Map(), info: new Map() };
 
 /** A drawable's frame in slide points, including its rotation. */
 interface Frame {
@@ -52,7 +67,11 @@ const DEFAULT_STROKE_WIDTH = 2;
  * only when it has no path. Local coordinates let identical shapes share one
  * `<defs>` entry, differing only by `transform`.
  */
-export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | undefined): SvgPath | undefined {
+export function svgPath(
+  shape: ShapeInfoArchive,
+  style: ShapeStyleArchive | undefined,
+  dataNames: DataNameMaps = NO_DATA_NAMES,
+): SvgPath | undefined {
   const bezier = bezierSource(shape);
   const elements = bezier?.path?.elements;
   if (!bezier || !elements?.length) {
@@ -74,7 +93,7 @@ export function svgPath(shape: ShapeInfoArchive, style: ShapeStyleArchive | unde
   return {
     localD,
     ...(transform ? { transform } : {}),
-    ...resolveStyle(style),
+    ...resolveStyle(style, dataNames),
     ...markers,
     ...(opacity !== undefined ? { opacity } : {}),
   };
@@ -390,23 +409,56 @@ export interface ResolvedFill {
  */
 function resolveStyle(
   style: ShapeStyleArchive | undefined,
-): Pick<SvgPath, "stroke" | "strokeWidth" | "fill" | "strokeDasharray" | "strokeLinecap" | "fillOpacity" | "strokeOpacity"> {
+  dataNames: DataNameMaps,
+): Pick<SvgPath, "stroke" | "strokeWidth" | "fill" | "imageFill" | "strokeDasharray" | "strokeLinecap" | "fillOpacity" | "strokeOpacity"> {
   const props = effectiveShapeProps(style);
   const stroke = resolveStroke(props?.stroke);
-  const fill = resolveFill(props?.fill);
-  if (!stroke && !fill) {
+  // An image fill paints the shape with its image (+ tint); a solid/other fill stays
+  // a flat color. They are mutually exclusive — image fills skip `resolveFill`.
+  const imageFill = resolveImageFill(props?.fill, dataNames);
+  const fill = imageFill ? undefined : resolveFill(props?.fill);
+  if (!stroke && !fill && !imageFill) {
     return { stroke: DEFAULT_STROKE, strokeWidth: DEFAULT_STROKE_WIDTH, fill: "none" };
   }
 
   return {
-    stroke: stroke?.color ?? (fill ? "none" : DEFAULT_STROKE),
+    stroke: stroke?.color ?? (fill || imageFill ? "none" : DEFAULT_STROKE),
     strokeWidth: stroke?.width ?? DEFAULT_STROKE_WIDTH,
-    ...(fill ? { fill: fill.color } : {}),
+    ...(imageFill ? { imageFill } : fill ? { fill: fill.color } : {}),
     ...(stroke?.dasharray ? { strokeDasharray: stroke.dasharray } : {}),
     ...(stroke?.linecap ? { strokeLinecap: stroke.linecap } : {}),
     ...(stroke?.opacity !== undefined ? { strokeOpacity: stroke.opacity } : {}),
     ...(fill?.opacity !== undefined ? { fillOpacity: fill.opacity } : {}),
   };
+}
+
+/**
+ * Resolves an image fill (`fill.image` with a backing `imagedata.identifier`) to a
+ * render-ready `{ fileName, tintColor?, tintOpacity? }`: the file name from the data
+ * maps, and the `tint` Color as `#rrggbb` + rounded alpha. The tint is omitted
+ * entirely when its alpha rounds to 0 (a fully transparent overlay). Undefined when
+ * the fill is not an image fill or its image cannot be resolved to a file (the
+ * caller then falls back to a solid/flat fill).
+ */
+export function resolveImageFill(fill: FillArchive | undefined, dataNames: DataNameMaps): ImageFill | undefined {
+  const id = fill?.image?.imagedata?.identifier;
+  if (id === undefined) {
+    return undefined;
+  }
+  const fileName = dataFileNameById(id, dataNames.fileNames, dataNames.info);
+  if (!fileName) {
+    return undefined;
+  }
+  const resolved: ImageFill = { fileName };
+  const tint = fill?.image?.tint;
+  if (hasRgb(tint)) {
+    const tintAlpha = roundAlpha(alpha(tint));
+    if (tintAlpha > 0) {
+      resolved.tintColor = colorToHex(tint);
+      resolved.tintOpacity = tintAlpha;
+    }
+  }
+  return resolved;
 }
 
 /**

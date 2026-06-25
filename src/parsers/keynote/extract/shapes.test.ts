@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ShapeInfoArchive, ShapeStyleArchive, StrokePatternArchive } from "../types.ts";
-import { buildLocalPath, effectiveShapeProps, shapeBorder, shapeBorderRadius, shapeBrushBorder, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
+import { buildLocalPath, type DataNameMaps, effectiveShapeProps, shapeBorder, shapeBorderRadius, shapeBrushBorder, shapeOpacity, shapeTextShadow, strokeDasharray, svgPath } from "./shapes.ts";
 
 /**
  * Applies an SVG `transform` (translate/rotate/scale, right-to-left as SVG does)
@@ -358,12 +358,46 @@ test("svgPath emits no dasharray for a solid stroke", () => {
   assert.equal(path.strokeLinecap, undefined);
 });
 
-test("svgPath approximates an image fill with its tint color", () => {
+test("svgPath approximates an image fill with no backing imagedata as its tint color", () => {
   const iconFill = {
     shapeProperties: { fill: { image: { tint: { model: 1, r: 1, g: 0, b: 0, a: 1 } } } },
   } as unknown as ShapeStyleArchive;
   const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), iconFill);
   assert.ok(path);
+  assert.equal(path.fill, "#ff0000");
+  assert.equal(path.imageFill, undefined);
+});
+
+/** Builds an image-fill style whose `imagedata.identifier` resolves to a file, with the given tint. */
+function imageFillStyle(id: number, tint?: { r: number; g: number; b: number; a?: number }): ShapeStyleArchive {
+  return {
+    shapeProperties: { fill: { image: { imagedata: { identifier: BigInt(id) }, ...(tint ? { tint: { model: 1, ...tint } } : {}) } } },
+  } as unknown as ShapeStyleArchive;
+}
+
+const VIRGO_DATA: DataNameMaps = { fileNames: new Map([[4713, "universe-1050036_1280.jpg"]]), info: new Map() };
+
+test("svgPath resolves an image fill to imageFill (fileName + tint), not a solid fill", () => {
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), imageFillStyle(4713, { r: 0, g: 0, b: 0, a: 0.5 }), VIRGO_DATA);
+  assert.ok(path);
+  assert.deepEqual(path.imageFill, { fileName: "universe-1050036_1280.jpg", tintColor: "#000000", tintOpacity: 0.5 });
+  assert.equal(path.fill, undefined);
+  // The image paints the shape, so the absent stroke falls back to "none", not a default outline.
+  assert.equal(path.stroke, "none");
+});
+
+test("svgPath drops a fully-transparent (alpha 0) image-fill tint, keeping the fileName", () => {
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), imageFillStyle(4713, { r: 0, g: 0, b: 0, a: 0 }), VIRGO_DATA);
+  assert.ok(path);
+  assert.deepEqual(path.imageFill, { fileName: "universe-1050036_1280.jpg" });
+  assert.equal(path.imageFill?.tintOpacity, undefined);
+  assert.equal(path.imageFill?.tintColor, undefined);
+});
+
+test("svgPath falls back to a tint-color solid fill when an image fill's data id cannot resolve", () => {
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), imageFillStyle(9999, { r: 1, g: 0, b: 0, a: 1 }), VIRGO_DATA);
+  assert.ok(path);
+  assert.equal(path.imageFill, undefined);
   assert.equal(path.fill, "#ff0000");
 });
 

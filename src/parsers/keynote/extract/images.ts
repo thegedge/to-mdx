@@ -206,19 +206,25 @@ function resolveDataFileName(
   dataInfo: Map<bigint, string>,
 ): string | null {
   for (const ref of refs) {
-    if (ref?.identifier === undefined) {
-      continue;
-    }
-    const primary = dataFileNames.get(Number(ref.identifier));
-    if (primary) {
-      return primary;
-    }
-    const fallback = dataInfo.get(ref.identifier);
-    if (fallback) {
-      return fallback;
+    const name = ref?.identifier === undefined ? undefined : dataFileNameById(ref.identifier, dataFileNames, dataInfo);
+    if (name) {
+      return name;
     }
   }
   return null;
+}
+
+/**
+ * Resolves a single data `identifier` to its file name: the number-keyed display
+ * map first (the primary resolver, built straight from the zip), falling back to
+ * the bigint-keyed `PackageMetadata` info map. Undefined when neither resolves.
+ */
+export function dataFileNameById(
+  id: bigint,
+  dataFileNames: Map<number, string>,
+  dataInfo: Map<bigint, string>,
+): string | undefined {
+  return dataFileNames.get(Number(id)) ?? dataInfo.get(id);
 }
 
 function fileNameForData(data: DataInfo): string | undefined {
