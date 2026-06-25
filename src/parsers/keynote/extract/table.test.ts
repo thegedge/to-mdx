@@ -325,7 +325,7 @@ test("tableData returns undefined when the data store or dimensions are missing"
 test("fillToBackground converts a cell fill to hex, mapping a sub-1 alpha to a rounded opacity", () => {
   // Translucent red (0.985, 0.546, 0.541, a:0.249) — a per-cell highlight from the deck.
   const fill = { color: { r: 0.985, g: 0.546, b: 0.541, a: 0.249 } };
-  assert.deepEqual(fillToBackground(fill), { backgroundColor: "#fb8b8a", backgroundOpacity: 0.249 });
+  assert.deepEqual(fillToBackground(fill), { backgroundColor: "#fb8b8a", backgroundOpacity: 0.25 });
 
   // Opaque fill emits no opacity field.
   assert.deepEqual(fillToBackground({ color: { r: 1, g: 1, b: 1, a: 1 } }), { backgroundColor: "#ffffff" });
@@ -390,7 +390,7 @@ test("cellText: a per-cell text-style color wins over a rich-text run color", ()
 test("cellBackground maps a per-cell style id to its styleTable fill, else the positional default", () => {
   const styling: CellStyling = {
     byKey: new Map([
-      [4, { backgroundColor: "#223274", backgroundOpacity: 0.151 }],
+      [4, { backgroundColor: "#223274", backgroundOpacity: 0.15 }],
       [6, undefined], // present but transparent
     ]),
     textByKey: new Map(),
@@ -407,7 +407,7 @@ test("cellBackground maps a per-cell style id to its styleTable fill, else the p
   // Per-cell style id 4 wins regardless of position.
   assert.deepEqual(cellBackground(styling, styledCell(1, 4), 0, 2, 0), {
     backgroundColor: "#223274",
-    backgroundOpacity: 0.151,
+    backgroundOpacity: 0.15,
   });
   // A present-but-transparent style id (6) suppresses the positional default.
   assert.equal(cellBackground(styling, styledCell(1, 6), 0, 0, 0), undefined);
@@ -448,7 +448,7 @@ test("tableData applies per-cell styleTable fills and positional defaults to cel
   assert.deepEqual(tableData(model, registry), {
     rows: [
       [
-        { text: "A", colSpan: 1, rowSpan: 1, backgroundColor: "#223274", backgroundOpacity: 0.151, align: "center" },
+        { text: "A", colSpan: 1, rowSpan: 1, backgroundColor: "#223274", backgroundOpacity: 0.15, align: "center" },
         { text: "B", colSpan: 1, rowSpan: 1, backgroundColor: "#ffffff", align: "center" },
       ],
     ],

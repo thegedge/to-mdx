@@ -429,7 +429,7 @@ test("svgPath carries a translucent shapeProperties.opacity (rounded), opaque/ab
   } as unknown as ShapeStyleArchive;
   const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), translucent);
   assert.ok(path);
-  assert.equal(path.opacity, 0.701);
+  assert.equal(path.opacity, 0.7);
 
   const opaque = {
     shapeProperties: { fill: { color: { model: 1, r: 1, g: 1, b: 1, a: 1 } }, opacity: 1 },

@@ -476,7 +476,7 @@ test("extractSlide resolves an image-fill slide background to a file name and it
 
   const slide = buildPresentation(registry, "x", dataFiles).slides[0];
   assert.equal(slide.background, "universe-1050036_1280.jpg");
-  assert.equal(slide.backgroundTint, "rgba(33, 51, 115, 0.756)");
+  assert.equal(slide.backgroundTint, "rgba(33, 51, 115, 0.76)");
   assert.equal(slide.backgroundColor, undefined);
 });
 

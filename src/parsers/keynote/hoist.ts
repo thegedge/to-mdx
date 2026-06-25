@@ -107,11 +107,11 @@ function isIntrinsic(name: string): boolean {
 }
 
 /**
- * Per-element geometry kept inline (never classed) — positioning plus `transform`
- * (rotation/translate) — so elements differing only in placement or angle still
- * share one class for the rest of their style.
+ * Per-element geometry kept inline (never classed) — position, size, and
+ * `transform` (rotation/translate) — so elements differing only in placement,
+ * dimensions, or angle still share one class for the rest of their style.
  */
-const POSITION_KEYS: ReadonlySet<string> = new Set(["left", "top", "right", "bottom", "transform"]);
+const POSITION_KEYS: ReadonlySet<string> = new Set(["left", "top", "right", "bottom", "width", "height", "transform"]);
 
 /** Splits declarations into the inline-only positioning subset and the class-eligible rest. */
 function partitionPosition(declarations: readonly Declaration[]): { position: Declaration[]; rest: Declaration[] } {

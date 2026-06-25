@@ -80,9 +80,9 @@ export function hasRgb(color: Color | undefined): color is Color {
   return !!color && (color.r !== undefined || color.g !== undefined || color.b !== undefined);
 }
 
-/** Rounds an alpha to 3 decimals so emitted opacity/fill values stay clean (0.851, not 0.8500608…). */
+/** Rounds an alpha to 2 decimals so emitted opacity/fill values stay clean (0.85, not 0.8500608…). */
 export function roundAlpha(a: number): number {
-  return Math.round(a * 1000) / 1000;
+  return Math.round(a * 100) / 100;
 }
 
 /** Composes a CSS `rgba()` string from a `#RRGGBB` hex and a 0–1 alpha. */

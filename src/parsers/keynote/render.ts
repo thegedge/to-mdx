@@ -403,7 +403,9 @@ function axisRules(near: string, far: string, sizeProp: string, start: number, s
   }
   return [
     [near, `${percent(start)}%`],
-    [sizeProp, `${percent(size)}%`],
+    // Size rounds to a whole percent (position keeps its precision): rounder, and
+    // it dedupes better now that width/height ride inline.
+    [sizeProp, `${Math.round(size)}%`],
   ];
 }
 
@@ -850,8 +852,8 @@ function cropContainerDeclarations(crop: ImageCrop): Declaration[] {
     ["position", "absolute"],
     ["left", `${percent(crop.left)}%`],
     ["top", `${percent(crop.top)}%`],
-    ["width", `${percent(crop.width)}%`],
-    ["height", `${percent(crop.height)}%`],
+    ["width", `${Math.round(crop.width)}%`],
+    ["height", `${Math.round(crop.height)}%`],
     ["overflow", "hidden"],
   ];
 }
@@ -862,8 +864,8 @@ function cropImageDeclarations(crop: ImageCrop): Declaration[] {
     ["position", "absolute"],
     ["left", `${percent(crop.imgLeft)}%`],
     ["top", `${percent(crop.imgTop)}%`],
-    ["width", `${percent(crop.imgWidth)}%`],
-    ["height", `${percent(crop.imgHeight)}%`],
+    ["width", `${Math.round(crop.imgWidth)}%`],
+    ["height", `${Math.round(crop.imgHeight)}%`],
   ];
 }
 
