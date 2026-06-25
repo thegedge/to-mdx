@@ -57,8 +57,8 @@ test("presentationToMdx renders comparison-slide metrics as semantic flow .metri
       }),
     ]),
   );
-  // The central metric becomes a flow .metric block (value + label), not positioned.
-  assert.match(mdx, /<div className="metric">\n\s*<p className="value">83k<\/p>\n\s*<p className="label">req\/s<\/p>\n\s*<\/div>/);
+  // The central metric becomes a flow .metric block (value + label) inside a .metrics container.
+  assert.match(mdx, /<div className="metrics">\n\s*<div className="metric">\n\s*<p className="value">83k<\/p>\n\s*<p className="label">req\/s<\/p>\n\s*<\/div>/);
   assert.doesNotMatch(mdx, /<p className="value">Source/);
   // The edge credit stays an absolutely-positioned box.
   assert.match(mdx, /position: "absolute"[^>]*>\n\s*Source: X/);

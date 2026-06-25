@@ -599,12 +599,14 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number },
   }
 
   // On a comparison slide, the central metric boxes become semantic flow `.metric`
-  // blocks (laid out by the consuming site's `.comparison` CSS) instead of being
-  // absolutely positioned; edge boxes (e.g. a source credit) stay positioned.
+  // blocks, collected into a single `.metrics` flex container (laid out by the
+  // consuming site's `.comparison` CSS) instead of being absolutely positioned;
+  // edge boxes (e.g. a source credit) stay positioned.
   const comparison = (slide.className ?? "").split(" ").includes("comparison");
+  const metrics: string[] = [];
   for (const textBox of slide.textBoxes) {
     if (comparison && isMetricBox(textBox)) {
-      base.push(renderMetric(textBox));
+      metrics.push(renderMetric(textBox));
       continue;
     }
     const html = renderTextBox(textBox);
@@ -614,6 +616,9 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number },
     } else {
       base.push(html);
     }
+  }
+  if (metrics.length > 0) {
+    base.push(`<div className="metrics">\n${indent(metrics.join("\n"))}\n</div>`);
   }
 
   for (const image of slide.images) {
