@@ -165,7 +165,7 @@ test("presentationToMdx rotates a rotated text box about its centre via transfor
           {
             kind: "text",
             paragraphs: [{ depth: 0, text: "SYN" }],
-            box: { left: 30, top: 40, width: 8, height: 0 },
+            box: { left: 30, top: 40, width: 8, height: 5 },
             style: { rotation: 10 },
           },
         ],
@@ -943,6 +943,22 @@ test("positionRules anchors a top-left auto-size box by left/top (no width/heigh
     ["left", "28%"],
     ["top", "12%"],
   ]);
+});
+
+test("presentationToMdx centres an unfilled auto-size label on its anchor point and centre-aligns its text", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          { kind: "text", paragraphs: [{ depth: 0, text: "Virgo" }], box: { left: 50, top: 45, width: 0, height: 0 } },
+        ],
+      }),
+    ]),
+  );
+
+  assert.match(mdx, /left: "50%", top: "45%"/);
+  assert.match(mdx, /textAlign: "center"/);
+  assert.match(mdx, /transform: "translate\(-50%, -50%\)"/);
 });
 
 test("presentationToMdx anchors a positioned auto-size box without emitting width:0", () => {

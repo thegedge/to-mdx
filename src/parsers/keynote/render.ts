@@ -356,19 +356,29 @@ function axisRules(near: string, far: string, sizeProp: string, start: number, s
  * size doesn't fight the per-paragraph ones.
  */
 /**
- * The box's CSS `transform` (about its centre): re-anchor an auto-sized (0-dim)
- * centered label onto its point with `translate(-50%)` per collapsed axis, then
- * `rotate()` when the box is rotated. Empty when neither applies.
+ * Per axis, whether an auto-sized box should centre on its anchor point: the axis
+ * collapsed to zero (so the box grows symmetrically from its centre) AND it isn't
+ * hugging the far edge — a far-edge box is a corner credit pinned to the edge
+ * (right/bottom), not centred on a point.
  */
-function boxTransform(box: TextBoxGeometry | undefined, centered: boolean, rotation: number | undefined): string {
+function centerAnchor(box: TextBoxGeometry | undefined): { x: boolean; y: boolean } {
+  return {
+    x: !!box && box.width <= SIZE_EPSILON && box.left <= FAR_EDGE_ANCHOR,
+    y: !!box && box.height <= SIZE_EPSILON && box.top <= FAR_EDGE_ANCHOR,
+  };
+}
+
+/**
+ * The box's CSS `transform` (about its centre): re-anchor an auto-sized box onto its
+ * point with `translate(-50%)` per centre-anchored axis, then `rotate()` when the
+ * box is rotated. Empty when neither applies.
+ */
+function boxTransform(box: TextBoxGeometry | undefined, rotation: number | undefined): string {
   const parts: string[] = [];
 
-  if (box && centered) {
-    const shiftX = box.width <= SIZE_EPSILON;
-    const shiftY = box.height <= SIZE_EPSILON;
-    if (shiftX || shiftY) {
-      parts.push(`translate(${shiftX ? "-50%" : "0"}, ${shiftY ? "-50%" : "0"})`);
-    }
+  const center = centerAnchor(box);
+  if (center.x || center.y) {
+    parts.push(`translate(${center.x ? "-50%" : "0"}, ${center.y ? "-50%" : "0"})`);
   }
   if (rotation) {
     parts.push(`rotate(${rotation}deg)`);
@@ -400,23 +410,24 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
   }
   // A filled box is one of the deck's sized diagram labels (e.g. "verifier",
   // "maps"): center its text both ways via flexbox, since the box has a real
-  // height to center within. Flow/placeholder boxes carry no fill, so they keep
-  // their natural top-left flow. Centering forces `textAlign: center`, overriding
-  // any per-paragraph alignment; an unfilled box keeps its own alignment.
-  const centered = !!style?.backgroundColor;
-  if (centered) {
+  // height to center within. An auto-sized (0-dimension) box grows from its centre,
+  // so its text is centre-aligned too (e.g. the "Virgo supercluster" labels). A
+  // plain flow box keeps its own alignment.
+  if (style?.backgroundColor) {
     declarations.push(["display", "flex"]);
     declarations.push(["flexDirection", "column"]);
     declarations.push(["justifyContent", "center"]);
     declarations.push(["alignItems", "center"]);
     declarations.push(["textAlign", "center"]);
+  } else if (centerAnchor(textBox.box).x) {
+    declarations.push(["textAlign", "center"]);
   } else if (style?.textAlign) {
     declarations.push(["textAlign", style.textAlign]);
   }
   // Combine the box's transforms about its centre: re-anchor an auto-sized (0-dim)
-  // centered label onto its point, then rotate to match Keynote (e.g. the "SYN"/
-  // "Data" labels aligned to the diagonal arrows).
-  const transform = boxTransform(textBox.box, centered, style?.rotation);
+  // box onto its point (it grows symmetrically from there), then rotate to match
+  // Keynote (e.g. the "SYN"/"Data" labels aligned to the diagonal arrows).
+  const transform = boxTransform(textBox.box, style?.rotation);
   if (transform) {
     declarations.push(["transform", transform]);
   }
