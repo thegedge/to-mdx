@@ -40,7 +40,7 @@ export function centeringLayoutClass(box: LayoutBox): "centered" | "centered bla
  * (backgrounds like `bg-white`, automatic style names like `c25`) is not a layout
  * class and is left untouched.
  */
-const LAYOUT_CLASSES = ["blank", "title-with-points", "title", "two-column", "caption", "with-description", "centered"] as const;
+const LAYOUT_CLASSES = ["blank", "title-with-points", "title", "two-column", "comparison", "caption", "with-description", "centered"] as const;
 const LAYOUT_CLASS_SET: ReadonlySet<string> = new Set(LAYOUT_CLASSES);
 
 /**

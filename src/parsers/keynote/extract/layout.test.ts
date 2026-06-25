@@ -9,7 +9,7 @@ const T = KeynoteType;
 
 test("slideLayoutClass maps a known master name to the ODP layout vocabulary", () => {
   assert.equal(slideLayoutClass({ masterName: "Title & Bullets" }), "title-with-points");
-  assert.equal(slideLayoutClass({ masterName: "Comparison" }), "two-column");
+  assert.equal(slideLayoutClass({ masterName: "Comparison" }), "comparison");
   assert.equal(slideLayoutClass({ masterName: "Title - Center" }), "title");
 });
 
@@ -86,7 +86,7 @@ function deckWithMaster(masterName: string, useHeuristics: boolean) {
 }
 
 test("buildPresentation sets className from the master name when useHeuristics is on", () => {
-  assert.equal(deckWithMaster("Comparison", true).className, "two-column");
+  assert.equal(deckWithMaster("Comparison", true).className, "comparison");
 });
 
 test("buildPresentation leaves className undefined when useHeuristics is off", () => {

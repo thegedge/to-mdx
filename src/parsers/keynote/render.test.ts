@@ -44,6 +44,26 @@ test("presentationToMdx escapes < > { } in titles, bullets, and prose text boxes
   assert.match(mdx, /a &lt;b&gt; &#123;c&#125;/);
 });
 
+test("presentationToMdx renders comparison-slide metrics as semantic flow .metric blocks", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        className: "comparison",
+        title: "Traffic",
+        textBoxes: [
+          { kind: "text", paragraphs: [{ depth: 0, text: "83k" }, { depth: 0, text: "req/s" }], box: { left: 28, top: 54, width: 0, height: 0 } },
+          { kind: "text", paragraphs: [{ depth: 0, text: "Source: X" }], box: { left: 90, top: 97, width: 0, height: 0 } },
+        ],
+      }),
+    ]),
+  );
+  // The central metric becomes a flow .metric block (value + label), not positioned.
+  assert.match(mdx, /<div className="metric">\n\s*<p className="value">83k<\/p>\n\s*<p className="label">req\/s<\/p>\n\s*<\/div>/);
+  assert.doesNotMatch(mdx, /<p className="value">Source/);
+  // The edge credit stays an absolutely-positioned box.
+  assert.match(mdx, /position: "absolute"[^>]*>\n\s*Source: X/);
+});
+
 test("presentationToMdx wraps a hyperlinked paragraph in a markdown link (bullet and prose)", () => {
   const mdx = presentationToMdx(
     deck([

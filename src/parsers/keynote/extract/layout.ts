@@ -58,7 +58,7 @@ const MASTER_NAME_CLASSES: Record<string, string> = {
   "Title - Center": "title",
   "Title & Speaker": "title",
   "Title & Bullets": "title-with-points",
-  Comparison: "two-column",
+  Comparison: "comparison",
   Photo: "blank",
   "Photo & Text": "blank",
 };

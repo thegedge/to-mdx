@@ -598,7 +598,15 @@ function slideBlocks(slide: Slide, slideSize: { width: number; height: number },
     positioned.push({ z: run.z, html: renderShapeRun(run, slideSize, pathIds, fillDefs) });
   }
 
+  // On a comparison slide, the central metric boxes become semantic flow `.metric`
+  // blocks (laid out by the consuming site's `.comparison` CSS) instead of being
+  // absolutely positioned; edge boxes (e.g. a source credit) stay positioned.
+  const comparison = (slide.className ?? "").split(" ").includes("comparison");
   for (const textBox of slide.textBoxes) {
+    if (comparison && isMetricBox(textBox)) {
+      base.push(renderMetric(textBox));
+      continue;
+    }
     const html = renderTextBox(textBox);
     if (textBox.kind === "text" && textBox.box) {
       // Falls back to rank 2 (above positioned images) for decks with no z-order.
@@ -900,6 +908,27 @@ function renderBullets(paragraphs: Paragraph[]): string {
   return paragraphs
     .map((paragraph) => `${INDENT.repeat(Math.max(0, paragraph.depth))}- ${paragraphText(paragraph)}`)
     .join("\n");
+}
+
+/** A comparison-slide metric: a central (non-edge) free text box holding a value + caption lines. */
+function isMetricBox(textBox: TextBox): textBox is Extract<TextBox, { kind: "text" }> {
+  return (
+    textBox.kind === "text" &&
+    textBox.box !== undefined &&
+    textBox.box.left < FAR_EDGE_ANCHOR &&
+    textBox.box.top < FAR_EDGE_ANCHOR &&
+    textBox.paragraphs.length > 0
+  );
+}
+
+/** A comparison metric as semantic flow markup: a big `.value`, then `.label` caption lines. */
+function renderMetric(textBox: Extract<TextBox, { kind: "text" }>): string {
+  const [value, ...labels] = textBox.paragraphs;
+  const lines = [`<p className="value">${paragraphText(value)}</p>`];
+  for (const label of labels) {
+    lines.push(`<p className="label">${paragraphText(label)}</p>`);
+  }
+  return `<div className="metric">\n${lines.map((line) => `${INDENT}${line}`).join("\n")}\n</div>`;
 }
 
 function renderTextBox(textBox: TextBox): string {
