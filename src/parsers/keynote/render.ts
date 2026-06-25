@@ -693,8 +693,11 @@ function shapeOverlayDeclarations(): Declaration[] {
  * default `strokeWidth` units would scale the marker with the line. The `viewBox`
  * keeps the triangle's own 0–10 coordinate space, so `refX`/`refY` are unchanged.
  */
+// refX sits at the arrowhead's BASE (x≈1), not its tip, so a thick line ends where
+// the head is full width and is covered — anchoring at the tip lets the line's body
+// poke out the sides of the tapering head. The head then extends just past the line.
 const ARROW_MARKER =
-  '<marker id="kn-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" ' +
+  '<marker id="kn-arrow" viewBox="0 0 10 10" refX="1" refY="5" markerUnits="userSpaceOnUse" ' +
   'markerWidth="12" markerHeight="12" orient="auto-start-reverse">' +
   '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker>';
 
