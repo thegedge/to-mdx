@@ -26,9 +26,9 @@ test("hoistStyles substitutes a 2+-use color across declaration values (an svg <
   ].join("\n");
   const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
-  assert.match(rules.join("\n"), /--palette1: #000000;/);
-  assert.match(out, /fill: "var\(--palette1\)"/);
-  assert.match(out, /textShadow: "0px 0px 4px var\(--palette1\)"/);
+  assert.match(rules.join("\n"), /--black1: #000000;/);
+  assert.match(out, /fill: "var\(--black1\)"/);
+  assert.match(out, /textShadow: "0px 0px 4px var\(--black1\)"/);
 });
 
 test("hoistStyles leaves a single-use color literal and gives it no variable", () => {
@@ -47,8 +47,8 @@ test("hoistStyles leaves a single-use color literal and gives it no variable", (
   ].join("\n");
   const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
-  assert.match(rules.join("\n"), /--palette1: #223274;/);
-  assert.match(out, /color: "var\(--palette1\)"/);
+  assert.match(rules.join("\n"), /--blue1: #223274;/);
+  assert.match(out, /color: "var\(--blue1\)"/);
   // The single-use color is untouched and gets no variable.
   assert.match(out, /color: "#abcdef"/);
   assert.doesNotMatch(rules.join("\n"), /#abcdef/);
@@ -127,7 +127,7 @@ test("hoistStyles leaves component (capitalized) elements' style sets inline, on
   const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
   // Color is varied (used twice) but the set is NOT hoisted to a class on a component.
-  assert.match(rules.join("\n"), /--palette1: #223274;/);
-  assert.equal((out.match(/<Slide style=\{\{ backgroundColor: "var\(--palette1\)" \}\} \/>/g) ?? []).length, 2);
+  assert.match(rules.join("\n"), /--blue1: #223274;/);
+  assert.equal((out.match(/<Slide style=\{\{ backgroundColor: "var\(--blue1\)" \}\} \/>/g) ?? []).length, 2);
   assert.doesNotMatch(out, /className="style/);
 });

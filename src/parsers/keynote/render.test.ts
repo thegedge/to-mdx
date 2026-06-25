@@ -825,9 +825,9 @@ test("hoistStyles makes a 2+-use color a var with a definition and leaves a sing
   ].join("\n");
   const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
-  assert.match(rules.join("\n"), /--palette1: #223274;/);
-  assert.match(out, /backgroundColor: "var\(--palette1\)"/);
-  assert.match(out, /color: "var\(--palette1\)"/);
+  assert.match(rules.join("\n"), /--blue1: #223274;/);
+  assert.match(out, /backgroundColor: "var\(--blue1\)"/);
+  assert.match(out, /color: "var\(--blue1\)"/);
   // The single-use color is untouched and gets no variable.
   assert.match(out, /color: "#abcdef"/);
   assert.doesNotMatch(rules.join("\n"), /#abcdef/);

@@ -1,4 +1,5 @@
 import { kebabCase } from "../../utils.ts";
+import { colorName } from "./color-name.ts";
 
 /**
  * One JSX inline-style entry: a camelCase property and its value. String values
@@ -195,10 +196,16 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     }
   }
 
+  // Name each hoisted color by its hue (`--red1`, `--blue2`, …), numbered per name
+  // in first-seen order, so the variables read better than an opaque `paletteN`.
   const colorVars = new Map<string, string>();
+  const nameCounts = new Map<string, number>();
   for (const color of colorOrder) {
     if ((colorCounts.get(color) ?? 0) >= 2) {
-      colorVars.set(color, `--palette${colorVars.size + 1}`);
+      const base = colorName(color);
+      const n = (nameCounts.get(base) ?? 0) + 1;
+      nameCounts.set(base, n);
+      colorVars.set(color, `--${base}${n}`);
     }
   }
 
