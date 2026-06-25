@@ -259,6 +259,54 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     }
   }
 
+  const fontClassFor = (declarations: readonly Declaration[]): string | undefined => {
+    const family = fontFamilyOf(declarations);
+    return family !== undefined && family !== defaultFont ? fontClasses.get(family) : undefined;
+  };
+  const setClassFor = (declarations: readonly Declaration[]): string | undefined => {
+    const body = declarationBody(partitionPosition(hoistedDeclarations(declarations, true)).rest);
+    return body !== "" ? setClasses.get(body) : undefined;
+  };
+
+  // Fold a font class into a style class when the two cover the EXACT same set of
+  // elements (e.g. `font-impact` only ever appears with `style30`, and vice versa):
+  // the separate font utility class is then redundant.
+  const fontCount = new Map<string, number>();
+  const setCount = new Map<string, number>();
+  const pairCount = new Map<string, number>();
+  for (const [, name, attrs] of wrapper.matchAll(TAG_RE)) {
+    if (!isIntrinsic(name)) {
+      continue;
+    }
+    const id = placeholderId(attrs);
+    if (id === undefined) {
+      continue;
+    }
+    const fontClass = fontClassFor(collector.declarations(id));
+    const setClass = setClassFor(collector.declarations(id));
+    if (fontClass) {
+      fontCount.set(fontClass, (fontCount.get(fontClass) ?? 0) + 1);
+    }
+    if (setClass) {
+      setCount.set(setClass, (setCount.get(setClass) ?? 0) + 1);
+    }
+    if (fontClass && setClass) {
+      pairCount.set(`${fontClass} ${setClass}`, (pairCount.get(`${fontClass} ${setClass}`) ?? 0) + 1);
+    }
+  }
+  const fontMergedInto = new Map<string, string>();
+  const mergedFont = new Map<string, string>();
+  for (const [family, fontClass] of fontClasses) {
+    for (const [, setClass] of setClasses) {
+      const pair = pairCount.get(`${fontClass} ${setClass}`) ?? 0;
+      if (pair > 0 && pair === fontCount.get(fontClass) && pair === setCount.get(setClass)) {
+        fontMergedInto.set(fontClass, setClass);
+        mergedFont.set(setClass, family);
+        break;
+      }
+    }
+  }
+
   const newWrapper = wrapper.replace(TAG_RE, (full, name: string, attrs: string, slash: string) => {
     const id = placeholderId(attrs);
     if (id === undefined) {
@@ -270,12 +318,10 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     const addClasses: string[] = [];
 
     if (intrinsic) {
-      const family = fontFamilyOf(declarations);
-      if (family !== undefined && family !== defaultFont) {
-        const fontClass = fontClasses.get(family);
-        if (fontClass) {
-          addClasses.push(fontClass);
-        }
+      const fontClass = fontClassFor(declarations);
+      // A merged font class is dropped — its family rides the style class instead.
+      if (fontClass && !fontMergedInto.has(fontClass)) {
+        addClasses.push(fontClass);
       }
     }
 
@@ -322,10 +368,15 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     rules.push(`${scope} {\n${scopedLines.join("\n")}\n}`);
   }
   for (const [family, fontClass] of fontClasses) {
+    if (fontMergedInto.has(fontClass)) {
+      continue;
+    }
     rules.push(`${scope} .${fontClass} {\n  font-family: "${family}";\n}`);
   }
   for (const [body, setClass] of setClasses) {
-    rules.push(`${scope} .${setClass} {\n${declarationsToCss(setDeclarations.get(body) ?? [])}\n}`);
+    const merged = mergedFont.get(setClass);
+    const fontLine = merged ? `  font-family: "${merged}";\n` : "";
+    rules.push(`${scope} .${setClass} {\n${fontLine}${declarationsToCss(setDeclarations.get(body) ?? [])}\n}`);
   }
 
   return { wrapper: newWrapper, rules };

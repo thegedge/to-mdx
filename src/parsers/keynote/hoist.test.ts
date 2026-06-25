@@ -76,6 +76,34 @@ test("hoistStyles makes the most-common fontFamily the scope default and drops e
   assert.doesNotMatch(out, /fontFamily/);
 });
 
+test("hoistStyles folds a font class into a style class when they cover the same elements", () => {
+  const collector = new StyleCollector();
+  // Two elements share a non-default font AND a style set, so font-class and
+  // style-class cover the exact same elements.
+  const impactA = collector.add([["fontFamily", "Impact"], ["position", "absolute"], ["overflow", "hidden"]]);
+  const impactB = collector.add([["fontFamily", "Impact"], ["position", "absolute"], ["overflow", "hidden"]]);
+  // Three Shopify Sans elements make it the (default) most-common font.
+  const s1 = collector.add([["fontFamily", "Shopify Sans"]]);
+  const s2 = collector.add([["fontFamily", "Shopify Sans"]]);
+  const s3 = collector.add([["fontFamily", "Shopify Sans"]]);
+  const wrapper = [
+    '<Slides className="deck" backgroundRoot={imageRoot}>',
+    `<div ${impactA}>a</div>`,
+    `<div ${impactB}>b</div>`,
+    `<div ${s1}>1</div>`,
+    `<div ${s2}>2</div>`,
+    `<div ${s3}>3</div>`,
+    "</Slides>",
+  ].join("\n");
+  const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
+
+  // No separate .font-impact rule or class; Impact rides the style class.
+  assert.doesNotMatch(rules.join("\n"), /font-impact/);
+  assert.doesNotMatch(out, /font-impact/);
+  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}font-family: "Impact";\n {2}position: absolute;\n {2}overflow: hidden;\n\}/);
+  assert.equal((out.match(/<div className="style1">/g) ?? []).length, 2);
+});
+
 test("hoistStyles hoists an identical 2+-use style set on intrinsic elements to one shared class", () => {
   const collector = new StyleCollector();
   const declarations = [["position", "absolute"], ["overflow", "hidden"], ["zIndex", 1]] as const;
