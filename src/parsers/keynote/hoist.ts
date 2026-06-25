@@ -1,5 +1,5 @@
 import { kebabCase } from "../../utils.ts";
-import { colorName } from "./color-name.ts";
+import { buildColorVars } from "./color-cluster.ts";
 
 /**
  * One JSX inline-style entry: a camelCase property and its value. String values
@@ -81,7 +81,7 @@ function cssProperty(property: string): string {
 
 /**
  * Renders declarations as the indented CSS block used inside a scoped class rule
- * (e.g. `  background-color: var(--palette1);`). Values are already CSS-ready
+ * (e.g. `  background-color: var(--blue1);`). Values are already CSS-ready
  * (numbers bare, strings unquoted, `var()` literal).
  */
 function declarationsToCss(declarations: readonly Declaration[]): string {
@@ -135,15 +135,12 @@ function valueColors(value: string | number): string[] {
   return typeof value === "string" ? [...value.matchAll(COLOR_RE)].map((match) => match[0]) : [];
 }
 
-/** Rewrites a declaration value, swapping any hoisted color for its `var(--paletteN)` reference. */
-function substituteColors(value: string | number, colorVars: Map<string, string>): string | number {
+/** Rewrites a declaration value, swapping any hoisted color for its palette reference (`var(--…)` or `rgb(from …)`). */
+function substituteColors(value: string | number, replacements: Map<string, string>): string | number {
   if (typeof value !== "string") {
     return value;
   }
-  return value.replace(COLOR_RE, (color) => {
-    const name = colorVars.get(color);
-    return name ? `var(${name})` : color;
-  });
+  return value.replace(COLOR_RE, (color) => replacements.get(color) ?? color);
 }
 
 /** The placeholder id carried by a tag's attributes, or undefined when the element has no style. */
@@ -168,9 +165,9 @@ export interface HoistResult {
  * are read structurally from `collector` (each element carries a placeholder
  * token in place of its `style={{ … }}`), never by parsing the emitted JSX:
  *
- * 1. Every color (in any declaration value, including SVG `fill`/`stroke`) used 2+
- *    times becomes a `--paletteN` custom property on `scope`, referenced via
- *    `var(--paletteN)` (which inherits into both inline styles and SVG attributes).
+ * 1. Colors used 2+ times become hue-named custom properties on `scope` (near
+ *    colors merged, translucent ones derived via `rgb(from …)`; see `buildColorVars`),
+ *    referenced via `var(--…)` (which inherits into inline styles and SVG attributes).
  * 2. The most common `fontFamily` becomes the `scope` default and every inline
  *    `fontFamily` is removed; rarer families get a `.font-…` utility class.
  * 3. An intrinsic element's class-eligible style set — everything but `left`/`top`/
@@ -196,18 +193,11 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     }
   }
 
-  // Name each hoisted color by its hue (`--red1`, `--blue2`, …), numbered per name
-  // in first-seen order, so the variables read better than an opaque `paletteN`.
-  const colorVars = new Map<string, string>();
-  const nameCounts = new Map<string, number>();
-  for (const color of colorOrder) {
-    if ((colorCounts.get(color) ?? 0) >= 2) {
-      const base = colorName(color);
-      const n = (nameCounts.get(base) ?? 0) + 1;
-      nameCounts.set(base, n);
-      colorVars.set(color, `--${base}${n}`);
-    }
-  }
+  // Cluster near-identical colors into shared hue-named palette variables (`--blue1`,
+  // …); a translucent color derives from its cluster's base via relative-color syntax.
+  const { replacements: colorReplacements, definitions: colorDefinitions } = buildColorVars(
+    colorOrder.map((color) => ({ color, count: colorCounts.get(color) ?? 0 })),
+  );
 
   let defaultFont: string | undefined;
   for (const family of fontOrder) {
@@ -225,7 +215,7 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
   // An element's declarations after color hoisting, with `fontFamily` dropped for
   // intrinsic elements (the family rides the scope default or a `.font-…` class).
   const hoistedDeclarations = (declarations: readonly Declaration[], intrinsic: boolean): Declaration[] => {
-    const substituted = declarations.map<Declaration>(([property, value]) => [property, substituteColors(value, colorVars)]);
+    const substituted = declarations.map<Declaration>(([property, value]) => [property, substituteColors(value, colorReplacements)]);
     return intrinsic ? substituted.filter(([property]) => property !== "fontFamily") : substituted;
   };
 
@@ -358,8 +348,8 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
 
   const rules: string[] = [];
   const scopedLines: string[] = [];
-  for (const [color, name] of colorVars) {
-    scopedLines.push(`  ${name}: ${color};`);
+  for (const { name, hex } of colorDefinitions) {
+    scopedLines.push(`  --${name}: ${hex};`);
   }
   if (defaultFont) {
     scopedLines.push(`  font-family: "${defaultFont}";`);

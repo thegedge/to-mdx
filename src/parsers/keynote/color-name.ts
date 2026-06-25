@@ -1,36 +1,37 @@
-/** Names a CSS color by its rough hue (red/yellow/blue/…) so palette variables read better than `paletteN`. */
+/** Parsing + naming for CSS colors: an RGB(+alpha) parse and a rough hue name (red/yellow/blue/…). */
 
-interface Rgb {
+export interface Rgb {
   r: number;
   g: number;
   b: number;
 }
 
-/** Parses a `#rgb`/`#rrggbb`/`#rrggbbaa` or `rgb()`/`rgba()` color to 0–255 RGB, or null if unrecognized. */
-function parseRgb(color: string): Rgb | null {
+/** Parses a `#rgb`/`#rgba`/`#rrggbb`/`#rrggbbaa` or `rgb()`/`rgba()` color to 0–255 RGB plus 0–1 alpha, or null. */
+export function parseColor(color: string): { rgb: Rgb; alpha: number } | null {
   const hex = /^#([0-9a-fA-F]{3,8})$/.exec(color.trim());
   if (hex) {
     let digits = hex[1];
-    if (digits.length === 3) {
+    if (digits.length === 3 || digits.length === 4) {
       digits = [...digits].map((d) => d + d).join("");
     }
     if (digits.length < 6) {
       return null;
     }
-    return {
+    const rgb = {
       r: parseInt(digits.slice(0, 2), 16),
       g: parseInt(digits.slice(2, 4), 16),
       b: parseInt(digits.slice(4, 6), 16),
     };
+    return { rgb, alpha: digits.length >= 8 ? parseInt(digits.slice(6, 8), 16) / 255 : 1 };
   }
 
   const fn = /^rgba?\(([^)]*)\)$/.exec(color.trim());
   if (fn) {
-    const [r, g, b] = fn[1].split(",").map((part) => Number(part.trim()));
+    const [r, g, b, a] = fn[1].split(",").map((part) => Number(part.trim()));
     if ([r, g, b].some((value) => Number.isNaN(value))) {
       return null;
     }
-    return { r, g, b };
+    return { rgb: { r, g, b }, alpha: a === undefined || Number.isNaN(a) ? 1 : a };
   }
 
   return null;
@@ -82,11 +83,11 @@ const HUE_NAMES: ReadonlyArray<{ max: number; name: string }> = [
  * `color` for anything unparseable.
  */
 export function colorName(color: string): string {
-  const rgb = parseRgb(color);
-  if (!rgb) {
+  const parsed = parseColor(color);
+  if (!parsed) {
     return "color";
   }
-  const { h, s, l } = toHsl(rgb);
+  const { h, s, l } = toHsl(parsed.rgb);
 
   if (s < 0.12) {
     if (l < 0.15) {
