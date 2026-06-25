@@ -208,7 +208,7 @@ function collectImageFills(presentation: Presentation): Map<string, ImageFillDef
 function patternElement(def: ImageFillDef): string {
   const image = `<image ${rootedAttr("href", def.fill.fileName)} x="0" y="0" width="1" height="1" preserveAspectRatio="xMidYMid slice" />`;
   const tint = def.fill.tintColor
-    ? `<rect x="0" y="0" width="1" height="1" fill="${def.fill.tintColor}" fill-opacity={${def.fill.tintOpacity}} />`
+    ? `<rect x="0" y="0" width="1" height="1" fill="${def.fill.tintColor}" fillOpacity={${def.fill.tintOpacity}} />`
     : "";
   return `<pattern id="${def.id}" patternContentUnits="objectBoundingBox" width="1" height="1">${image}${tint}</pattern>`;
 }
