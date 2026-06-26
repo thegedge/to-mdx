@@ -174,7 +174,7 @@ export interface HoistResult {
  *    `right`/`bottom`, which stay inline — becomes a `.styleN` class when used 2+
  *    times, so elements differing only in placement share one class.
  */
-export function hoistStyles(wrapper: string, scope: string, collector: StyleCollector): HoistResult {
+export function hoistStyles(wrapper: string, scope: string, collector: StyleCollector, scopeVars: readonly string[] = []): HoistResult {
   // Color/font tally, in document order, straight from each placeholder's declarations.
   const colorCounts = new Map<string, number>();
   const colorOrder: string[] = [];
@@ -347,7 +347,7 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
   });
 
   const rules: string[] = [];
-  const scopedLines: string[] = [];
+  const scopedLines: string[] = [...scopeVars];
   for (const { name, hex } of colorDefinitions) {
     scopedLines.push(`  --${name}: ${hex};`);
   }
