@@ -817,7 +817,14 @@ function renderUse(shape: SvgPath, pathIds: Map<string, string>, fillDefs: Map<s
   // `var()` (from color hoisting) resolves in CSS property values but not in a raw
   // `fill="…"` attribute.
   const fill = shape.imageFill ? `url(#${fillDefs.get(imageFillKey(shape.imageFill))?.id ?? ""})` : shape.fill ?? "none";
-  const declarations: Declaration[] = [["fill", fill], ["stroke", shape.stroke], ["strokeWidth", shape.strokeWidth]];
+  const declarations: Declaration[] = [["fill", fill]];
+  // `stroke: none` is the SVG default (no ancestor sets one), so emit a stroke only when there is one.
+  if (shape.stroke !== "none") {
+    declarations.push(["stroke", shape.stroke]);
+  }
+  if (shape.strokeWidth !== undefined) {
+    declarations.push(["strokeWidth", shape.strokeWidth]);
+  }
   if (shape.strokeDasharray) {
     declarations.push(["strokeDasharray", shape.strokeDasharray]);
   }

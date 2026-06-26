@@ -128,7 +128,8 @@ export interface SvgPath {
   /** SVG `transform` placing the local path on the slide; absent when it is the identity. */
   transform?: string;
   stroke: string;
-  strokeWidth: number;
+  /** Stroke width in slide units; absent when there is no stroke (`stroke: "none"`). */
+  strokeWidth?: number;
   /** Solid fill color (`#rrggbb` or CSS color); absent for a no-fill outline or an `imageFill`. */
   fill?: string;
   /**

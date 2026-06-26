@@ -98,7 +98,7 @@ export function svgPath(
   if (invisible && !hasMarker) {
     return undefined;
   }
-  const paint = invisible ? { ...resolved, stroke: DEFAULT_STROKE } : resolved;
+  const paint = invisible ? { ...resolved, stroke: DEFAULT_STROKE, strokeWidth: DEFAULT_STROKE_WIDTH } : resolved;
 
   const opacity = shapeOpacity(style);
   return {
@@ -432,12 +432,14 @@ function resolveStyle(
     // No resolvable paint anywhere — the shape is invisible. `svgPath` drops it
     // unless it carries an arrowhead, in which case it gets a default line so the
     // arrow still shows.
-    return { stroke: "none", strokeWidth: DEFAULT_STROKE_WIDTH, fill: "none" };
+    return { stroke: "none", fill: "none" };
   }
 
+  // `stroke-width` is only meaningful with a stroke, so omit it for a fill-only shape.
+  const strokeColor = stroke?.color ?? (fill || imageFill ? "none" : DEFAULT_STROKE);
   return {
-    stroke: stroke?.color ?? (fill || imageFill ? "none" : DEFAULT_STROKE),
-    strokeWidth: stroke?.width ?? DEFAULT_STROKE_WIDTH,
+    stroke: strokeColor,
+    ...(strokeColor === "none" ? {} : { strokeWidth: stroke?.width ?? DEFAULT_STROKE_WIDTH }),
     ...(imageFill ? { imageFill } : fill ? { fill: fill.color } : {}),
     ...(stroke?.dasharray ? { strokeDasharray: stroke.dasharray } : {}),
     ...(stroke?.linecap ? { strokeLinecap: stroke.linecap } : {}),
