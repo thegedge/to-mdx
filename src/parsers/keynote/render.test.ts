@@ -849,7 +849,7 @@ test("presentationToMdx hoists the sole fontFamily to the scoped default and dro
   );
 
   // The only family becomes the scope default; no inline fontFamily survives.
-  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Impact", sans-serif;\n\}/);
+  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Impact";\n\}/);
   assert.doesNotMatch(mdx, /fontFamily/);
   assert.match(mdx, /<div>\n\s*Impact\n\s*<\/div>/);
 });
@@ -864,8 +864,8 @@ test("presentationToMdx applies a rarer fontFamily via a scoped class while the 
   );
 
   // Common family is the default; the rare one is a utility class on its element.
-  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Shopify Sans", sans-serif;\n\}/);
-  assert.match(mdx, /\.slides\.deck \.font-fira-code \{\n\s*font-family: "Fira Code", monospace;\n\}/);
+  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Shopify Sans";\n\}/);
+  assert.match(mdx, /\.slides\.deck \.font-fira-code \{\n\s*font-family: "Fira Code";\n\}/);
   assert.match(mdx, /<div className="font-fira-code">\n\s*code\n\s*<\/div>/);
   assert.doesNotMatch(mdx, /fontFamily/);
 });
@@ -1321,7 +1321,7 @@ test("presentationToMdx hoists a cell fontFamily to the scoped default, dropping
       }),
     ]),
   );
-  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Shopify Sans", sans-serif;\n\}/);
+  assert.match(mdx, /\.slides\.deck \{\n\s*font-family: "Shopify Sans";\n\}/);
   assert.match(mdx, /<td style=\{\{ color: "#000000", textAlign: "center" \}\}>Octet<\/td>/);
   assert.doesNotMatch(mdx, /fontFamily/);
 });
