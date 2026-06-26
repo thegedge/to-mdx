@@ -69,8 +69,8 @@ test("hoistStyles makes the most-common fontFamily the scope default and drops e
   const { wrapper: out, rules } = hoistStyles(wrapper, ".slides.deck", collector);
 
   // Common family is the scope default; the rare one is a utility class on its element.
-  assert.match(rules.join("\n"), /\.slides\.deck \{\n {2}font-family: "Shopify Sans";\n\}/);
-  assert.match(rules.join("\n"), /\.slides\.deck \.font-fira-code \{\n {2}font-family: "Fira Code";\n\}/);
+  assert.match(rules.join("\n"), /\.slides\.deck \{\n {2}font-family: "Shopify Sans", sans-serif;\n\}/);
+  assert.match(rules.join("\n"), /\.slides\.deck \.font-fira-code \{\n {2}font-family: "Fira Code", monospace;\n\}/);
   assert.match(out, /<div className="font-fira-code">code<\/div>/);
   // No inline fontFamily survives anywhere.
   assert.doesNotMatch(out, /fontFamily/);
@@ -100,7 +100,7 @@ test("hoistStyles folds a font class into a style class when they cover the same
   // No separate .font-impact rule or class; Impact rides the style class.
   assert.doesNotMatch(rules.join("\n"), /font-impact/);
   assert.doesNotMatch(out, /font-impact/);
-  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}font-family: "Impact";\n {2}position: absolute;\n {2}overflow: hidden;\n\}/);
+  assert.match(rules.join("\n"), /\.slides\.deck \.style1 \{\n {2}font-family: "Impact", sans-serif;\n {2}position: absolute;\n {2}overflow: hidden;\n\}/);
   assert.equal((out.match(/<div className="style1">/g) ?? []).length, 2);
 });
 

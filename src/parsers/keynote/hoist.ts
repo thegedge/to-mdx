@@ -1,5 +1,6 @@
 import { kebabCase } from "../../utils.ts";
 import { buildColorVars } from "./color-cluster.ts";
+import { fontFamilyValue } from "./font-fallback.ts";
 
 /**
  * One JSX inline-style entry: a camelCase property and its value. String values
@@ -174,7 +175,7 @@ export interface HoistResult {
  *    `right`/`bottom`, which stay inline — becomes a `.styleN` class when used 2+
  *    times, so elements differing only in placement share one class.
  */
-export function hoistStyles(wrapper: string, scope: string, collector: StyleCollector): HoistResult {
+export function hoistStyles(wrapper: string, scope: string, collector: StyleCollector, scopeVars: readonly string[] = []): HoistResult {
   // Color/font tally, in document order, straight from each placeholder's declarations.
   const colorCounts = new Map<string, number>();
   const colorOrder: string[] = [];
@@ -347,12 +348,12 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
   });
 
   const rules: string[] = [];
-  const scopedLines: string[] = [];
+  const scopedLines: string[] = [...scopeVars];
   for (const { name, hex } of colorDefinitions) {
     scopedLines.push(`  --${name}: ${hex};`);
   }
   if (defaultFont) {
-    scopedLines.push(`  font-family: "${defaultFont}";`);
+    scopedLines.push(`  font-family: ${fontFamilyValue(defaultFont)};`);
   }
   if (scopedLines.length > 0) {
     rules.push(`${scope} {\n${scopedLines.join("\n")}\n}`);
@@ -361,11 +362,11 @@ export function hoistStyles(wrapper: string, scope: string, collector: StyleColl
     if (fontMergedInto.has(fontClass)) {
       continue;
     }
-    rules.push(`${scope} .${fontClass} {\n  font-family: "${family}";\n}`);
+    rules.push(`${scope} .${fontClass} {\n  font-family: ${fontFamilyValue(family)};\n}`);
   }
   for (const [body, setClass] of setClasses) {
     const merged = mergedFont.get(setClass);
-    const fontLine = merged ? `  font-family: "${merged}";\n` : "";
+    const fontLine = merged ? `  font-family: ${fontFamilyValue(merged)};\n` : "";
     rules.push(`${scope} .${setClass} {\n${fontLine}${declarationsToCss(setDeclarations.get(body) ?? [])}\n}`);
   }
 
