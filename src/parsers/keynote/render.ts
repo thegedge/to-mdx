@@ -465,9 +465,9 @@ function boxDeclarations(textBox: Extract<TextBox, { kind: "text" }>, omitFontSi
   if (style?.color) {
     declarations.push(["color", style.color]);
   }
-  if (style?.fontWeight !== undefined) {
-    declarations.push(["fontWeight", style.fontWeight]);
-  }
+  // `fontWeight: 700` is not emitted as a style — a bold box wraps its text in
+  // `<strong>`/`**` instead (see `renderProse`), so bold and non-bold boxes share a
+  // class and the boldness reads semantically.
   // A filled box is one of the deck's sized diagram labels (e.g. "verifier",
   // "maps"): center its text both ways via flexbox, since the box has a real
   // height to center within. An auto-sized (0-dimension) box grows from its centre,
@@ -940,7 +940,11 @@ function renderTextBox(textBox: TextBox): string {
   if (textBox.kind === "code") {
     return `\`\`\`${textBox.language}\n${textBox.text}\n\`\`\``;
   }
-  const { content, perParagraphSizes } = renderProse(textBox.paragraphs, textBox.style?.fontSizeToken);
+  const { content, perParagraphSizes } = renderProse(
+    textBox.paragraphs,
+    textBox.style?.fontSizeToken,
+    textBox.style?.fontWeight === 700,
+  );
   // Positioned/styled boxes get an inline-style div; otherwise the prose stays in
   // normal flow with no wrapper (there is nothing to style). When the paragraphs
   // carry their own sizes, drop the box-level `fontSize` so it doesn't override them.
@@ -991,20 +995,29 @@ function brushBorderOverlay(brush: { color: string; width: number }): string {
 function renderProse(
   paragraphs: Paragraph[],
   boxToken: string | undefined,
+  bold: boolean,
 ): { content: string; perParagraphSizes: boolean } {
   const tokens = paragraphs.map((paragraph) => paragraph.fontSizeToken ?? boxToken);
   const distinct = new Set(tokens.filter((token): token is string => token !== undefined));
   if (distinct.size <= 1) {
-    return { content: paragraphs.map(paragraphText).join("\n\n"), perParagraphSizes: false };
+    return { content: paragraphs.map((paragraph) => boldWrap(paragraphText(paragraph), bold, false)).join("\n\n"), perParagraphSizes: false };
   }
   const content = paragraphs
     .map((paragraph, index) => {
       const token = tokens[index];
       const attr = token ? ` ${styleAttr([["fontSize", token]])}` : "";
-      return `<p${attr}>${paragraphText(paragraph)}</p>`;
+      return `<p${attr}>${boldWrap(paragraphText(paragraph), bold, true)}</p>`;
     })
     .join("\n");
   return { content, perParagraphSizes: true };
+}
+
+/** Wraps bold text: `<strong>` inside JSX (`<p>`), markdown `**` in flow content. No-op when not bold. */
+function boldWrap(text: string, bold: boolean, jsx: boolean): string {
+  if (!bold) {
+    return text;
+  }
+  return jsx ? `<strong>${text}</strong>` : `**${text}**`;
 }
 
 /** Whether any slide carries a table with at least one cell (i.e. that renders). */
@@ -1134,9 +1147,6 @@ function renderCell(cell: TableCell): string {
   if (cell.fontFamily !== undefined) {
     declarations.push(["fontFamily", cell.fontFamily]);
   }
-  if (cell.bold) {
-    declarations.push(["fontWeight", 700]);
-  }
   if (cell.align !== undefined) {
     declarations.push(["textAlign", cell.align]);
   }
@@ -1144,7 +1154,9 @@ function renderCell(cell: TableCell): string {
   if (style) {
     attrs += ` ${style}`;
   }
-  return `<td${attrs}>${cellHtml(cell.text)}</td>`;
+  // A bold cell wraps its text in `<strong>` rather than a `font-weight` style, so
+  // bold and plain cells share a class (see `boldWrap`).
+  return `<td${attrs}>${boldWrap(cellHtml(cell.text), cell.bold === true, true)}</td>`;
 }
 
 /**

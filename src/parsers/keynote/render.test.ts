@@ -662,7 +662,7 @@ test("presentationToMdx emits background, color, and alignment together on a <td
   );
 });
 
-test("presentationToMdx emits fontWeight 700 for a bold cell, alongside color/alignment", () => {
+test("presentationToMdx wraps a bold cell's text in <strong> (no fontWeight style), alongside color/alignment", () => {
   const mdx = presentationToMdx(
     deck([
       slide({
@@ -674,7 +674,7 @@ test("presentationToMdx emits fontWeight 700 for a bold cell, alongside color/al
   );
 
   assert.equal(
-    mdx.includes(`<td style={{ color: "#223274", fontWeight: 700, textAlign: "center" }}>Acknowledgment number</td>`),
+    mdx.includes(`<td style={{ color: "#223274", textAlign: "center" }}><strong>Acknowledgment number</strong></td>`),
     true,
   );
 });
@@ -808,8 +808,29 @@ test("presentationToMdx renders a positioned, styled text box as an inline-style
 
   assert.match(
     mdx,
-    /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", fontSize: "var\(--text-4xl\)", color: "#ff0000", fontWeight: 700, textAlign: "center" \}\}>\n\s*99\.9%\n\s*<\/div>/,
+    /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", fontSize: "var\(--text-4xl\)", color: "#ff0000", textAlign: "center" \}\}>\n\s*\*\*99\.9%\*\*\n\s*<\/div>/,
   );
+});
+
+test("presentationToMdx merges a bold and a plain box into one class (bold via ** instead of font-weight)", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          { kind: "text", paragraphs: [{ depth: 0, text: "loud" }], box: { left: 10, top: 10, width: 20, height: 10 }, style: { backgroundColor: "#f9db9a", fontWeight: 700 } },
+          { kind: "text", paragraphs: [{ depth: 0, text: "quiet" }], box: { left: 40, top: 10, width: 20, height: 10 }, style: { backgroundColor: "#f9db9a" } },
+        ],
+      }),
+    ]),
+  );
+
+  // No font-weight survives; the bold box wraps its text instead.
+  assert.doesNotMatch(mdx, /font-weight: 700/);
+  assert.match(mdx, /\*\*loud\*\*/);
+  // Both boxes share one style class (font-weight no longer differentiates them).
+  const classes = [...mdx.matchAll(/<div className="(style\d+)"/g)].map((match) => match[1]);
+  assert.equal(classes.length, 2);
+  assert.equal(classes[0], classes[1]);
 });
 
 test("presentationToMdx hoists the sole fontFamily to the scoped default and drops it inline", () => {
