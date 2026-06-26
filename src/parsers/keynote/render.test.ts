@@ -80,7 +80,8 @@ test("presentationToMdx wraps a hyperlinked paragraph in a markdown link (bullet
     ]),
   );
   assert.match(mdx, /- \[see the docs\]\(https:\/\/example\.com\)/);
-  assert.match(mdx, /\[Attribution: https:\/\/ex\.com\]\(https:\/\/ex\.com\)/);
+  // A single-paragraph link box collapses to an <a> carrying the box style (not a div+markdown link).
+  assert.match(mdx, /<a href="https:\/\/ex\.com"[^>]*>Attribution: https:\/\/ex\.com<\/a>/);
 });
 
 test("presentationToMdx renders placeholder title/body as clean markdown while a free box stays positioned", () => {
@@ -808,7 +809,7 @@ test("presentationToMdx renders a positioned, styled text box as an inline-style
 
   assert.match(
     mdx,
-    /<div style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", fontSize: "var\(--text-4xl\)", color: "#ff0000", textAlign: "center" \}\}>\n\s*\*\*99\.9%\*\*\n\s*<\/div>/,
+    /<strong style=\{\{ position: "absolute", left: "10%", width: "30%", top: "20%", height: "40%", fontSize: "var\(--text-4xl\)", color: "#ff0000", textAlign: "center" \}\}>99\.9%<\/strong>/,
   );
 });
 
@@ -824,13 +825,31 @@ test("presentationToMdx merges a bold and a plain box into one class (bold via *
     ]),
   );
 
-  // No font-weight survives; the bold box wraps its text instead.
+  // No font-weight survives; the bold box collapses to a <strong>, the plain to a <div>.
   assert.doesNotMatch(mdx, /font-weight: 700/);
-  assert.match(mdx, /\*\*loud\*\*/);
-  // Both boxes share one style class (font-weight no longer differentiates them).
-  const classes = [...mdx.matchAll(/<div className="(style\d+)"/g)].map((match) => match[1]);
-  assert.equal(classes.length, 2);
-  assert.equal(classes[0], classes[1]);
+  assert.match(mdx, /<strong[^>]*>loud<\/strong>/);
+  // Both share one style class (font-weight no longer differentiates them).
+  const boldClass = mdx.match(/<strong className="(style\d+)"/)?.[1];
+  const plainClass = mdx.match(/<div className="(style\d+)"/)?.[1];
+  assert.ok(boldClass, "the bold box is a <strong> with a class");
+  assert.equal(boldClass, plainClass);
+});
+
+test("presentationToMdx keeps a multi-paragraph bold box as a <div> (only a single paragraph collapses)", () => {
+  const mdx = presentationToMdx(
+    deck([
+      slide({
+        textBoxes: [
+          { kind: "text", paragraphs: [{ depth: 0, text: "a" }, { depth: 0, text: "b" }], box: { left: 10, top: 10, width: 20, height: 10 }, style: { backgroundColor: "#f9db9a", fontWeight: 700 } },
+        ],
+      }),
+    ]),
+  );
+  // Two paragraphs can't be one inline element — stays a div with markdown-bold lines.
+  assert.match(mdx, /<div [^>]*>\n/);
+  assert.doesNotMatch(mdx, /<strong/);
+  assert.match(mdx, /\*\*a\*\*/);
+  assert.match(mdx, /\*\*b\*\*/);
 });
 
 test("presentationToMdx hoists the sole fontFamily to the scoped default and drops it inline", () => {

@@ -958,11 +958,8 @@ function renderTextBox(textBox: TextBox): string {
   if (textBox.kind === "code") {
     return `\`\`\`${textBox.language}\n${textBox.text}\n\`\`\``;
   }
-  const { content, perParagraphSizes } = renderProse(
-    textBox.paragraphs,
-    textBox.style?.fontSizeToken,
-    textBox.style?.fontWeight === 700,
-  );
+  const bold = textBox.style?.fontWeight === 700;
+  const { content, perParagraphSizes } = renderProse(textBox.paragraphs, textBox.style?.fontSizeToken, bold);
   // Positioned/styled boxes get an inline-style div; otherwise the prose stays in
   // normal flow with no wrapper (there is nothing to style). When the paragraphs
   // carry their own sizes, drop the box-level `fontSize` so it doesn't override them.
@@ -970,8 +967,31 @@ function renderTextBox(textBox: TextBox): string {
   // A smart-brush border draws as a rough-filtered SVG overlay filling the box
   // (the first child, behind the flow text); the box div is the containing block.
   const brush = textBox.style?.brushBorder;
+
+  // When a styled box is a single paragraph that is itself one semantic inline
+  // element (bold → `<strong>`, a whole-paragraph link → `<a>`), put the style on
+  // that element directly instead of a `<div>` wrapping nested markdown.
+  if (style && !brush && !perParagraphSizes && textBox.paragraphs.length === 1) {
+    const collapsed = inlineElement(textBox.paragraphs[0], bold, style);
+    if (collapsed) {
+      return collapsed;
+    }
+  }
+
   const body = brush ? `${brushBorderOverlay(brush)}\n${content}` : content;
   return style ? `<div ${style}>\n${body}\n</div>` : content;
+}
+
+/** A single-paragraph box collapsed to its semantic inline element (`<strong>`/`<a>`), or undefined to keep the div. */
+function inlineElement(paragraph: Paragraph, bold: boolean, style: string): string | undefined {
+  const text = escapeMdxText(paragraph.text);
+  if (paragraph.link && !bold) {
+    return `<a href="${paragraph.link}" ${style}>${text}</a>`;
+  }
+  if (bold && !paragraph.link) {
+    return `<strong ${style}>${text}</strong>`;
+  }
+  return undefined;
 }
 
 /** Edge-to-edge declarations for a brush-border overlay `<svg>` filling its box (no pointer/paint impact). */
