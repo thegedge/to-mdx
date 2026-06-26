@@ -89,11 +89,22 @@ export function svgPath(
     return undefined;
   }
 
+  const resolved = resolveStyle(style, dataNames);
+  const hasMarker = markers.markerStart === true || markers.markerEnd === true;
+  const invisible = resolved.stroke === "none" && resolved.fill === "none" && resolved.imageFill === undefined;
+  // A shape that paints nothing is invisible in Keynote — drop it so it isn't a
+  // phantom outline. An arrowhead-bearing one is kept and given a default line so
+  // the arrow still shows.
+  if (invisible && !hasMarker) {
+    return undefined;
+  }
+  const paint = invisible ? { ...resolved, stroke: DEFAULT_STROKE } : resolved;
+
   const opacity = shapeOpacity(style);
   return {
     localD,
     ...(transform ? { transform } : {}),
-    ...resolveStyle(style, dataNames),
+    ...paint,
     ...markers,
     ...(opacity !== undefined ? { opacity } : {}),
   };
@@ -418,7 +429,10 @@ function resolveStyle(
   const imageFill = resolveImageFill(props?.fill, dataNames);
   const fill = imageFill ? undefined : resolveFill(props?.fill);
   if (!stroke && !fill && !imageFill) {
-    return { stroke: DEFAULT_STROKE, strokeWidth: DEFAULT_STROKE_WIDTH, fill: "none" };
+    // No resolvable paint anywhere — the shape is invisible. `svgPath` drops it
+    // unless it carries an arrowhead, in which case it gets a default line so the
+    // arrow still shows.
+    return { stroke: "none", strokeWidth: DEFAULT_STROKE_WIDTH, fill: "none" };
   }
 
   return {

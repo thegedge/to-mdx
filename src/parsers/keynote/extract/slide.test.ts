@@ -374,7 +374,7 @@ test("extractSlide collects a no-text stroked shape as a vector path and not a t
   assert.equal(slide.shapes[0].transform, "translate(100 200) scale(7.16 1)");
 });
 
-test("extractSlide renders a no-text frame with a path as a currentColor outline when its style resolves to nothing visible", () => {
+test("extractSlide drops a no-text frame whose style resolves to nothing visible (invisible, not a phantom outline)", () => {
   const registry = buildRegistry([
     ...show(10n),
     mockObject(10n, T.slideArchive, { ownedDrawables: [ref(50n)], drawablesZOrder: [] }),
@@ -394,11 +394,8 @@ test("extractSlide renders a no-text frame with a path as a currentColor outline
   ]);
 
   const slide = buildPresentation(registry, "x").slides[0];
-  assert.ok(slide.shapes);
-  assert.equal(slide.shapes.length, 1);
-  assert.equal(slide.shapes[0].stroke, "currentColor");
-  assert.equal(slide.shapes[0].strokeWidth, 2);
-  assert.equal(slide.shapes[0].fill, "none");
+  // The frame paints nothing and has no arrowhead, so it is not emitted at all.
+  assert.equal(slide.shapes, undefined);
 });
 
 test("extractSlide resolves movies to a video data file", () => {

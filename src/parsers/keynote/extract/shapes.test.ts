@@ -205,30 +205,21 @@ test("svgPath yields a path with the resolved stroke color and width", () => {
   assert.equal(path.transform, "translate(100 200) scale(7.16 1)");
 });
 
-test("svgPath defaults to currentColor width 2 when no style resolves", () => {
-  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), undefined);
-  assert.ok(path);
-  assert.equal(path.stroke, "currentColor");
-  assert.equal(path.strokeWidth, 2);
-});
-
-test("svgPath renders a currentColor outline when the style resolves to nothing visible", () => {
+test("svgPath drops a markerless shape whose style resolves to nothing (invisible, not a phantom outline)", () => {
+  // No style at all, or empty shape properties — nothing paints and there's no
+  // arrowhead, so the shape is invisible and must not render.
+  assert.equal(svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), undefined), undefined);
   const emptyFrame: ShapeStyleArchive = { shapeProperties: {} } as unknown as ShapeStyleArchive;
-  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), emptyFrame);
-  assert.ok(path);
-  assert.equal(path.stroke, "currentColor");
-  assert.equal(path.strokeWidth, 2);
-  assert.equal(path.fill, "none");
+  assert.equal(svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), emptyFrame), undefined);
 });
 
-test("svgPath renders a currentColor outline when the stroke pattern is the empty pattern and there is no fill", () => {
+test("svgPath drops a shape with an explicit empty stroke pattern and no fill (intentionally invisible)", () => {
+  // An explicit empty stroke (TSDEmptyPattern) + no fill means Keynote draws nothing;
+  // it must NOT fall back to a default outline (which would be a phantom border).
   const noStroke: ShapeStyleArchive = {
     shapeProperties: { stroke: { color: { model: 1, r: 0, g: 0, b: 0 }, width: 1, pattern: { type: 2 } } },
   } as unknown as ShapeStyleArchive;
-  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), noStroke);
-  assert.ok(path);
-  assert.equal(path.stroke, "currentColor");
-  assert.equal(path.fill, "none");
+  assert.equal(svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), noStroke), undefined);
 });
 
 test("shapeBorder renders a shape stroke as a CSS border shorthand (solid, dashed, or none)", () => {
@@ -523,4 +514,14 @@ test("svgPath flags only markerEnd when head is an arrow and tail is none", () =
   // headLineEnd (the arrowhead) is at the path end.
   assert.equal(path.markerEnd, true);
   assert.equal(path.markerStart, undefined);
+});
+
+test("svgPath keeps an arrowhead shape with no resolvable line style, giving it a default currentColor line", () => {
+  const arrow = {
+    shapeProperties: { headLineEnd: { identifier: "simple arrow", isFilled: true } },
+  } as unknown as ShapeStyleArchive;
+  const path = svgPath(line({ x: 0, y: 0, width: 100, height: 0 }), arrow);
+  assert.ok(path, "an arrowhead shape is kept even when nothing else paints");
+  assert.equal(path.markerEnd, true);
+  assert.equal(path.stroke, "currentColor");
 });
