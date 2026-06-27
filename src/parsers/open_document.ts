@@ -2,7 +2,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as yauzl from "yauzl";
-import { generateMetadataExports } from "../generators/mdx.ts";
+import { formatDate, generateFilename, generateMetadataExports, sanitizeFilename, titleFromPath } from "../generators/mdx.ts";
 import { infer } from "../page-dimensions.ts";
 import type { Options } from "../parsers.ts";
 import { Styles } from "../styles.ts";
@@ -192,7 +192,7 @@ async function getPresentationTitle(metadata: Record<string, unknown>, presentat
   }
 
   // Degrade to the file name rather than throwing (mirrors the Keynote path).
-  const fallback = path.basename(presentationFile, path.extname(presentationFile));
+  const fallback = titleFromPath(presentationFile);
   console.warn(`⚠️  No presentation title in metadata; using file name "${fallback}"`);
   return fallback;
 }
@@ -228,20 +228,4 @@ async function getPresentationDate(metadata: Record<string, unknown>, presentati
   const created = stats.birthtimeMs > 0 ? stats.birthtime : stats.mtime;
   console.warn(`⚠️  No presentation date in metadata; using file creation time ${formatDate(created)}`);
   return created;
-}
-
-function sanitizeFilename(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, "_");
-}
-
-function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0];
-}
-
-function generateFilename(date: Date, title: string): string {
-  const basename = `${formatDate(date)}_${sanitizeFilename(title)}`;
-  return `${basename}.mdx`;
 }

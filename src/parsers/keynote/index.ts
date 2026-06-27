@@ -2,14 +2,13 @@ import * as fs from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import JSZip from "jszip";
-import { generateMetadataExports } from "../../generators/mdx.ts";
+import { formatDate, generateFilename, generateMetadataExports, sanitizeFilename, titleFromPath } from "../../generators/mdx.ts";
 import type { Options } from "../../parsers.ts";
 import { decodeKeynote, partialEntriesWarning } from "./decode.ts";
 import { buildPresentation } from "./extract/document.ts";
 import { convertPdfDataFiles } from "./extract/pdf.ts";
 import { buildDataSourceMap, distinctImageFileNames, imageCoverageWarning } from "./extract/images.ts";
 import type { Presentation } from "./model.ts";
-import { formatDate, generateFilename, sanitizeFilename, titleFromPath } from "./metadata.ts";
 import { typeIds } from "./type_ids.ts";
 import { assembleMdxDocument, presentationToMdx } from "./render.ts";
 
