@@ -49,6 +49,12 @@ export async function parse(outputRoot: string, presentationFile: string, option
   await copyImages(presentation, dataFiles, basename, outputRoot);
 
   const metadata: Record<string, unknown> = { title, imageRoot: `/img/presentations/${basename}` };
+  // Export the deck's native pixel size so the consuming site can size/scale slides
+  // off it (aspect ratio = width / height); only when the deck declares a size.
+  if (presentation.slideSize) {
+    metadata.width = Math.round(presentation.slideSize.width);
+    metadata.height = Math.round(presentation.slideSize.height);
+  }
   const metadataExports = generateMetadataExports(metadata);
   const content = presentationToMdx(presentation);
 

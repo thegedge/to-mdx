@@ -33,6 +33,12 @@ test("generateMetadataExports emits an imageRoot export when provided", () => {
   assert.match(mdx, /export const imageRoot = "\/img\/presentations\/2026-01-01_x";/);
 });
 
+test("generateMetadataExports emits numeric fields (slide size) unquoted", () => {
+  const mdx = generateMetadataExports({ title: "X", width: 1920, height: 1080 });
+  assert.match(mdx, /export const width = 1920;/);
+  assert.match(mdx, /export const height = 1080;/);
+});
+
 test("generateMetadataExports skips the date and metadata keys", () => {
   const mdx = generateMetadataExports({ title: "X", date: new Date(), metadata: { foo: 1 } });
   assert.doesNotMatch(mdx, /export const date/);

@@ -120,15 +120,10 @@ export function presentationToMdx(presentation: Presentation): string {
   const scope = `.slides.${className}`;
 
   const rawWrapper = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
-  // The deck's native pixel size as scope variables the consuming site sizes/scales
-  // slides with (aspect ratio derives from these); only when the deck declares one.
-  const size = presentation.slideSize;
-  const scopeVars = size
-    ? [`  --slide-width: ${Math.round(size.width)};`, `  --slide-height: ${Math.round(size.height)};`]
-    : [];
   // Lift repeated colors/fonts/style-sets into the scoped stylesheet, leaving the
-  // rendered slides visually identical (see `hoistStyles`).
-  const { wrapper, rules } = hoistStyles(rawWrapper, scope, collector, scopeVars);
+  // rendered slides visually identical (see `hoistStyles`). The deck's native size
+  // is exported as `width`/`height` consts (see the document assembler), not here.
+  const { wrapper, rules } = hoistStyles(rawWrapper, scope, collector);
 
   // The scoped stylesheet merges the hoisted rules with the shared table rules.
   // HTML `<table>`s depend on the latter; spanless markdown tables get default

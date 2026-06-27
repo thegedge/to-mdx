@@ -64,14 +64,6 @@ test("presentationToMdx renders comparison-slide metrics as semantic flow .metri
   assert.match(mdx, /position: "absolute"[^>]*>\n\s*Source: X/);
 });
 
-test("presentationToMdx emits the deck's native pixel size as scope variables when a size is declared", () => {
-  const sized: Presentation = { title: "Deck", slides: [slide({ title: "Hi" })], unplacedImages: [], slideSize: { width: 1920, height: 1080 } };
-  const mdx = presentationToMdx(sized);
-  assert.match(mdx, /\.slides\.deck \{\n {2}--slide-width: 1920;\n {2}--slide-height: 1080;/);
-  // A deck with no declared size emits no size variables.
-  assert.doesNotMatch(presentationToMdx(deck([slide({ title: "Hi" })])), /--slide-width/);
-});
-
 test("presentationToMdx wraps a hyperlinked paragraph in a markdown link (bullet and prose)", () => {
   const mdx = presentationToMdx(
     deck([
