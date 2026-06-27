@@ -13,7 +13,7 @@ import type {
   StrokePatternArchive,
 } from "../types.ts";
 import { dataFileNameById } from "./images.ts";
-import { colorToHex, hasRgb, rgba, roundAlpha } from "./style.ts";
+import { colorToHex, hasRgb, rgba, roundAlpha, solidColor, translucentAlpha } from "./style.ts";
 import { firstInSuperChain, type SuperChainNode } from "./super-chain.ts";
 
 /**
@@ -531,9 +531,9 @@ function resolveStroke(stroke: StrokeArchive | undefined): ResolvedStroke | unde
   if (stroke.cap === ROUND_CAP) {
     resolved.linecap = "round";
   }
-  const a = alpha(stroke.color);
-  if (a < 1) {
-    resolved.opacity = roundAlpha(a);
+  const opacity = translucentAlpha(alpha(stroke.color));
+  if (opacity !== undefined) {
+    resolved.opacity = opacity;
   }
   return resolved;
 }
@@ -561,16 +561,11 @@ export function strokeDasharray(pattern: StrokePatternArchive | undefined, width
 
 /** Resolves a fill to a render color: a solid `fill.color`, else an image fill's `tint` (an approximation). */
 export function resolveFill(fill: FillArchive | undefined): ResolvedFill | undefined {
-  const color = fill?.color ?? fill?.image?.tint;
-  if (!hasRgb(color)) {
+  const solid = solidColor(fill?.color ?? fill?.image?.tint);
+  if (!solid) {
     return undefined;
   }
-  const resolved: ResolvedFill = { color: colorToHex(color) };
-  const a = alpha(color);
-  if (a < 1) {
-    resolved.opacity = roundAlpha(a);
-  }
-  return resolved;
+  return { color: solid.hex, ...(solid.opacity !== undefined ? { opacity: solid.opacity } : {}) };
 }
 
 /** A color's alpha channel (0–1), defaulting to fully opaque when unset. */

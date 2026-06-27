@@ -85,6 +85,20 @@ export function roundAlpha(a: number): number {
   return Math.round(a * 100) / 100;
 }
 
+/** A translucent alpha (`< 1`) rounded for output, or undefined when fully opaque. */
+export function translucentAlpha(a: number): number | undefined {
+  return a < 1 ? roundAlpha(a) : undefined;
+}
+
+/** A solid color as its hex plus an optional opacity (only when translucent); undefined when the color has no RGB. */
+export function solidColor(color: Color | undefined): { hex: string; opacity?: number } | undefined {
+  if (!hasRgb(color)) {
+    return undefined;
+  }
+  const opacity = translucentAlpha(color.a ?? 1);
+  return opacity === undefined ? { hex: colorToHex(color) } : { hex: colorToHex(color), opacity };
+}
+
 /** Composes a CSS `rgba()` string from a `#RRGGBB` hex and a 0–1 alpha. */
 export function rgba(hex: string, alpha: number): string {
   const r = Number.parseInt(hex.slice(1, 3), 16);

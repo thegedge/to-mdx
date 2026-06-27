@@ -14,7 +14,7 @@ import type {
   TableModelArchive,
   Tile,
 } from "../types.ts";
-import { alignmentToken, colorToHex, fontFamily, hasRgb, roundAlpha } from "./style.ts";
+import { alignmentToken, colorToHex, fontFamily, hasRgb, solidColor } from "./style.ts";
 import { firstInSuperChain, type SuperChainNode } from "./super-chain.ts";
 
 /**
@@ -361,16 +361,14 @@ export function effectiveCellFill(style: CellStyleArchive | undefined): FillArch
 
 /** Converts a fill to a render-ready background (hex + optional rounded alpha), or undefined when not a solid color. */
 export function fillToBackground(fill: FillArchive | undefined): CellBackground | undefined {
-  const color = fill?.color;
-  if (!hasRgb(color)) {
+  const solid = solidColor(fill?.color);
+  if (!solid) {
     return undefined;
   }
-  const background: CellBackground = { backgroundColor: colorToHex(color) };
-  const a = color.a ?? 1;
-  if (a < 1) {
-    background.backgroundOpacity = roundAlpha(a);
-  }
-  return background;
+  return {
+    backgroundColor: solid.hex,
+    ...(solid.opacity !== undefined ? { backgroundOpacity: solid.opacity } : {}),
+  };
 }
 
 /** Resolves a style reference to its effective background fill (or undefined). */
