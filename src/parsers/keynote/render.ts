@@ -10,18 +10,6 @@ const INDENT = "  ";
 /** Fallback slide size (16:9 at 1080p) when a deck declares none, for the SVG viewBox. */
 const DEFAULT_SLIDE_SIZE = { width: 1920, height: 1080 };
 
-function gcd(a: number, b: number): number {
-  return b === 0 ? a : gcd(b, a % b);
-}
-
-/** The slide size reduced to its simplest integer aspect ratio (1920×1080 → 16×9). */
-function aspectRatio(size: { width: number; height: number }): { width: number; height: number } {
-  const width = Math.round(size.width);
-  const height = Math.round(size.height);
-  const divisor = gcd(width, height) || 1;
-  return { width: width / divisor, height: height / divisor };
-}
-
 /**
  * A JSX attribute that resolves a file against the exported `imageRoot` const,
  * e.g. `src={`${imageRoot}/pic.png`}`. Built by string concatenation so the
@@ -132,11 +120,11 @@ export function presentationToMdx(presentation: Presentation): string {
   const scope = `.slides.${className}`;
 
   const rawWrapper = `<Slides className="${className}" backgroundRoot={imageRoot}>\n${slides}\n</Slides>`;
-  // The deck's aspect ratio as scope variables the consuming site sizes slides with;
-  // only when the deck declares a size (else we don't truly know it).
-  const ratio = presentation.slideSize ? aspectRatio(presentation.slideSize) : undefined;
-  const scopeVars = ratio
-    ? [`  --slide-aspect-ratio-width: ${ratio.width};`, `  --slide-aspect-ratio-height: ${ratio.height};`]
+  // The deck's native pixel size as scope variables the consuming site sizes/scales
+  // slides with (aspect ratio derives from these); only when the deck declares one.
+  const size = presentation.slideSize;
+  const scopeVars = size
+    ? [`  --slide-width: ${Math.round(size.width)};`, `  --slide-height: ${Math.round(size.height)};`]
     : [];
   // Lift repeated colors/fonts/style-sets into the scoped stylesheet, leaving the
   // rendered slides visually identical (see `hoistStyles`).
