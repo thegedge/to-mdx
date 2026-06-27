@@ -1,5 +1,6 @@
 import { centeringLayoutClass, isFullBleed, type LayoutBox, normalizeLayoutClass } from "../../../heuristics/slide-layout.ts";
 import { cls } from "../../../utils.ts";
+import { pctX, pctY, validSlideSize } from "./style.ts";
 
 // Re-exported so the Keynote extractors/renderer keep importing them from here.
 export { isFullBleed, normalizeLayoutClass };
@@ -100,7 +101,7 @@ export function slideLayoutClass({ masterName, title, contentBox }: SlideLayoutI
  * the slide size is degenerate.
  */
 export function contentBoxPercent(geometries: RawBox[], slideSize: { width: number; height: number }): LayoutBox | null {
-  if (geometries.length === 0 || slideSize.width <= 0 || slideSize.height <= 0) {
+  if (geometries.length === 0 || !validSlideSize(slideSize)) {
     return null;
   }
 
@@ -110,9 +111,9 @@ export function contentBoxPercent(geometries: RawBox[], slideSize: { width: numb
   const maxY = Math.max(...geometries.map((box) => box.y + box.height));
 
   return {
-    left: (minX / slideSize.width) * 100,
-    top: (minY / slideSize.height) * 100,
-    width: ((maxX - minX) / slideSize.width) * 100,
-    height: ((maxY - minY) / slideSize.height) * 100,
+    left: pctX(minX, slideSize),
+    top: pctY(minY, slideSize),
+    width: pctX(maxX - minX, slideSize),
+    height: pctY(maxY - minY, slideSize),
   };
 }

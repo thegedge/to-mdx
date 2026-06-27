@@ -152,19 +152,34 @@ export function alignmentToken(value: number | undefined): TextBoxStyle["textAli
   return value === undefined ? undefined : ALIGNMENTS[value];
 }
 
+/** A slide size is usable for percentage math only when both dimensions are positive. */
+export function validSlideSize(slideSize: { width: number; height: number }): boolean {
+  return slideSize.width > 0 && slideSize.height > 0;
+}
+
+/** A point-space x-coordinate as a percentage of the slide width. */
+export function pctX(value: number, slideSize: { width: number; height: number }): number {
+  return (value / slideSize.width) * 100;
+}
+
+/** A point-space y-coordinate as a percentage of the slide height. */
+export function pctY(value: number, slideSize: { width: number; height: number }): number {
+  return (value / slideSize.height) * 100;
+}
+
 /** Converts a drawable's point-space bounding box to slide-size percentages. */
 export function boxPercent(
   box: RawBox | undefined,
   slideSize: { width: number; height: number },
 ): TextBoxGeometry | undefined {
-  if (!box || slideSize.width <= 0 || slideSize.height <= 0) {
+  if (!box || !validSlideSize(slideSize)) {
     return undefined;
   }
   return {
-    left: (box.x / slideSize.width) * 100,
-    top: (box.y / slideSize.height) * 100,
-    width: (box.width / slideSize.width) * 100,
-    height: (box.height / slideSize.height) * 100,
+    left: pctX(box.x, slideSize),
+    top: pctY(box.y, slideSize),
+    width: pctX(box.width, slideSize),
+    height: pctY(box.height, slideSize),
   };
 }
 
@@ -179,14 +194,14 @@ export function maskCrop(
   mask: RawBox,
   slideSize: { width: number; height: number },
 ): ImageCrop | undefined {
-  if (slideSize.width <= 0 || slideSize.height <= 0 || mask.width <= 0 || mask.height <= 0) {
+  if (!validSlideSize(slideSize) || mask.width <= 0 || mask.height <= 0) {
     return undefined;
   }
   return {
-    left: ((image.x + mask.x) / slideSize.width) * 100,
-    top: ((image.y + mask.y) / slideSize.height) * 100,
-    width: (mask.width / slideSize.width) * 100,
-    height: (mask.height / slideSize.height) * 100,
+    left: pctX(image.x + mask.x, slideSize),
+    top: pctY(image.y + mask.y, slideSize),
+    width: pctX(mask.width, slideSize),
+    height: pctY(mask.height, slideSize),
     imgLeft: (-mask.x / mask.width) * 100,
     imgTop: (-mask.y / mask.height) * 100,
     imgWidth: (image.width / mask.width) * 100,
