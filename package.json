@@ -17,16 +17,25 @@
   "bin": {
     "to-mdx": "./bin/to-mdx"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test"
+  },
   "dependencies": {
     "@xmldom/xmldom": "^0.8.11",
     "clsx": "^2.1.1",
     "dedent-js": "^1.0.1",
     "json5": "^2.2.3",
+    "jszip": "^3.10.1",
+    "keynote-archives": "^2.0.1",
     "lodash-es": "^4.17.21",
+    "mupdf": "^1.27.0",
+    "tslib": "^2.8.1",
     "yaml": "^2.8.1",
     "yauzl": "^3.2.0"
   },
   "devDependencies": {
+    "@types/lodash-es": "^4.17.12",
     "@types/node": "^24.3.0",
     "@types/yauzl": "^2.10.3",
     "typescript": "^5.9.2"

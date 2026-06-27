@@ -2,7 +2,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as yauzl from "yauzl";
-import { generateFrontmatter } from "../generators/mdx.ts";
+import { formatDate, generateFilename, generateMetadataExports, sanitizeFilename, titleFromPath } from "../generators/mdx.ts";
 import { infer } from "../page-dimensions.ts";
 import type { Options } from "../parsers.ts";
 import { Styles } from "../styles.ts";
@@ -39,8 +39,8 @@ export async function parse(outputRoot: string, presentationFile: string, option
   const metadata: Record<string, unknown> = {};
   BaseElement.parse(metaDocument.documentElement, metadata as unknown as ParseContext);
 
-  const title = await getPresentationTitle(metadata);
-  const date = await getPresentationDate(metadata);
+  const title = await getPresentationTitle(metadata, presentationFile);
+  const date = await getPresentationDate(metadata, presentationFile);
   const basename = `${formatDate(date)}_${sanitizeFilename(title)}`;
 
   const context: ParseContext = {
@@ -53,7 +53,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
 
   await extractImages(presentationFile, basename, outputRoot);
 
-  const frontmatter = generateFrontmatter(metadata);
+  const metadataExports = generateMetadataExports(metadata);
 
   BaseElement.parse(stylesDocument.documentElement, context);
   const content = BaseElement.parse(contentDocument.documentElement, context);
@@ -70,7 +70,7 @@ export async function parse(outputRoot: string, presentationFile: string, option
   fs.writeFileSync(
     outputFile,
     dedent`
-      ${frontmatter}
+      ${metadataExports}
       ${content?.toMdx() ?? ""}
     `,
   );
@@ -184,19 +184,20 @@ async function extractImages(zipFileName: string, basename: string, projectRoot:
   });
 }
 
-async function getPresentationTitle(metadata: Record<string, unknown>): Promise<string> {
+async function getPresentationTitle(metadata: Record<string, unknown>, presentationFile: string): Promise<string> {
   const title = metadata.title;
   if (typeof title === "string" && title.trim()) {
     console.log(`🔍 Found presentation title: ${title}`);
     return title;
   }
 
-  // In a real implementation, you might want to prompt for user input
-  // For now, we'll use a default or throw an error
-  throw new Error("No presentation title found in metadata");
+  // Degrade to the file name rather than throwing (mirrors the Keynote path).
+  const fallback = titleFromPath(presentationFile);
+  console.warn(`⚠️  No presentation title in metadata; using file name "${fallback}"`);
+  return fallback;
 }
 
-async function getPresentationDate(metadata: Record<string, unknown>): Promise<Date> {
+async function getPresentationDate(metadata: Record<string, unknown>, presentationFile: string): Promise<Date> {
   const presentationDate = metadata.presentation_date;
   if (typeof presentationDate === "string") {
     const parsedDate = new Date(presentationDate);
@@ -220,21 +221,11 @@ async function getPresentationDate(metadata: Record<string, unknown>): Promise<D
     }
   }
 
-  throw new Error("⚠️  No presentation date found in metadata");
-}
-
-function sanitizeFilename(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, "_");
-}
-
-function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0];
-}
-
-function generateFilename(date: Date, title: string): string {
-  const basename = `${formatDate(date)}_${sanitizeFilename(title)}`;
-  return `${basename}.mdx`;
+  // Degrade to the file's creation time rather than throwing (mirrors the Keynote
+  // path). birthtime is unset on some filesystems, where it reads as epoch 0 — fall
+  // back to mtime there.
+  const stats = fs.statSync(presentationFile);
+  const created = stats.birthtimeMs > 0 ? stats.birthtime : stats.mtime;
+  console.warn(`⚠️  No presentation date in metadata; using file creation time ${formatDate(created)}`);
+  return created;
 }

@@ -1,3 +1,4 @@
+import { centeringLayoutClass } from "../../../heuristics/slide-layout.ts";
 import { convertCmToPercent, type Maybe } from "../../../utils.ts";
 import type { BaseElement } from "../../base_element.ts";
 import { Notes } from "../presentation/notes.ts";
@@ -42,27 +43,12 @@ export class LayoutDetection {
     }
 
     const positioningStyle = this.generatePositioningStyleObject();
-    const leftPercent = parseFloat(String(positioningStyle.left));
-    const topPercent = parseFloat(String(positioningStyle.top));
-    const widthPercent = parseFloat(String(positioningStyle.width));
-    const heightPercent = parseFloat(String(positioningStyle.height));
-
-    const centerX = leftPercent + 0.5 * widthPercent;
-    const centerY = topPercent + 0.5 * heightPercent;
-
-    const horizontally = centerX > 45.0 && centerX < 65.0;
-    const vertically = centerY > 45.0 && centerY < 65.0;
-    const fullWidth = widthPercent > 95.0;
-    const fullHeight = heightPercent > 95.0;
-
-    if (horizontally && vertically) {
-      if (fullHeight || fullWidth) {
-        return "centered blank";
-      }
-      return "centered";
-    }
-
-    return null;
+    return centeringLayoutClass({
+      left: parseFloat(String(positioningStyle.left)),
+      top: parseFloat(String(positioningStyle.top)),
+      width: parseFloat(String(positioningStyle.width)),
+      height: parseFloat(String(positioningStyle.height)),
+    });
   }
 
   get needsPositioning(): boolean {

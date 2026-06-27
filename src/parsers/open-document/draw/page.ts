@@ -1,4 +1,5 @@
 import dedent from "dedent-js";
+import { normalizeLayoutClass } from "../../../heuristics/slide-layout.ts";
 import type { Style } from "../../../styles.ts";
 import { cls, type Maybe } from "../../../utils.ts";
 import type { ParseContext } from "../../base_element.ts";
@@ -35,7 +36,7 @@ export class Page extends BaseElement {
       return `<Slide />`;
     }
 
-    const className = cls(this.getChildLayoutClass(), this.getLayoutClass(), this.pageClass, this.styleName);
+    const className = normalizeLayoutClass(cls(this.getChildLayoutClass(), this.getLayoutClass(), this.pageClass, this.styleName));
     const slideTag = className ? `<Slide className="${className}">` : "<Slide>";
     return dedent`
       ${slideTag}
