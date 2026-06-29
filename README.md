@@ -4,11 +4,12 @@ A tool for converting things to MDX (Markdown + React).
 
 > [!NOTE]
 > If you're here for the Ruby version, it exists on an older commit:
-> https://github.com/thegedge/to-mdx/tree/3c05e67d96cb85980e917f3370dddfc0bebdd009
+> [3c05e67d96cb85980e917f3370dddfc0bebdd009](https://github.com/thegedge/to-mdx/tree/old-ruby-version)
 
 ## Requirements
 
-- Node.js 23.5+ (the bin runs under Node's [Permission Model](https://nodejs.org/api/permissions.html), stabilized in 23.5; 24 LTS recommended)
+- Node.js 23.5+ (the bin uses Node's [Permission Model](https://nodejs.org/api/permissions.html),
+  stabilized in 23.5; 24 LTS recommended)
 - pnpm
 
 ## Installation
